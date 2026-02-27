@@ -39,7 +39,7 @@ Issues = "https://github.com/curtis-d-williams/mcp-governance-orchestrator/issue
 mcp-governance-orchestrator = "mcp_governance_orchestrator.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcp_policy_guardian"]
+packages = ["src/mcp_governance_orchestrator"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -6,7 +6,7 @@ This document defines the V1 contract for the mcp-governance-orchestrator MCP se
 
 V1 is intentionally narrow: a deterministic, network-free, read-only orchestrator that aggregates Guardian Primitive outputs without interpretation.
 
-NOTE: In V1, guardian invocation is intentionally **not wired**. The orchestrator remains a deterministic wrapper that fail-closes per-guardian with a stable stub result.
+NOTE: In V1, known guardians may be invoked in-process via a static routing table (`GUARDIAN_ROUTING_TABLE`) using `importlib`. Outputs are embedded verbatim without normalization or reserialization. All failure paths produce stable, deterministic error codes. Unknown guardian IDs and all invocation failures are fail-closed.
 
 ---
 
@@ -32,8 +32,11 @@ No other tools are part of V1.
   - `tool`, `repo_path`, `ok`, `fail_closed`, `guardians`.
 
 For each requested guardian ID:
-- If guardian ID is unknown: returns a fail-closed guardian entry with `invoked=false`, `output=null`.
-- If guardian ID is known but not wired (V1): returns a fail-closed guardian entry with `invoked=false`, `output=null`, `details="fail-closed: guardian_not_wired"`.
+- If guardian ID is unknown (not in routing table): `invoked=false`, `output=null`, `details="fail-closed: guardian_unknown"`.
+- If guardian package cannot be imported or callable cannot be resolved: `invoked=false`, `output=null`, `details="fail-closed: guardian_import_failed"`.
+- If the callable raises an exception: `invoked=false`, `output=null`, `details="fail-closed: guardian_call_failed"`.
+- If the callable returns a value that is not a dict or lacks the key `"tool"`: `invoked=false`, `output=null`, `details="fail-closed: guardian_output_invalid"`.
+- If invocation and validation succeed: `invoked=true`, `ok=true`, `fail_closed=false`, `output=<verbatim guardian output>`.
 
 ### 2.2 What V1 explicitly does NOT do (Non-Goals)
 
@@ -70,8 +73,19 @@ For identical inputs, output must be identical:
 - If `repo_path` is invalid or empty: `ok=false`, `fail_closed=true`.
 - If `guardians` is empty or not a list: `ok=false`, `fail_closed=true`.
 - If any guardian entry is fail-closed: overall `ok=false`, `fail_closed=true`.
+- `ok` and `fail_closed` on each guardian entry are **orchestrator-owned**: they are not read from the guardian's output. `ok=true`/`fail_closed=false` only when invocation and output validation both succeed.
 
 V1 never downgrades failures.
+
+### 3.3 Deterministic failure codes (complete set)
+
+| Code | Trigger |
+|---|---|
+| `fail-closed: guardians_empty` | `guardians` list is empty or not a list |
+| `fail-closed: guardian_unknown` | guardian ID not in routing table |
+| `fail-closed: guardian_import_failed` | package import, `getattr`, or callable check failed |
+| `fail-closed: guardian_call_failed` | callable raised an exception |
+| `fail-closed: guardian_output_invalid` | output is not a dict or lacks key `"tool"` |
 
 ---
 
