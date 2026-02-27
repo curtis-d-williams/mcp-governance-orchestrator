@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-governance-orchestrator"
-version = "0.2.0"
+version = "0.2.1"
 description = "Deterministic MCP server for validating repository policy governance artifacts"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -44,3 +44,6 @@ packages = ["src/mcp_governance_orchestrator"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[project.optional-dependencies]
+release_guardian = ["mcp-release-guardian==0.1.4"]

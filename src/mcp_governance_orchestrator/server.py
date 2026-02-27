@@ -24,7 +24,7 @@ ERR_GUARDIAN_OUTPUT_INVALID = "fail-closed: guardian_output_invalid"
 GUARDIAN_ROUTING_TABLE: Dict[str, tuple] = {
     "mcp-policy-guardian:v1": ("mcp_policy_guardian", "check_repo_policy"),
     # check_repo_release is the anticipated callable; update when package is published.
-    "mcp-release-guardian:v1": ("mcp_release_guardian", "check_repo_release"),
+    "mcp-release-guardian:v1": ("mcp_release_guardian.server", "check_repo_hygiene"),
 }
 
 # Derived from routing table; preserved for fast membership tests.
