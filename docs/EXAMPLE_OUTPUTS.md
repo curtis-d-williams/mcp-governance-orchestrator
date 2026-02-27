@@ -21,6 +21,8 @@ only for historical continuity.
 Capture environment:
 
 -   Installed: mcp-governance-orchestrator==0.2.3
+NOTE: This example requires mcp-release-guardian==0.1.4 installed in the environment. If not installed, the orchestrator will fail-close with details: fail-closed: guardian_import_failed.
+
 -   Installed: mcp-release-guardian==0.1.4
 -   Invocation: Python one-shot via
     `from mcp_governance_orchestrator.server import run_guardians`
