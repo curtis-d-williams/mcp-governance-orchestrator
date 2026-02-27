@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-governance-orchestrator"
-version = "0.2.1"
+version = "0.2.3"
 description = "Deterministic MCP server for validating repository policy governance artifacts"
 readme = "README.md"
 license = { file = "LICENSE" }
