@@ -38,6 +38,7 @@ See docs/SEMANTICS.md for the V1 meaning of orchestrator-level ok/fail_closed (e
 
 ---
 
+
 ## Tier 2 composition: two guardians (multi-guardian orchestration)
 
 **Goal:** Produce deterministic composition evidence by running two guardians under a clean-room venv and capturing canonical JSON output.
@@ -59,26 +60,22 @@ Guardians (order preserved):
 - mcp-release-guardian:v1
 - mcp-dependency-integrity-guardian:v1
 
-### Note on routing (V1)
+### Routing note (V1)
 
 The orchestrator uses a V1 in-process static routing table (GUARDIAN_ROUTING_TABLE) to map guardian_id to an import path + callable.
 
-If a guardian_id is not mapped, the orchestrator deterministically fail-closes that guardian with fail-closed: guardian_unknown (no import attempted).
-
-Therefore, even when the dependency-integrity guardian package is installed, it will not be invoked until it is explicitly mapped in the routing table (a code change; out of scope for this docs-only proof).
+For guardians whose native output does not include the required "tool" key, the orchestrator uses a deterministic adapter callable that adds "tool" and preserves the guardian output verbatim under a nested key.
 
 ### Canonical JSON output (deterministic)
 
 ```json
-{"fail_closed":true,"guardians":[{"details":"","fail_closed":false,"guardian_id":"mcp-release-guardian:v1","invoked":true,"ok":true,"output":{"checks":[{"check_id":"has_package_definition","details":"Found pyproject.toml","ok":true},{"check_id":"has_license","details":"Found LICENSE","ok":true},{"check_id":"has_readme","details":"Found README.md","ok":true},{"check_id":"has_bug_report_template","details":"Not found: .github/ISSUE_TEMPLATE/bug_report.yml","ok":false},{"check_id":"has_ci_workflows","details":"Found .github/workflows/","ok":true},{"check_id":"has_v1_contract","details":"Found docs/V1_CONTRACT.md","ok":true},{"check_id":"has_determinism_notes","details":"Not found: docs/DETERMINISM_NOTES.md","ok":false}],"fail_closed":true,"ok":false,"repo_path":"/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator","tool":"check_repo_hygiene"}},{"details":"fail-closed: guardian_unknown","fail_closed":true,"guardian_id":"mcp-dependency-integrity-guardian:v1","invoked":false,"ok":false,"output":null}],"ok":false,"repo_path":".","tool":"run_guardians"}
+{"fail_closed":false,"guardians":[{"details":"","fail_closed":false,"guardian_id":"mcp-release-guardian:v1","invoked":true,"ok":true,"output":{"checks":[{"check_id":"has_package_definition","details":"Found pyproject.toml","ok":true},{"check_id":"has_license","details":"Found LICENSE","ok":true},{"check_id":"has_readme","details":"Found README.md","ok":true},{"check_id":"has_bug_report_template","details":"Not found: .github/ISSUE_TEMPLATE/bug_report.yml","ok":false},{"check_id":"has_ci_workflows","details":"Found .github/workflows/","ok":true},{"check_id":"has_v1_contract","details":"Found docs/V1_CONTRACT.md","ok":true},{"check_id":"has_determinism_notes","details":"Not found: docs/DETERMINISM_NOTES.md","ok":false}],"fail_closed":true,"ok":false,"repo_path":"/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator","tool":"check_repo_hygiene"}},{"details":"","fail_closed":false,"guardian_id":"mcp-dependency-integrity-guardian:v1","invoked":true,"ok":true,"output":{"output":{"checks":[{"check_id":"python_requirements_present","kind":"file_present","path":"requirements.txt","present":false},{"check_id":"python_poetry_lock_present","kind":"file_present","path":"poetry.lock","present":false},{"check_id":"node_package_json_present","kind":"file_present","path":"package.json","present":false},{"check_id":"node_package_lock_present","kind":"file_present","path":"package-lock.json","present":false},{"check_id":"node_pnpm_lock_present","kind":"file_present","path":"pnpm-lock.yaml","present":false},{"check_id":"node_yarn_lock_present","kind":"file_present","path":"yarn.lock","present":false},{"check_id":"python_requirements_pins","kind":"requirements_pins","note":"requirements.txt not present; pinning check skipped","ok":true,"path":"requirements.txt","present":false,"unpinned":[]}],"fail_closed":false,"guardian":"mcp-dependency-integrity-guardian:v1","ok":false},"repo_path":".","tool":"check_dependency_integrity"}}],"ok":true,"repo_path":".","tool":"run_guardians"}
 ```
 
 ### Determinism check
 
-Two repeated runs produced byte-identical output:
-
-- SHA256(run1)=7c5e6814150cb8c23cd948b4aecfaf33f8ab0bca4b3b3e832dfc6a71dc45f9b8
-- SHA256(run2)=7c5e6814150cb8c23cd948b4aecfaf33f8ab0bca4b3b3e832dfc6a71dc45f9b8
+- SHA256(run1)=778773208a1635e7aa5693e05f12e4f6c1201a5328cfd563349a8cebc60a1bd4
+- SHA256(run2)=778773208a1635e7aa5693e05f12e4f6c1201a5328cfd563349a8cebc60a1bd4
 
 ### Consumer aggregation (V1; no schema changes)
 
@@ -86,4 +83,3 @@ Two repeated runs produced byte-identical output:
 - policy_fail_closed = ANY(guardian.fail_closed == true)
 - execution_ok = orchestrator.ok
 - execution_fail_closed = orchestrator.fail_closed
-
