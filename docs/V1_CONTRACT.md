@@ -133,3 +133,89 @@ Any breaking change requires a new major version (V2) and an explicit contract d
 ## 6. Canonical Examples
 
 Canonical example outputs are defined in `docs/EXAMPLE_OUTPUTS.md` and are part of the V1 contract.
+---
+
+## 7. Orchestrator V1 Freeze Declaration (Post-Tier-2 Composition)
+
+Effective at freeze tag v0.3.0.
+
+This section formally freezes the orchestrator contract following successful Tier 2 composition verification.
+
+### 7.1 Aggregation Semantics (Frozen)
+
+Given guardian result entries `r_i`:
+
+- `ok = all(r_i.ok == true)`
+- `fail_closed = (not ok) or any(r_i.fail_closed == true)`
+
+These aggregation rules are frozen under V1.
+
+No alternative aggregation logic, partial success model, warning state, or soft-failure semantics are permitted under V1.
+
+Any modification requires V2 designation.
+
+### 7.2 Routing Model (Frozen)
+
+V1 uses a static in-process routing table:
+
+- `GUARDIAN_ROUTING_TABLE`
+- Deterministic `importlib` resolution
+- No dynamic discovery
+- No plugin registration
+- No entry point scanning
+- No environment-dependent routing
+
+The routing mechanism is frozen under V1.
+
+Any introduction of dynamic routing, plugin systems, or auto-discovery requires V2.
+
+### 7.3 Determinism Guarantees (Frozen)
+
+Under V1:
+
+- No timestamps
+- No randomness
+- No nondeterministic ordering
+- No environment-derived metadata
+- No mutation of guardian outputs
+- No schema normalization
+
+Guardian outputs are embedded verbatim when valid.
+
+For identical inputs, the orchestrator must produce byte-identical JSON when serialized deterministically by the caller.
+
+Any introduction of nondeterminism requires V2.
+
+### 7.4 Schema Freeze Confirmation
+
+The following are frozen:
+
+- Top-level keys
+- `guardians[]` item keys
+- Field names
+- Field types
+- Ordering behavior
+- Deterministic failure codes
+
+No additional fields may be added under V1.
+
+### 7.5 V2 Migration Rule
+
+Any of the following requires V2:
+
+- Schema expansion
+- Aggregation logic changes
+- Routing model changes
+- New tool surface
+- Behavioral reinterpretation
+- Introduction of heuristics or policy inference
+- Side effects beyond read-only invocation
+
+V2 must:
+
+- Publish a new contract document
+- Provide migration notes
+- Be version-tagged
+
+Until V2 is declared, V1 behavior is immutable.
+
