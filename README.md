@@ -36,3 +36,25 @@ pip install "mcp-governance-orchestrator[release_guardian]==0.2.1"
 
 
 ```
+
+## Create a new MCP repo (factory)
+
+This repository includes a deterministic scaffold script that creates a new MCP repository from the golden template and verifies Tier-1 compliance using the installed orchestrator distribution (treat as 0.2.3 until explicitly upgraded).
+
+Prerequisites:
+- Python 3.11+
+- mcp-governance-orchestrator installed (editable is fine)
+- Guardians installed:
+  - mcp-repo-hygiene-guardian:v1
+  - mcp-release-guardian:v1
+
+Create a new repository:
+
+    ./tools/scaffold_new_mcp.sh mcp-my-domain-guardian
+
+The script will:
+- Copy the golden scaffold (mcp-test-guardian)
+- Initialize git and commit
+- Run Tier-1 guardians deterministically
+- Write canonical JSON to docs/EXAMPLE_OUTPUTS.md
+- Commit the canonical output
