@@ -52,5 +52,8 @@ python3 -m json.tool docs/EXAMPLE_OUTPUTS.md >/dev/null
 git add docs/EXAMPLE_OUTPUTS.md
 git commit -m "docs: canonical EXAMPLE_OUTPUTS" >/dev/null
 
+echo "DONE: created repo at "
+pwd
+
 echo "DONE:"
 git log -2 --oneline
