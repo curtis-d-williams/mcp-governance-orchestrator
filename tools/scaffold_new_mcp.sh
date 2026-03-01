@@ -7,8 +7,15 @@ if [[ -z "$REPO_NAME" ]]; then
   exit 2
 fi
 
-BASE="$HOME/Documents/GitHub_Repos"
-SRC="$BASE/mcp-governance-orchestrator/templates/guardian_skeleton"
+# Portability:
+# - ORCH_ROOT is inferred from this script's location (repo_root/tools/..)
+# - BASE defaults to the parent directory of ORCH_ROOT (i.e., where new repos will be created)
+# - Override BASE by setting MCP_FACTORY_BASE (absolute path recommended)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ORCH_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE="${MCP_FACTORY_BASE:-$(cd "$ORCH_ROOT/.." && pwd)}"
+
+SRC="$ORCH_ROOT/templates/guardian_skeleton"
 DEST="$BASE/$REPO_NAME"
 
 rm -rf "$DEST"
