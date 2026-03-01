@@ -25,6 +25,7 @@ GUARDIAN_ROUTING_TABLE: Dict[str, tuple] = {
     "mcp-policy-guardian:v1": ("mcp_policy_guardian", "check_repo_policy"),
     # check_repo_release is the anticipated callable; update when package is published.
     "mcp-release-guardian:v1": ("mcp_release_guardian.server", "check_repo_hygiene"),
+    "mcp-repo-hygiene-guardian:v1": ("mcp_repo_hygiene_guardian.server", "check_repo_hygiene"),
 }
 
 # Derived from routing table; preserved for fast membership tests.
@@ -148,13 +149,19 @@ def run_guardians(repo_path: str, guardians: List[str]) -> Dict[str, Any]:
             continue
 
         # Invocation and validation succeeded.
-        # ok/fail_closed are orchestrator-owned — not read from raw_output.
+        # Tier 2 semantics require propagating guardian ok/fail_closed (booleans).
+        g_ok = raw_output.get("ok")
+        g_fail_closed = raw_output.get("fail_closed")
+        if not isinstance(g_ok, bool) or not isinstance(g_fail_closed, bool):
+            results.append(_fail_guardian(gid, ERR_GUARDIAN_OUTPUT_INVALID))
+            continue
+
         results.append(
             GuardianResult(
                 guardian_id=gid,
                 invoked=True,
-                ok=True,
-                fail_closed=False,
+                ok=g_ok,
+                fail_closed=g_fail_closed,
                 output=raw_output,  # verbatim, no normalization
                 details="",
             )
