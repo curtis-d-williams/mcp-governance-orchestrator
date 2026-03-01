@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from mcp_governance_orchestrator.server import run_guardians
 
 def test_fail_closed_propagates() -> None:
