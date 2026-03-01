@@ -14,9 +14,15 @@ def generate_suggestions():
     }
     return suggestions
 
-def main():
-    out = generate_suggestions()
-    print(json.dumps(out, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+def main() -> dict:
+    suggestions = generate_suggestions()
+    return {
+        "tool": "intelligence_layer_template",
+        "ok": True,
+        "fail_closed": False,
+        "suggestions": suggestions,
+    }
 
 if __name__ == "__main__":
-    main()
+    out = main()
+    print(json.dumps(out, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
