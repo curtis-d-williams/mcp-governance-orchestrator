@@ -8,6 +8,15 @@ See:
 - `docs/V1_CONTRACT.md`
 - `docs/EXAMPLE_OUTPUTS.md`
 
+## Adding a guardian (V1)
+
+V1 is intentionally static:
+- Add a new guardian by inserting a single entry in the orchestrator routing table (see `src/mcp_governance_orchestrator/server.py`).
+- No dynamic discovery/registry/plugins.
+- Guardian outputs are preserved verbatim; the orchestrator does not normalize or reinterpret them.
+
+After adding a routing entry, install the guardian package locally and run a composed invocation. Canonical composed JSON examples are captured in `docs/EXAMPLE_OUTPUTS.md`.
+
 ## Development
 
 ```bash
