@@ -32,6 +32,10 @@ GUARDIAN_ROUTING_TABLE: Dict[str, tuple] = {
     "policy_guardian_template:v1": ("templates.policy_guardian_template.server", "main"),
 }
 
+# Tier classification (explicit when available; backward compatible inference otherwise).
+# Default tier is 1 unless explicitly marked as tier 3.
+GUARDIAN_TIERS: Dict[str, int] = {gid: 1 for gid in GUARDIAN_ROUTING_TABLE.keys()}
+
 # Derived from routing table; preserved for fast membership tests.
 
 # ---- Optional registry extensions (Tier 3 templates) ----
@@ -53,17 +57,23 @@ try:
                 if not isinstance(_gid, str):
                     continue
 
+                def _infer_tier(mp: str) -> int:
+                    return 3 if isinstance(mp, str) and mp.startswith("templates.") else 1
+
                 # legacy form: guardian_id -> module_path (string)
                 if isinstance(_entry, str):
                     GUARDIAN_ROUTING_TABLE[_gid] = (_entry, "main")
+                    GUARDIAN_TIERS[_gid] = _infer_tier(_entry)
                     continue
 
                 # structured form: guardian_id -> {"module_path": "...", "callable": "...", ...}
                 if isinstance(_entry, dict):
                     _mp = _entry.get("module_path")
                     _callable = _entry.get("callable", "main")
+                    _tier = _entry.get("tier")
                     if isinstance(_mp, str) and isinstance(_callable, str):
                         GUARDIAN_ROUTING_TABLE[_gid] = (_mp, _callable)
+                        GUARDIAN_TIERS[_gid] = _tier if isinstance(_tier, int) else _infer_tier(_mp)
             KNOWN_GUARDIANS = set(GUARDIAN_ROUTING_TABLE.keys())
 except Exception:
     # Registry loading must never break Tier 1/2.
@@ -178,7 +188,7 @@ def run_guardians(repo_path: str, guardians: List[str]) -> Dict[str, Any]:
 
         try:
             module_path, _callable_name = GUARDIAN_ROUTING_TABLE[gid]
-            if isinstance(module_path, str) and module_path.startswith("templates."):
+            if GUARDIAN_TIERS.get(gid, 1) == 3:
                 raw_output = fn()  # type: ignore[misc]
             else:
                 raw_output = fn(repo_path)  # type: ignore[operator]
@@ -197,7 +207,7 @@ def run_guardians(repo_path: str, guardians: List[str]) -> Dict[str, Any]:
         g_fail_closed = raw_output.get("fail_closed")
         # Tier 3 templates are suggestion-only: they must never fail-closed.
         module_path, _callable_name = GUARDIAN_ROUTING_TABLE[gid]
-        if isinstance(module_path, str) and module_path.startswith("templates."):
+        if GUARDIAN_TIERS.get(gid, 1) == 3:
             g_fail_closed = False
         if not isinstance(g_ok, bool) or not isinstance(g_fail_closed, bool):
             results.append(_fail_guardian(gid, ERR_GUARDIAN_OUTPUT_INVALID))
