@@ -1,1 +1,1 @@
-{"description":"Example suggestion-only artifact","metrics":{"example_metric":42},"notes":"Non-enforcing, deterministic","suggestion_id":"intelligence_layer_example"}
+{"fail_closed":false,"guardians":[{"fail_closed":false,"guardian_id":"intelligence_layer_template:v1","invoked":true,"ok":true,"output":{}}],"ok":true,"repo_path":".","tool":"run_guardians"}
