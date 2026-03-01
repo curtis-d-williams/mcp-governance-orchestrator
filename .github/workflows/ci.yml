@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Guardrail: forbid nested git metadata in templates
         run: |
           set -euo pipefail
@@ -34,5 +35,10 @@ jobs:
           pip install -e .
           python -m pip install -U pytest
 
+      - name: Validate registry (deterministic, read-only)
+        run: |
+          python -m mcp_governance_orchestrator.registry validate
+
       - name: Test
-        run: pytest -q
+        run: |
+          pytest -q
