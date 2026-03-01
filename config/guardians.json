@@ -1,3 +1,4 @@
 {
-  "intelligence_layer_template:v1": "templates.intelligence_layer_template.server"
+  "intelligence_layer_template:v1": "templates.intelligence_layer_template.server",
+  "repo_insights:v1": "templates.repo_insights.server"
 }
