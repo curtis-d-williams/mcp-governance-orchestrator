@@ -28,3 +28,15 @@ Note: This repo currently fail-closes `mcp-license-header-guardian:v1` because s
 ```json
 {"fail_closed":true,"guardians":[{"details":"","fail_closed":false,"guardian_id":"mcp-repo-hygiene-guardian:v1","invoked":true,"ok":true,"output":{"details":"ok","fail_closed":false,"ok":true,"output":{"missing_required_files":[],"notes":[],"tracked_build_artifacts":[]},"repo_path":".","tool":"check_repo_hygiene"}},{"details":"","fail_closed":true,"guardian_id":"mcp-license-header-guardian:v1","invoked":true,"ok":false,"output":{"details":"fail-closed: missing_license_header","fail_closed":true,"ok":false,"output":{"files_missing_header":["src/mcp_governance_orchestrator/__init__.py","src/mcp_governance_orchestrator/server.py","tests/test_tier2_propagation.py","tests/test_tools.py"],"notes":["scope: tracked .py files only","rule: first 5 lines contain Copyright OR SPDX-License-Identifier","listing: git ls-files"]},"repo_path":".","tool":"check_license_header"}}],"ok":false,"repo_path":".","tool":"run_guardians"}
 ```
+
+## v0.3.5 — Cross-repo validation (target: mcp-release-guardian)
+
+Composed run against `../mcp-release-guardian` using:
+- mcp-repo-hygiene-guardian:v1
+- mcp-license-header-guardian:v1
+
+Expected: fail-closed due to missing SPDX/Copyright headers.
+
+```json
+{"fail_closed":true,"guardians":[{"details":"","fail_closed":false,"guardian_id":"mcp-repo-hygiene-guardian:v1","invoked":true,"ok":true,"output":{"details":"ok","fail_closed":false,"ok":true,"output":{"missing_required_files":[],"notes":[],"tracked_build_artifacts":[]},"repo_path":"../mcp-release-guardian","tool":"check_repo_hygiene"}},{"details":"","fail_closed":true,"guardian_id":"mcp-license-header-guardian:v1","invoked":true,"ok":false,"output":{"details":"fail-closed: missing_license_header","fail_closed":true,"ok":false,"output":{"files_missing_header":["src/mcp_release_guardian/__init__.py","src/mcp_release_guardian/server.py","tests/__init__.py","tests/conftest.py","tests/test_tools.py"],"notes":["scope: tracked .py files only","rule: first 5 lines contain Copyright OR SPDX-License-Identifier","listing: git ls-files"]},"repo_path":"../mcp-release-guardian","tool":"check_license_header"}}],"ok":false,"repo_path":"../mcp-release-guardian","tool":"run_guardians"}
+```
