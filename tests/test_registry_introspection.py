@@ -30,7 +30,7 @@ def test_registry_introspection_schema_and_backward_compat():
 
     out = inspect_registry(repo_root=Path("."))
 
-    required = {"module_path", "callable", "tier", "description", "entry_format"}
+    required = {"module_path", "callable", "tier", "description", "capabilities", "entry_format"}
 
     for guardian_id, meta in out.items():
         assert set(meta.keys()) == required
@@ -38,6 +38,7 @@ def test_registry_introspection_schema_and_backward_compat():
         assert isinstance(meta["callable"], str)
         assert isinstance(meta["tier"], int)
         assert isinstance(meta["description"], str)
+        assert isinstance(meta["capabilities"], dict)
         assert meta["entry_format"] in ("legacy", "structured")
 
         # Backward compatibility sanity: if raw is legacy string, introspection reports legacy.

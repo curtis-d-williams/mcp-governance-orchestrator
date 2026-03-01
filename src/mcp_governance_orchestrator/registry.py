@@ -43,6 +43,7 @@ def normalize_registry(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         "callable": str,
         "tier": int,
         "description": str,
+        "capabilities": dict,
         "entry_format": "legacy" | "structured"
     }
 
@@ -60,6 +61,7 @@ def normalize_registry(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             callable_name = "main"
             tier = _infer_tier(module_path)
             description = ""
+            capabilities: Dict[str, Any] = {}
             entry_format = "legacy"
         elif isinstance(entry, dict):
             module_path = entry.get("module_path", "")
@@ -72,6 +74,14 @@ def normalize_registry(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                 tier = explicit_tier
             else:
                 tier = _infer_tier(module_path)
+
+            caps = entry.get("capabilities", {})
+            if caps is None:
+                capabilities = {}
+            elif isinstance(caps, dict):
+                capabilities = caps
+            else:
+                raise ValueError(f"Invalid capabilities format for {guardian_id}: must be object")
         else:
             # Defensive: unknown format
             raise ValueError(f"Invalid registry entry format for {guardian_id}")
@@ -81,6 +91,7 @@ def normalize_registry(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "callable": callable_name,
             "tier": tier,
             "description": description,
+            "capabilities": capabilities,
             "entry_format": entry_format,
         }
 
@@ -182,7 +193,7 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
         meta = normalized[gid]
 
         # Required keys + types
-        required = {"module_path", "callable", "tier", "description", "entry_format"}
+        required = {"module_path", "callable", "tier", "description", "capabilities", "entry_format"}
         if set(meta.keys()) != required:
             errors.append(
                 {"guardian_id": gid, "type": "schema", "message": f"Invalid keys: {sorted(meta.keys())}"}
@@ -193,6 +204,7 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
         callable_name = meta["callable"]
         tier = meta["tier"]
         entry_format = meta["entry_format"]
+        capabilities = meta["capabilities"]
 
         if not isinstance(module_path, str) or module_path.strip() == "":
             errors.append({"guardian_id": gid, "type": "module_path", "message": "module_path must be a non-empty string"})
@@ -202,6 +214,8 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
             errors.append({"guardian_id": gid, "type": "tier", "message": f"tier must be one of {sorted(allowed_tiers)}"})
         if entry_format not in ("legacy", "structured"):
             errors.append({"guardian_id": gid, "type": "entry_format", "message": "entry_format must be 'legacy' or 'structured'"})
+        if not isinstance(capabilities, dict):
+            errors.append({"guardian_id": gid, "type": "capabilities", "message": "capabilities must be an object (dict)"})
 
         # Tier consistency vs server map (if present)
         if gid in guardian_tiers and isinstance(tier, int):
@@ -280,12 +294,14 @@ def main() -> None:
 
     if cmd == "inspect":
         data = inspect_registry()
-        print(json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        print(json.dumps(data, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False))
         return
 
     if cmd == "validate":
         report = validate_registry()
-        print(json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        print(json.dumps(report, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False))
         sys.exit(0 if report.get("ok") else 2)
 
 

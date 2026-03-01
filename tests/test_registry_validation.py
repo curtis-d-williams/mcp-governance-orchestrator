@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from mcp_governance_orchestrator.registry import validate_registry
+from mcp_governance_orchestrator.registry import validate_registry, inspect_registry
 
 
 def _canonical_json(obj) -> str:
@@ -17,3 +17,10 @@ def test_registry_validate_is_deterministic_and_ok_on_repo_registry():
     assert out1["errors"] == []
     assert isinstance(out1["warnings"], list)
     assert isinstance(out1["count"], int)
+
+
+def test_registry_inspect_always_has_capabilities_object():
+    out = inspect_registry(repo_root=Path("."))
+    for _, meta in out.items():
+        assert "capabilities" in meta
+        assert isinstance(meta["capabilities"], dict)
