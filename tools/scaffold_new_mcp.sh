@@ -19,7 +19,7 @@ rsync -av --exclude ".git" --exclude "temp-mcp-test" "$SRC/" "$DEST/"
 cd "$DEST"
 git init >/dev/null
 git add .
-git commit -m "initial scaffold from mcp-test-guardian" >/dev/null
+git commit -m "initial scaffold from guardian_skeleton template" >/dev/null
 
 python3 - <<'PY'
 import json
