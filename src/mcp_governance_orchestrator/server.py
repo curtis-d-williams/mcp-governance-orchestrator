@@ -35,8 +35,11 @@ GUARDIAN_ROUTING_TABLE: Dict[str, tuple] = {
 # Derived from routing table; preserved for fast membership tests.
 
 # ---- Optional registry extensions (Tier 3 templates) ----
-# config/guardians.json is a simple map: guardian_id -> module_path
-# For templates.*, callable convention is "main".
+# config/guardians.json supports two forms (backward compatible):
+#   1) legacy: guardian_id -> "some.module.path"
+#   2) structured: guardian_id -> {"module_path": "...", "callable": "...", "tier": 3, "description": "..."}
+# Only module_path + callable are used by the orchestrator at runtime.
+# For templates.*, callable convention remains "main" unless explicitly overridden.
 try:
     import json
     from pathlib import Path
@@ -46,9 +49,21 @@ try:
         with open(_registry_file, "r", encoding="utf-8") as _f:
             _reg = json.load(_f)
         if isinstance(_reg, dict):
-            for _gid, _mp in _reg.items():
-                if isinstance(_gid, str) and isinstance(_mp, str):
-                    GUARDIAN_ROUTING_TABLE[_gid] = (_mp, "main")
+            for _gid, _entry in _reg.items():
+                if not isinstance(_gid, str):
+                    continue
+
+                # legacy form: guardian_id -> module_path (string)
+                if isinstance(_entry, str):
+                    GUARDIAN_ROUTING_TABLE[_gid] = (_entry, "main")
+                    continue
+
+                # structured form: guardian_id -> {"module_path": "...", "callable": "...", ...}
+                if isinstance(_entry, dict):
+                    _mp = _entry.get("module_path")
+                    _callable = _entry.get("callable", "main")
+                    if isinstance(_mp, str) and isinstance(_callable, str):
+                        GUARDIAN_ROUTING_TABLE[_gid] = (_mp, _callable)
             KNOWN_GUARDIANS = set(GUARDIAN_ROUTING_TABLE.keys())
 except Exception:
     # Registry loading must never break Tier 1/2.

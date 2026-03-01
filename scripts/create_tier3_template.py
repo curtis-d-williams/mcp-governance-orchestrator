@@ -31,7 +31,15 @@ def _die(msg: str, code: int = 2) -> None:
     raise SystemExit(f"error: {msg}")
 
 
-def _read_registry(path: Path) -> Dict[str, str]:
+def _read_registry(path: Path) -> Dict[str, Any]:
+    """Read config/guardians.json.
+
+    Backward compatible:
+      - legacy entry: guardian_id -> module_path (string)
+      - structured entry: guardian_id -> {module_path, callable, tier, description}
+
+    We preserve all entries as-is (strings or dicts).
+    """
     if not path.exists():
         return {}
     try:
@@ -39,17 +47,24 @@ def _read_registry(path: Path) -> Dict[str, str]:
     except Exception as e:
         _die(f"failed to parse {path}: {e}")
     if not isinstance(data, dict):
-        _die(f"{path} must be a JSON object mapping guardian_id -> module_path")
-    out: Dict[str, str] = {}
+        _die(f"{path} must be a JSON object mapping guardian_id -> entry")
+    out: Dict[str, Any] = {}
     for k, v in data.items():
-        if isinstance(k, str) and isinstance(v, str):
+        if not isinstance(k, str):
+            _die(f"{path} keys must be strings; found {type(k).__name__}")
+        if isinstance(v, str):
             out[k] = v
+        elif isinstance(v, dict):
+            mp = v.get("module_path")
+            if not isinstance(mp, str) or not mp:
+                _die(f"{path} structured entry for {k!r} must include non-empty string module_path")
+            out[k] = dict(v)
         else:
-            _die(f"{path} must map strings to strings; found {type(k).__name__} -> {type(v).__name__}")
+            _die(f"{path} values must be string or object; found {type(v).__name__} for {k!r}")
     return out
 
 
-def _write_registry(path: Path, reg: Dict[str, str]) -> None:
+def _write_registry(path: Path, reg: Dict[str, Any]) -> None:
     # Deterministic formatting
     text = json.dumps(reg, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     path.write_text(text, encoding="utf-8")
@@ -83,10 +98,20 @@ def main() -> None:
 
     # Load registry and check conflicts
     reg = _read_registry(registry_path)
-    if guardian_id in reg and reg[guardian_id] != module_path:
-        _die(f"guardian-id already exists in registry with different module_path: {reg[guardian_id]}")
-    if guardian_id in reg and not args.force:
-        _die(f"guardian-id already exists in registry: {guardian_id} (use --force to proceed)")
+
+    def _entry_module_path(entry: Any) -> str:
+        if isinstance(entry, str):
+            return entry
+        if isinstance(entry, dict) and isinstance(entry.get("module_path"), str):
+            return entry["module_path"]
+        return ""
+
+    if guardian_id in reg:
+        existing_mp = _entry_module_path(reg[guardian_id])
+        if existing_mp and existing_mp != module_path:
+            _die(f"guardian-id already exists in registry with different module_path: {existing_mp}")
+        if not args.force:
+            _die(f"guardian-id already exists in registry: {guardian_id} (use --force to proceed)")
 
     # Create template directory
     tpl_dir.mkdir(parents=True, exist_ok=True)
@@ -188,7 +213,13 @@ def test_tier3_{template_name}_is_deterministic_and_contract_compliant():
     )
 
     # Update registry deterministically
-    reg[guardian_id] = module_path
+    # Update registry deterministically (structured entry)
+    reg[guardian_id] = {
+        "module_path": module_path,
+        "callable": "main",
+        "tier": 3,
+        "description": description,
+    }
     _write_registry(registry_path, reg)
 
     print("ok")
