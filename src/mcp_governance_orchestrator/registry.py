@@ -152,12 +152,65 @@ def _callable_defined_in_source(source: str, name: str) -> bool:
     return False
 
 
+def _validate_capabilities_schema(capabilities: Dict[str, Any]) -> List[str]:
+    """
+    Minimal capability schema validation (v1).
+
+    Allowed optional keys:
+      - domain: str
+      - checks: list[str]
+      - io: object with optional bool fields: reads_repo, reads_network, writes_repo
+      - outputs: object with optional bool fields: suggestions, findings, metrics
+      - notes: str
+
+    Returns list of error strings (deterministic order).
+    """
+    errs: List[str] = []
+
+    # empty is always ok
+    if not capabilities:
+        return errs
+
+    if "domain" in capabilities and not isinstance(capabilities["domain"], str):
+        errs.append("capabilities.domain must be a string")
+
+    if "checks" in capabilities:
+        checks = capabilities["checks"]
+        if not isinstance(checks, list) or any(not isinstance(x, str) for x in checks):
+            errs.append("capabilities.checks must be a list of strings")
+
+    if "notes" in capabilities and not isinstance(capabilities["notes"], str):
+        errs.append("capabilities.notes must be a string")
+
+    if "io" in capabilities:
+        io = capabilities["io"]
+        if not isinstance(io, dict):
+            errs.append("capabilities.io must be an object")
+        else:
+            for k in ("reads_repo", "reads_network", "writes_repo"):
+                if k in io and not isinstance(io[k], bool):
+                    errs.append(f"capabilities.io.{k} must be a boolean")
+
+    if "outputs" in capabilities:
+        outputs = capabilities["outputs"]
+        if not isinstance(outputs, dict):
+            errs.append("capabilities.outputs must be an object")
+        else:
+            for k in ("suggestions", "findings", "metrics"):
+                if k in outputs and not isinstance(outputs[k], bool):
+                    errs.append(f"capabilities.outputs.{k} must be a boolean")
+
+    # Deterministic: return in a fixed order based on checks above
+    return errs
+
+
 def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
     """
     Deterministic, read-only registry validation.
 
     Goals:
     - schema sanity for normalized output
+    - capability schema sanity (if present)
     - tier consistency against GUARDIAN_TIERS (if available)
     - best-effort callable existence check for in-repo modules (static AST parse, no imports)
 
@@ -176,10 +229,8 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
         from mcp_governance_orchestrator.server import GUARDIAN_TIERS  # type: ignore
 
         if isinstance(GUARDIAN_TIERS, dict):
-            # Only keep int tiers
             guardian_tiers = {k: v for k, v in GUARDIAN_TIERS.items() if isinstance(v, int)}
     except Exception:
-        # Validation still works without this map; we just can't enforce consistency vs server tiers.
         warnings.append(
             {
                 "type": "guardian_tiers_unavailable",
@@ -192,12 +243,9 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
     for gid in sorted(normalized.keys()):
         meta = normalized[gid]
 
-        # Required keys + types
         required = {"module_path", "callable", "tier", "description", "capabilities", "entry_format"}
         if set(meta.keys()) != required:
-            errors.append(
-                {"guardian_id": gid, "type": "schema", "message": f"Invalid keys: {sorted(meta.keys())}"}
-            )
+            errors.append({"guardian_id": gid, "type": "schema", "message": f"Invalid keys: {sorted(meta.keys())}"})
             continue
 
         module_path = meta["module_path"]
@@ -216,66 +264,34 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
             errors.append({"guardian_id": gid, "type": "entry_format", "message": "entry_format must be 'legacy' or 'structured'"})
         if not isinstance(capabilities, dict):
             errors.append({"guardian_id": gid, "type": "capabilities", "message": "capabilities must be an object (dict)"})
+        else:
+            cap_errs = _validate_capabilities_schema(capabilities)
+            for e in cap_errs:
+                errors.append({"guardian_id": gid, "type": "capabilities_schema", "message": e})
 
         # Tier consistency vs server map (if present)
         if gid in guardian_tiers and isinstance(tier, int):
             expected = guardian_tiers[gid]
             if tier != expected:
-                errors.append(
-                    {
-                        "guardian_id": gid,
-                        "type": "tier_mismatch",
-                        "message": f"registry tier {tier} != server GUARDIAN_TIERS {expected}",
-                    }
-                )
+                errors.append({"guardian_id": gid, "type": "tier_mismatch", "message": f"registry tier {tier} != server GUARDIAN_TIERS {expected}"})
 
         # Best-effort callable existence check without importing guardians
         path, source = _safe_read_module_source(root, module_path) if isinstance(module_path, str) else (None, None)
         if source is None:
-            # If we can resolve a path but no source, that is a stronger signal than "not in repo"
             if path is not None:
-                warnings.append(
-                    {
-                        "guardian_id": gid,
-                        "type": "module_source_missing",
-                        "message": f"Could not read module source at {path}",
-                    }
-                )
+                warnings.append({"guardian_id": gid, "type": "module_source_missing", "message": f"Could not read module source at {path}"})
             else:
-                warnings.append(
-                    {
-                        "guardian_id": gid,
-                        "type": "callable_unchecked",
-                        "message": "Module not resolvable to in-repo source; callable existence not checked (no imports performed).",
-                    }
-                )
+                warnings.append({"guardian_id": gid, "type": "callable_unchecked", "message": "Module not resolvable to in-repo source; callable existence not checked (no imports performed)."})
         else:
             if not _callable_defined_in_source(source, callable_name):
-                errors.append(
-                    {
-                        "guardian_id": gid,
-                        "type": "callable_missing",
-                        "message": f"Callable '{callable_name}' not found in {module_path} (static check)",
-                    }
-                )
+                errors.append({"guardian_id": gid, "type": "callable_missing", "message": f"Callable '{callable_name}' not found in {module_path} (static check)"})
 
-        # Backward compatibility sanity: legacy entries should report legacy
+        # Backward compatibility sanity
         if isinstance(raw.get(gid), str) and entry_format != "legacy":
-            errors.append(
-                {
-                    "guardian_id": gid,
-                    "type": "legacy_format",
-                    "message": "Raw registry entry is legacy string but normalized entry_format is not 'legacy'",
-                }
-            )
+            errors.append({"guardian_id": gid, "type": "legacy_format", "message": "Raw registry entry is legacy string but normalized entry_format is not 'legacy'"})
 
     ok = len(errors) == 0
-    return {
-        "ok": ok,
-        "errors": errors,      # already deterministic order (we iterate sorted gids)
-        "warnings": warnings,  # deterministic append order
-        "count": len(normalized),
-    }
+    return {"ok": ok, "errors": errors, "warnings": warnings, "count": len(normalized)}
 
 
 def main() -> None:
@@ -294,14 +310,12 @@ def main() -> None:
 
     if cmd == "inspect":
         data = inspect_registry()
-        print(json.dumps(data, sort_keys=True, separators=(",", ":"),
-                         ensure_ascii=False))
+        print(json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
         return
 
     if cmd == "validate":
         report = validate_registry()
-        print(json.dumps(report, sort_keys=True, separators=(",", ":"),
-                         ensure_ascii=False))
+        print(json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
         sys.exit(0 if report.get("ok") else 2)
 
 
