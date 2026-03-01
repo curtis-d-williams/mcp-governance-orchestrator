@@ -27,6 +27,7 @@ GUARDIAN_ROUTING_TABLE: Dict[str, tuple] = {
     # check_repo_release is the anticipated callable; update when package is published.
     "mcp-release-guardian:v1": ("mcp_release_guardian.server", "check_repo_hygiene"),
     "mcp-repo-hygiene-guardian:v1": ("mcp_repo_hygiene_guardian.server", "check_repo_hygiene"),
+    "mcp-dependency-integrity-guardian:v1": ("mcp_dependency_integrity_guardian.server", "check_dependency_integrity"),
     "mcp-license-header-guardian:v1": ("mcp_license_header_guardian.server", "check_license_header"),
 }
 
