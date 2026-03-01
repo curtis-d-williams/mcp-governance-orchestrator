@@ -8,6 +8,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Guardrail: forbid nested git metadata in templates
+        run: |
+          set -euo pipefail
+          if [ -d templates ]; then
+            if find templates -name .git -type d -print -quit | grep -q .; then
+              echo "ERROR: nested .git directory found under templates/"
+              find templates -name .git -type d -print
+              exit 1
+            fi
+            if find templates -name .gitmodules -type f -print -quit | grep -q .; then
+              echo "ERROR: .gitmodules found under templates/"
+              find templates -name .gitmodules -type f -print
+              exit 1
+            fi
+          fi
 
       - uses: actions/setup-python@v5
         with:
