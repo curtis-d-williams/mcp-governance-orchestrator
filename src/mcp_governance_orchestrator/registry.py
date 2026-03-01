@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Iterable
 
 
 REGISTRY_PATH = Path("config/guardians.json")
@@ -83,7 +83,6 @@ def normalize_registry(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             else:
                 raise ValueError(f"Invalid capabilities format for {guardian_id}: must be object")
         else:
-            # Defensive: unknown format
             raise ValueError(f"Invalid registry entry format for {guardian_id}")
 
         normalized[guardian_id] = {
@@ -105,8 +104,6 @@ def inspect_registry(repo_root: Path | None = None) -> Dict[str, Dict[str, Any]]
     """
     raw = load_registry(repo_root=repo_root)
     normalized = normalize_registry(raw)
-
-    # Deterministic sort by guardian_id
     sorted_ids = sorted(normalized.keys())
     return {gid: normalized[gid] for gid in sorted_ids}
 
@@ -155,19 +152,10 @@ def _callable_defined_in_source(source: str, name: str) -> bool:
 def _validate_capabilities_schema(capabilities: Dict[str, Any]) -> List[str]:
     """
     Minimal capability schema validation (v1).
-
-    Allowed optional keys:
-      - domain: str
-      - checks: list[str]
-      - io: object with optional bool fields: reads_repo, reads_network, writes_repo
-      - outputs: object with optional bool fields: suggestions, findings, metrics
-      - notes: str
-
     Returns list of error strings (deterministic order).
     """
     errs: List[str] = []
 
-    # empty is always ok
     if not capabilities:
         return errs
 
@@ -200,20 +188,12 @@ def _validate_capabilities_schema(capabilities: Dict[str, Any]) -> List[str]:
                 if k in outputs and not isinstance(outputs[k], bool):
                     errs.append(f"capabilities.outputs.{k} must be a boolean")
 
-    # Deterministic: return in a fixed order based on checks above
     return errs
 
 
 def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
     """
     Deterministic, read-only registry validation.
-
-    Goals:
-    - schema sanity for normalized output
-    - capability schema sanity (if present)
-    - tier consistency against GUARDIAN_TIERS (if available)
-    - best-effort callable existence check for in-repo modules (static AST parse, no imports)
-
     Never executes guardians.
     """
     root = repo_root or Path(".")
@@ -223,7 +203,6 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
     errors: List[Dict[str, Any]] = []
     warnings: List[Dict[str, Any]] = []
 
-    # Try to read GUARDIAN_TIERS from orchestrator server module (safe import; does not execute guardians).
     guardian_tiers: Dict[str, int] = {}
     try:
         from mcp_governance_orchestrator.server import GUARDIAN_TIERS  # type: ignore
@@ -265,17 +244,14 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
         if not isinstance(capabilities, dict):
             errors.append({"guardian_id": gid, "type": "capabilities", "message": "capabilities must be an object (dict)"})
         else:
-            cap_errs = _validate_capabilities_schema(capabilities)
-            for e in cap_errs:
+            for e in _validate_capabilities_schema(capabilities):
                 errors.append({"guardian_id": gid, "type": "capabilities_schema", "message": e})
 
-        # Tier consistency vs server map (if present)
         if gid in guardian_tiers and isinstance(tier, int):
             expected = guardian_tiers[gid]
             if tier != expected:
                 errors.append({"guardian_id": gid, "type": "tier_mismatch", "message": f"registry tier {tier} != server GUARDIAN_TIERS {expected}"})
 
-        # Best-effort callable existence check without importing guardians
         path, source = _safe_read_module_source(root, module_path) if isinstance(module_path, str) else (None, None)
         if source is None:
             if path is not None:
@@ -286,7 +262,6 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
             if not _callable_defined_in_source(source, callable_name):
                 errors.append({"guardian_id": gid, "type": "callable_missing", "message": f"Callable '{callable_name}' not found in {module_path} (static check)"})
 
-        # Backward compatibility sanity
         if isinstance(raw.get(gid), str) and entry_format != "legacy":
             errors.append({"guardian_id": gid, "type": "legacy_format", "message": "Raw registry entry is legacy string but normalized entry_format is not 'legacy'"})
 
@@ -294,16 +269,183 @@ def validate_registry(repo_root: Path | None = None) -> Dict[str, Any]:
     return {"ok": ok, "errors": errors, "warnings": warnings, "count": len(normalized)}
 
 
+def _parse_scalar(value: str) -> Any:
+    """
+    Deterministic scalar parser for CLI filters.
+    """
+    v = value.strip()
+    if v.lower() == "true":
+        return True
+    if v.lower() == "false":
+        return False
+    if v.isdigit():
+        try:
+            return int(v)
+        except Exception:
+            return v
+    return v
+
+
+def _get_by_path(obj: Dict[str, Any], path: str) -> Any:
+    """
+    Get nested value by dot path, e.g. 'capabilities.io.reads_repo'
+    Returns sentinel _MISSING if not present.
+    """
+    _MISSING = object()
+    cur: Any = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return _MISSING
+        cur = cur[part]
+    return cur
+
+
+def _match_where(guardian_id: str, meta: Dict[str, Any], key: str, expected: Any) -> bool:
+    """
+    Deterministic filter matching. Supports:
+      - guardian_id exact match
+      - meta top-level exact match (tier, entry_format, module_path, callable, description)
+      - dot-path into capabilities (e.g. capabilities.domain)
+      - membership test for capabilities.checks (expected must be str)
+    """
+    if key == "guardian_id":
+        return guardian_id == expected
+
+    if key == "capabilities.checks":
+        checks = meta.get("capabilities", {}).get("checks", [])
+        return isinstance(expected, str) and isinstance(checks, list) and expected in checks
+
+    if "." in key:
+        val = _get_by_path(meta, key)
+        return val is not object() and val == expected  # handled below (we never compare to sentinel)
+    # top-level
+    return meta.get(key) == expected
+
+
+def list_from_inspected(
+    inspected: Dict[str, Dict[str, Any]],
+    where: Iterable[str] | None = None,
+    fields: List[str] | None = None,
+) -> List[Dict[str, Any]]:
+    """
+    Deterministic listing from a pre-inspected registry dict.
+    Extracted to enable unit tests without touching on-disk registry.
+
+    Returns a LIST of records, each includes 'guardian_id' plus selected fields.
+    Sorted by guardian_id ascending.
+    """
+    clauses: List[Tuple[str, Any]] = []
+    for clause in (where or []):
+        if "=" not in clause:
+            raise ValueError(f"Invalid --where clause (expected KEY=VALUE): {clause}")
+        k, v = clause.split("=", 1)
+        k = k.strip()
+        v_parsed = _parse_scalar(v)
+        clauses.append((k, v_parsed))
+
+    default_fields = ["module_path", "callable", "tier", "description", "capabilities", "entry_format"]
+    use_fields = fields or default_fields
+    for f in use_fields:
+        if f == "guardian_id":
+            continue
+        if f not in default_fields:
+            raise ValueError(f"Unknown field: {f}")
+
+    out: List[Dict[str, Any]] = []
+    for gid in sorted(inspected.keys()):
+        meta = inspected[gid]
+
+        ok = True
+        for k, expected in clauses:
+            if k == "guardian_id":
+                if gid != expected:
+                    ok = False
+                    break
+                continue
+
+            if k == "capabilities.checks":
+                checks = meta.get("capabilities", {}).get("checks", [])
+                if not (isinstance(expected, str) and isinstance(checks, list) and expected in checks):
+                    ok = False
+                    break
+                continue
+
+            if "." in k:
+                sentinel = object()
+                val = _get_by_path(meta, k)
+                if val is sentinel or val != expected:
+                    ok = False
+                    break
+                continue
+
+            if meta.get(k) != expected:
+                ok = False
+                break
+
+        if not ok:
+            continue
+
+        rec: Dict[str, Any] = {"guardian_id": gid}
+        for f in use_fields:
+            if f == "guardian_id":
+                continue
+            rec[f] = meta[f]
+        out.append(rec)
+
+    return out
+
+
+def list_registry(
+    repo_root: Path | None = None,
+    where: Iterable[str] | None = None,
+    fields: List[str] | None = None,
+) -> List[Dict[str, Any]]:
+    """
+    Deterministic registry listing with optional filters and field projection.
+
+    Returns a LIST of records, each record includes 'guardian_id' and selected fields.
+    Sorted by guardian_id ascending.
+    """
+    data = inspect_registry(repo_root=repo_root)
+    return list_from_inspected(data, where=where, fields=fields)
+
+
+def _render_table(rows: List[Dict[str, Any]], fields: List[str]) -> str:
+    """
+    Minimal deterministic table renderer (no external deps).
+    """
+    cols = ["guardian_id"] + [f for f in fields if f != "guardian_id"]
+    # stringify values deterministically
+    def s(v: Any) -> str:
+        if isinstance(v, (dict, list)):
+            return json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return str(v)
+
+    grid: List[List[str]] = [[c for c in cols]]
+    for r in rows:
+        grid.append([s(r.get(c, "")) for c in cols])
+
+    widths = [max(len(row[i]) for row in grid) for i in range(len(cols))]
+    lines: List[str] = []
+    for idx, row in enumerate(grid):
+        line = "  ".join(row[i].ljust(widths[i]) for i in range(len(cols)))
+        lines.append(line)
+        if idx == 0:
+            lines.append("  ".join("-" * widths[i] for i in range(len(cols))))
+    return "\n".join(lines)
+
+
 def main() -> None:
     """
     CLI entrypoint:
         python -m mcp_governance_orchestrator.registry inspect
         python -m mcp_governance_orchestrator.registry validate
+        python -m mcp_governance_orchestrator.registry list [--where KEY=VALUE ...] [--fields f1,f2,...] [--format json|table]
     """
     import sys
 
-    if len(sys.argv) < 2 or sys.argv[1] not in ("inspect", "validate"):
-        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate")
+    if len(sys.argv) < 2 or sys.argv[1] not in ("inspect", "validate", "list"):
+        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -317,6 +459,52 @@ def main() -> None:
         report = validate_registry()
         print(json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
         sys.exit(0 if report.get("ok") else 2)
+
+    # list
+    where: List[str] = []
+    fmt = "json"
+    fields: List[str] | None = None
+
+    args = sys.argv[2:]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--where":
+            if i + 1 >= len(args):
+                raise SystemExit("ERROR: --where requires KEY=VALUE")
+            where.append(args[i + 1])
+            i += 2
+            continue
+        if a == "--format":
+            if i + 1 >= len(args):
+                raise SystemExit("ERROR: --format requires json|table")
+            fmt = args[i + 1]
+            i += 2
+            continue
+        if a == "--fields":
+            if i + 1 >= len(args):
+                raise SystemExit("ERROR: --fields requires comma-separated names")
+            raw_fields = [x.strip() for x in args[i + 1].split(",") if x.strip()]
+            fields = raw_fields or None
+            i += 2
+            continue
+        raise SystemExit(f"ERROR: unknown arg {a}")
+
+    try:
+        rows = list_registry(where=where, fields=fields)
+    except ValueError as e:
+        raise SystemExit(f"ERROR: {e}")
+
+    use_fields = fields or ["module_path", "callable", "tier", "description", "capabilities", "entry_format"]
+
+    if fmt == "table":
+        print(_render_table(rows, use_fields))
+        return
+    if fmt == "json":
+        print(json.dumps(rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        return
+
+    raise SystemExit("ERROR: --format must be json or table")
 
 
 if __name__ == "__main__":
