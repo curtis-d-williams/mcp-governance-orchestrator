@@ -29,6 +29,7 @@ GUARDIAN_ROUTING_TABLE: Dict[str, tuple] = {
     "mcp-repo-hygiene-guardian:v1": ("mcp_repo_hygiene_guardian.server", "check_repo_hygiene"),
     "mcp-dependency-integrity-guardian:v1": ("mcp_dependency_integrity_guardian.server", "check_dependency_integrity"),
     "mcp-license-header-guardian:v1": ("mcp_license_header_guardian.server", "check_license_header"),
+    "policy_guardian_template:v1": ("templates.policy_guardian_template.server", "main"),
 }
 
 # Derived from routing table; preserved for fast membership tests.
