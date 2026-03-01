@@ -1,0 +1,1 @@
+{"fail_closed":false,"guardians":[{"details":"","fail_closed":false,"guardian_id":"mcp-repo-hygiene-guardian:v1","invoked":true,"ok":true,"output":{"details":"ok","fail_closed":false,"ok":true,"output":{"missing_required_files":[],"notes":[],"tracked_build_artifacts":[]},"repo_path":".","tool":"check_repo_hygiene"}}],"ok":true,"repo_path":".","tool":"run_guardians"}

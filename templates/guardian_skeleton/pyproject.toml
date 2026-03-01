@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-test-guardian"
+version = "0.1.0"
+description = "Test guardian scaffold using mcp-governance-orchestrator"
+requires-python = ">=3.11"
+
+authors = [
+  { name = "Curtis D. Williams" }
+]
+
+dependencies = [
+  "fastmcp>=2.0.0",
+]
+
+[project.scripts]
+mcp-test-guardian = "mcp_governance_orchestrator.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_governance_orchestrator"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -8,7 +8,7 @@ if [[ -z "$REPO_NAME" ]]; then
 fi
 
 BASE="$HOME/Documents/GitHub_Repos"
-SRC="$BASE/mcp-governance-orchestrator/mcp-test-guardian"
+SRC="$BASE/mcp-governance-orchestrator/templates/guardian_skeleton"
 DEST="$BASE/$REPO_NAME"
 
 rm -rf "$DEST"
