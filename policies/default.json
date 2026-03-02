@@ -1,0 +1,8 @@
+{
+  "policy_version": 1,
+  "constraints": {
+    "disallow_tier3_only": true,
+    "min_selected": 1,
+    "require_tiers": [1, 2]
+  }
+}
