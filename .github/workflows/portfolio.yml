@@ -1,0 +1,44 @@
+name: portfolio (nightly, non-blocking)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * *" # 03:23 UTC daily
+
+jobs:
+  portfolio_self:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package + deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Write repos.json (self only)
+        run: |
+          cat > portfolio_repos_ci.json <<'JSON'
+          {
+            "repos": [
+              {
+                "id": "mcp-governance-orchestrator",
+                "path": "."
+              }
+            ]
+          }
+          JSON
+          cat portfolio_repos_ci.json
+
+      - name: Run portfolio (self)
+        run: |
+          python -m mcp_governance_orchestrator.portfolio run \
+            --policy policies/default.json \
+            --repos portfolio_repos_ci.json
