@@ -440,12 +440,15 @@ def main() -> None:
     CLI entrypoint:
         python -m mcp_governance_orchestrator.registry inspect
         python -m mcp_governance_orchestrator.registry validate
-        python -m mcp_governance_orchestrator.registry list [--where KEY=VALUE ...] [--fields f1,f2,...] [--format json|table]
+        python -m mcp_governance_orchestrator.registry list ...
+        python -m mcp_governance_orchestrator.registry enforce-policy policy.json
     """
     import sys
+    import json
+    from mcp_governance_orchestrator.policy import evaluate_policy
 
-    if len(sys.argv) < 2 or sys.argv[1] not in ("inspect", "validate", "list"):
-        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list")
+    if len(sys.argv) < 2:
+        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -460,51 +463,85 @@ def main() -> None:
         print(json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
         sys.exit(0 if report.get("ok") else 2)
 
-    # list
-    where: List[str] = []
-    fmt = "json"
-    fields: List[str] | None = None
+    if cmd == "enforce-policy":
+        if len(sys.argv) < 3:
+            print("Usage: python -m mcp_governance_orchestrator.registry enforce-policy policy.json")
+            sys.exit(1)
 
-    args = sys.argv[2:]
-    i = 0
-    while i < len(args):
-        a = args[i]
-        if a == "--where":
-            if i + 1 >= len(args):
-                raise SystemExit("ERROR: --where requires KEY=VALUE")
-            where.append(args[i + 1])
-            i += 2
-            continue
-        if a == "--format":
-            if i + 1 >= len(args):
-                raise SystemExit("ERROR: --format requires json|table")
-            fmt = args[i + 1]
-            i += 2
-            continue
-        if a == "--fields":
-            if i + 1 >= len(args):
-                raise SystemExit("ERROR: --fields requires comma-separated names")
-            raw_fields = [x.strip() for x in args[i + 1].split(",") if x.strip()]
-            fields = raw_fields or None
-            i += 2
-            continue
-        raise SystemExit(f"ERROR: unknown arg {a}")
+        policy_path = sys.argv[2]
 
-    try:
-        rows = list_registry(where=where, fields=fields)
-    except ValueError as e:
-        raise SystemExit(f"ERROR: {e}")
+        try:
+            with open(policy_path, "r", encoding="utf-8") as f:
+                policy = json.load(f)
+        except Exception as e:
+            print(json.dumps({
+                "ok": False,
+                "fail_closed": True,
+                "error": f"policy_load_error: {str(e)}"
+            }, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+            sys.exit(3)
 
-    use_fields = fields or ["module_path", "callable", "tier", "description", "capabilities", "entry_format"]
+        inspected = inspect_registry()
+        guardians = []
+        for gid, meta in inspected.items():
+            g = {"guardian_id": gid}
+            g.update(meta)
+            guardians.append(g)
 
-    if fmt == "table":
-        print(_render_table(rows, use_fields))
-        return
-    if fmt == "json":
-        print(json.dumps(rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
-        return
+        result = evaluate_policy(policy, guardians)
+        result["policy_path"] = policy_path
 
-    raise SystemExit("ERROR: --format must be json or table")
+        print(json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        sys.exit(0 if result.get("ok") else 2)
+
+    if cmd == "list":
+        where: List[str] = []
+        fmt = "json"
+        fields: List[str] | None = None
+
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a == "--where":
+                if i + 1 >= len(args):
+                    raise SystemExit("ERROR: --where requires KEY=VALUE")
+                where.append(args[i + 1])
+                i += 2
+                continue
+            if a == "--format":
+                if i + 1 >= len(args):
+                    raise SystemExit("ERROR: --format requires json|table")
+                fmt = args[i + 1]
+                i += 2
+                continue
+            if a == "--fields":
+                if i + 1 >= len(args):
+                    raise SystemExit("ERROR: --fields requires comma-separated names")
+                raw_fields = [x.strip() for x in args[i + 1].split(",") if x.strip()]
+                fields = raw_fields or None
+                i += 2
+                continue
+            raise SystemExit(f"ERROR: unknown arg {a}")
+
+        try:
+            rows = list_registry(where=where, fields=fields)
+        except ValueError as e:
+            raise SystemExit(f"ERROR: {e}")
+
+        use_fields = fields or ["module_path", "callable", "tier", "description", "capabilities", "entry_format"]
+
+        if fmt == "table":
+            print(_render_table(rows, use_fields))
+            return
+        if fmt == "json":
+            print(json.dumps(rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+            return
+
+        raise SystemExit("ERROR: --format must be json or table")
+
+    print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy")
+    sys.exit(1)
 
 
 if __name__ == "__main__":
