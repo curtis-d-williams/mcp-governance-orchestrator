@@ -6,6 +6,7 @@ from pathlib import Path
 
 def test_enforce_policy_cli_success(tmp_path: Path):
     policy = {
+        "policy_version": 1,
         "require": [],
         "forbid": [],
         "constraints": {}
@@ -42,6 +43,7 @@ def test_enforce_policy_cli_success(tmp_path: Path):
 
 def test_enforce_policy_cli_failure(tmp_path: Path):
     policy = {
+        "policy_version": 1,
         "constraints": {"min_selected": 999999}
     }
 

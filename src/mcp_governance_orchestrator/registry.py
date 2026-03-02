@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+from mcp_governance_orchestrator.policy_schema_v1 import validate_policy_schema_v1, policy_schema_error_report
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Iterable
 
@@ -473,6 +474,10 @@ def main() -> None:
         try:
             with open(policy_path, "r", encoding="utf-8") as f:
                 policy = json.load(f)
+                schema_errors = validate_policy_schema_v1(policy)
+                if schema_errors:
+                    print(json.dumps(policy_schema_error_report(schema_errors), sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+                    sys.exit(3)
         except Exception as e:
             print(json.dumps({
                 "ok": False,
