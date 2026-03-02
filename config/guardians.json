@@ -1,4 +1,26 @@
 {
-  "intelligence_layer_template:v1": "templates.intelligence_layer_template.server",
-  "repo_insights:v1": "templates.repo_insights.server"
+  "intelligence_layer_template:v1": {
+    "callable": "main",
+    "description": "Tier 3 suggestion-only template",
+    "module_path": "templates.intelligence_layer_template.server",
+    "tier": 3
+  },
+  "repo_insights:v1": {
+    "callable": "main",
+    "description": "Tier 3 suggestion-only template",
+    "module_path": "templates.repo_insights.server",
+    "tier": 3
+  },
+  "tier1_smoke:v1": {
+    "callable": "main",
+    "description": "Tier 1 deterministic smoke guardian (CI-safe)",
+    "module_path": "mcp_governance_orchestrator.smoke_guardians.tier1_smoke",
+    "tier": 1
+  },
+  "tier2_smoke:v1": {
+    "callable": "main",
+    "description": "Tier 2 deterministic smoke guardian (CI-safe)",
+    "module_path": "mcp_governance_orchestrator.smoke_guardians.tier2_smoke",
+    "tier": 2
+  }
 }

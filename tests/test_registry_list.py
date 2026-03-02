@@ -15,10 +15,10 @@ def test_registry_list_is_deterministic_on_repo_registry():
 
 
 def test_registry_list_filters_entry_format_and_tier_on_repo_registry():
-    out = list_registry(repo_root=Path("."), where=["entry_format=legacy", "tier=3"])
+    out = list_registry(repo_root=Path("."), where=["entry_format=structured", "tier=3"])
     assert len(out) >= 1
     for row in out:
-        assert row["entry_format"] == "legacy"
+        assert row["entry_format"] == "structured"
         assert row["tier"] == 3
 
 

@@ -39,6 +39,10 @@ jobs:
         run: |
           python -m mcp_governance_orchestrator.registry validate
 
+      - name: Enforce default policy (CI gate)
+        run: |
+          python -m mcp_governance_orchestrator.registry run-policy-default .
+
       - name: Test
         run: |
           pytest -q
