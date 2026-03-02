@@ -36,8 +36,11 @@ def test_enforce_policy_cli_success(tmp_path: Path):
     assert data["policy_path"] == str(policy_path)
 
     # Canonical top-level keys must exist
-    for key in ("ok", "fail_closed", "summary", "require", "forbid", "constraints", "policy_path"):
+    for key in ("ok", "fail_closed", "selection", "summary", "require", "forbid", "constraints", "policy_path"):
         assert key in data
+
+    assert "selected_guardians" in data["selection"]
+    assert isinstance(data["selection"]["selected_guardians"], list)
 
 
 def test_enforce_policy_cli_failure(tmp_path: Path):

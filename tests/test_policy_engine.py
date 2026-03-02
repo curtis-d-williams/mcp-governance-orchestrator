@@ -22,6 +22,40 @@ def _guardians():
     ]
 
 
+def test_backward_compatible_no_select_means_all_guardians_selected():
+    policy = {
+        "require": [{"tier": 2}],
+    }
+    result = evaluate_policy(policy, _guardians())
+    assert result["ok"] is True
+    assert result["selection"]["selected_guardians"] == ["g1:v1", "g2:v1"]
+    assert result["summary"]["selected_total"] == 2
+
+
+def test_select_scopes_require():
+    policy = {
+        "select": [{"tier": 3}],
+        "require": [{"capabilities.outputs.findings": True}],
+    }
+    # findings=True exists only on g1, but selection restricts to g2 -> require should fail
+    result = evaluate_policy(policy, _guardians())
+    assert result["ok"] is False
+    assert result["selection"]["selected_guardians"] == ["g2:v1"]
+    assert result["summary"]["selected_total"] == 1
+    assert result["summary"]["require_passed"] == 0
+
+
+def test_select_scopes_forbid():
+    policy = {
+        "select": [{"tier": 3}],
+        "forbid": [{"tier": 2}],
+    }
+    # forbid tier=2 should pass because selected set is only tier=3
+    result = evaluate_policy(policy, _guardians())
+    assert result["ok"] is True
+    assert result["summary"]["forbid_passed"] == 1
+
+
 def test_require_success():
     policy = {
         "require": [
@@ -77,18 +111,13 @@ def test_disallow_tier3_only_pass():
     assert result["ok"] is True
 
 
-def test_disallow_tier3_only_fail():
-    guardians = [
-        {
-            "guardian_id": "g3:v1",
-            "tier": 3,
-            "capabilities": {},
-        }
-    ]
+def test_disallow_tier3_only_fail_with_select():
     policy = {
+        "select": [{"tier": 3}],
         "constraints": {
             "disallow_tier3_only": True
         }
     }
-    result = evaluate_policy(policy, guardians)
+    result = evaluate_policy(policy, _guardians())
     assert result["ok"] is False
+    assert result["constraints"][0]["details"] == "all_selected_guardians_are_tier3"
