@@ -71,10 +71,8 @@ def evaluate_policy(
     Pure deterministic policy evaluation.
     No imports, no execution, metadata-only.
 
-    v0.6+ adds:
-      - policy["select"]: list[Clause]
-        Selection happens first; require/forbid/constraints apply to selected set.
-        Backward compatible: missing/empty select => all guardians selected.
+    Selection happens first; require/forbid/constraints apply to selected set.
+    Backward compatible: missing/empty select => all guardians selected.
     """
     select = policy.get("select", []) or []
     require = policy.get("require", []) or []
@@ -135,7 +133,12 @@ def evaluate_policy(
     constraints_passed = 0
     total_constraints = 0
 
-    # disallow_tier3_only
+    # Deterministic constraint evaluation order:
+    # 1) disallow_tier3_only
+    # 2) min_selected
+    # 3) max_selected
+    # 4) require_tiers
+
     if constraints.get("disallow_tier3_only") is True:
         total_constraints += 1
         tiers = [g.get("tier") for g in selected_guardians]
@@ -152,6 +155,57 @@ def evaluate_policy(
                 "details": "ok" if ok else "all_selected_guardians_are_tier3",
             }
         )
+
+    if isinstance(constraints.get("min_selected"), int):
+        total_constraints += 1
+        min_sel = constraints["min_selected"]
+        n = len(selected_guardians)
+        ok = n >= min_sel
+        if ok:
+            constraints_passed += 1
+        constraint_results.append(
+            {
+                "name": "min_selected",
+                "enabled": True,
+                "ok": ok,
+                "details": "ok" if ok else f"selected_total {n} < min_selected {min_sel}",
+            }
+        )
+
+    if isinstance(constraints.get("max_selected"), int):
+        total_constraints += 1
+        max_sel = constraints["max_selected"]
+        n = len(selected_guardians)
+        ok = n <= max_sel
+        if ok:
+            constraints_passed += 1
+        constraint_results.append(
+            {
+                "name": "max_selected",
+                "enabled": True,
+                "ok": ok,
+                "details": "ok" if ok else f"selected_total {n} > max_selected {max_sel}",
+            }
+        )
+
+    if isinstance(constraints.get("require_tiers"), list):
+        tiers_req = constraints["require_tiers"]
+        if all(isinstance(t, int) for t in tiers_req):
+            total_constraints += 1
+            present = sorted({g.get("tier") for g in selected_guardians if isinstance(g.get("tier"), int)})
+            missing = sorted([t for t in tiers_req if t not in present])
+            ok = len(missing) == 0
+            if ok:
+                constraints_passed += 1
+            constraint_results.append(
+                {
+                    "name": "require_tiers",
+                    "enabled": True,
+                    "ok": ok,
+                    "details": "ok" if ok else f"missing_tiers {missing}",
+                    "present_tiers": present,
+                }
+            )
 
     # ---- SUMMARY ----
     summary = {
