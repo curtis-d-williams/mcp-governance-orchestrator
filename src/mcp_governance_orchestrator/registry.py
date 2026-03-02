@@ -449,7 +449,7 @@ def main() -> None:
     from mcp_governance_orchestrator.policy import evaluate_policy
 
     if len(sys.argv) < 2:
-        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy")
+        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy|run-policy")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -505,6 +505,72 @@ def main() -> None:
         print(json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
         sys.exit(0 if result.get("ok") else 2)
 
+    if cmd == "run-policy":
+        if len(sys.argv) < 4:
+            print("Usage: python -m mcp_governance_orchestrator.registry run-policy policy.json repo_path")
+            sys.exit(1)
+
+        policy_path = sys.argv[2]
+        repo_path = sys.argv[3]
+
+        try:
+            with open(policy_path, "r", encoding="utf-8") as f:
+                policy = json.load(f)
+                schema_errors = validate_policy_schema_v1(policy)
+                if schema_errors:
+                    print(json.dumps(policy_schema_error_report(schema_errors), sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+                    sys.exit(3)
+        except Exception:
+            error_obj = {
+                "path": "$",
+                "code": "load_error",
+                "message": "invalid or unreadable policy file"
+            }
+            print(json.dumps({
+                "ok": False,
+                "fail_closed": True,
+                "error_type": "policy_load",
+                "errors": [error_obj]
+            }, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+            sys.exit(3)
+
+        inspected = inspect_registry()
+        guardians = []
+        for gid, meta in inspected.items():
+            g = {"guardian_id": gid}
+            g.update(meta)
+            guardians.append(g)
+
+        plan = evaluate_policy(policy, guardians)
+        plan["policy_path"] = policy_path
+
+        # If policy does not pass, do not execute.
+        if not plan.get("ok"):
+            print(json.dumps(plan, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+            sys.exit(2)
+
+        selected = plan.get("selection", {}).get("selected_guardians", [])
+        if not isinstance(selected, list):
+            selected = []
+
+        from mcp_governance_orchestrator.server import run_guardians as _run_guardians  # execution layer (frozen)
+
+        exec_result = _run_guardians(repo_path=repo_path, guardians=selected)
+
+        combined = {
+            "ok": bool(exec_result.get("ok")) and bool(plan.get("ok")),
+            "fail_closed": bool(exec_result.get("fail_closed")),
+            "policy": plan,
+            "execution": exec_result,
+            "selected_guardians": selected,
+            "policy_path": policy_path,
+            "repo_path": repo_path,
+        }
+
+        print(json.dumps(combined, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        sys.exit(0 if combined.get("ok") else 2)
+
+
     if cmd == "list":
         where: List[str] = []
         fmt = "json"
@@ -551,7 +617,7 @@ def main() -> None:
 
         raise SystemExit("ERROR: --format must be json or table")
 
-    print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy")
+    print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy|run-policy")
     sys.exit(1)
 
 
