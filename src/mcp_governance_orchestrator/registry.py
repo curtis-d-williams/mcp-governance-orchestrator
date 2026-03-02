@@ -9,6 +9,33 @@ from typing import Dict, Any, List, Tuple, Iterable
 
 REGISTRY_PATH = Path("config/guardians.json")
 
+def select_registry_root_with_provenance(repo_root: Path) -> tuple[Path, Dict[str, str]]:
+    """
+    Decide which registry root to use for a target repo, plus provenance.
+    - If <repo_root>/config/guardians.json exists: use repo registry
+    - Else: use orchestrator fallback registry (same rule as server.py)
+    """
+    repo_registry_path = repo_root / REGISTRY_PATH
+    if repo_registry_path.exists():
+        return repo_root, {"source": "repo", "path": str(repo_registry_path)}
+
+    fallback_root = Path(__file__).resolve().parents[2]
+    fallback_path = fallback_root / REGISTRY_PATH
+    return fallback_root, {"source": "fallback", "path": str(fallback_path)}
+
+
+def load_registry_with_provenance(repo_root: Path) -> tuple[Dict[str, Any], Dict[str, str]]:
+    """
+    Load raw registry JSON, choosing repo-local registry when present,
+    otherwise falling back to orchestrator default registry.
+
+    Returns: (raw_registry_dict, provenance_dict)
+    """
+    root_used, prov = select_registry_root_with_provenance(repo_root)
+    raw = load_registry(repo_root=root_used)
+    return raw, prov
+
+
 
 def load_registry(repo_root: Path | None = None) -> Dict[str, Any]:
     """
@@ -541,7 +568,9 @@ def main() -> None:
             }, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
             sys.exit(3)
 
-        inspected = inspect_registry()
+        repo_root = Path(repo_path)
+        registry_root, _prov = select_registry_root_with_provenance(repo_root)
+        inspected = inspect_registry(repo_root=registry_root)
         guardians = []
         for gid, meta in inspected.items():
             g = {"guardian_id": gid}

@@ -65,7 +65,7 @@ def _load_repos_file(path: str) -> Tuple[List[RepoSpec], Dict[str, Any] | None]:
     return repos_sorted, None
 
 
-def _run_repo(policy_path: str, repo: RepoSpec) -> Dict[str, Any]:
+def _run_repo(policy_path: str, repo: RepoSpec, include_registry_source: bool = False) -> Dict[str, Any]:
     cmd = [
         sys.executable,
         "-m",
@@ -100,6 +100,22 @@ def _run_repo(policy_path: str, repo: RepoSpec) -> Dict[str, Any]:
         if "fail_closed" in parsed and isinstance(parsed.get("fail_closed"), bool):
             fail_closed = bool(parsed["fail_closed"])
 
+    if include_registry_source and parse_ok and isinstance(parsed, dict):
+        # Deterministic: decide whether repo has its own registry file.
+        repo_root = Path(repo.path)
+        repo_registry = repo_root / "config" / "guardians.json"
+        if repo_registry.exists():
+            src = "repo"
+            used_path = str(repo_registry)
+        else:
+            fallback_root = Path(__file__).resolve().parents[2]
+            fallback_path = fallback_root / "config" / "guardians.json"
+            src = "fallback"
+            used_path = str(fallback_path)
+
+        parsed["registry"] = {"source": src, "path": used_path}
+
+
     return {
         "id": repo.id,
         "path": repo.path,
@@ -112,7 +128,7 @@ def _run_repo(policy_path: str, repo: RepoSpec) -> Dict[str, Any]:
     }
 
 
-def portfolio_run(policy_path: str, repos_path: str) -> Tuple[Dict[str, Any], int]:
+def portfolio_run(policy_path: str, repos_path: str, include_registry_source: bool = False) -> Tuple[Dict[str, Any], int]:
     repos, err = _load_repos_file(repos_path)
     if err is not None:
         out = {
@@ -129,7 +145,7 @@ def portfolio_run(policy_path: str, repos_path: str) -> Tuple[Dict[str, Any], in
     seen_rc = set()
 
     for repo in repos:
-        res = _run_repo(policy_path, repo)
+        res = _run_repo(policy_path, repo, include_registry_source=include_registry_source)
         repo_results.append(res)
         seen_rc.add(res["returncode"])
 
@@ -183,12 +199,15 @@ def main(argv: List[str] | None = None) -> int:
 
     policy_path = None
     repos_path = None
+    include_registry_source = False
     while argv:
         tok = argv.pop(0)
         if tok == "--policy" and argv:
             policy_path = argv.pop(0)
         elif tok == "--repos" and argv:
             repos_path = argv.pop(0)
+        elif tok == "--include-registry-source":
+            include_registry_source = True
         else:
             sys.stdout.write(_usage())
             return 3
@@ -197,7 +216,7 @@ def main(argv: List[str] | None = None) -> int:
         sys.stdout.write(_usage())
         return 3
 
-    out, code = portfolio_run(policy_path=policy_path, repos_path=repos_path)
+    out, code = portfolio_run(policy_path=policy_path, repos_path=repos_path, include_registry_source=include_registry_source)
     sys.stdout.write(_canon(out) + "\n")
     return int(code)
 

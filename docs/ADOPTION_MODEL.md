@@ -48,3 +48,15 @@ python -m mcp_governance_orchestrator.portfolio run --policy policies/default.js
 Important:
 Level 0 repositories may still pass Level 2 due to fallback registry behavior.
 This is current engine semantics.
+
+## Registry Source (Opt-in)
+
+The portfolio runner can optionally emit registry provenance metadata via:
+
+  --include-registry-source
+
+When enabled, each repo result's `stdout_json` includes:
+
+  registry: { source: "repo" | "fallback", path: "<resolved config/guardians.json path>" }
+
+Default portfolio output remains unchanged unless this flag is supplied.
