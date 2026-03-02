@@ -437,19 +437,13 @@ def _render_table(rows: List[Dict[str, Any]], fields: List[str]) -> str:
 
 
 def main() -> None:
-    """
-    CLI entrypoint:
-        python -m mcp_governance_orchestrator.registry inspect
-        python -m mcp_governance_orchestrator.registry validate
-        python -m mcp_governance_orchestrator.registry list ...
-        python -m mcp_governance_orchestrator.registry enforce-policy policy.json
-    """
+    """CLI entrypoint (see Usage printed on error)."""
     import sys
     import json
     from mcp_governance_orchestrator.policy import evaluate_policy
 
     if len(sys.argv) < 2:
-        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy|run-policy")
+        print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy|run-policy|run-policy-default")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -504,6 +498,19 @@ def main() -> None:
 
         print(json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
         sys.exit(0 if result.get("ok") else 2)
+
+
+    if cmd == "run-policy-default":
+        if len(sys.argv) < 3:
+            print("Usage: python -m mcp_governance_orchestrator.registry run-policy-default repo_path")
+            sys.exit(1)
+
+        repo_path = sys.argv[2]
+        policy_path = "policies/default.json"
+
+        # Re-dispatch into run-policy logic by rewriting argv deterministically.
+        sys.argv = [sys.argv[0], "run-policy", policy_path, repo_path]
+        cmd = "run-policy"
 
     if cmd == "run-policy":
         if len(sys.argv) < 4:
@@ -617,7 +624,7 @@ def main() -> None:
 
         raise SystemExit("ERROR: --format must be json or table")
 
-    print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy|run-policy")
+    print("Usage: python -m mcp_governance_orchestrator.registry inspect|validate|list|enforce-policy|run-policy|run-policy-default")
     sys.exit(1)
 
 
