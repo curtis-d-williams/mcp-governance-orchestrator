@@ -479,10 +479,16 @@ def main() -> None:
                     print(json.dumps(policy_schema_error_report(schema_errors), sort_keys=True, separators=(",", ":"), ensure_ascii=False))
                     sys.exit(3)
         except Exception as e:
+            error_obj = {
+                "path": "$",
+                "code": "load_error",
+                "message": "invalid or unreadable policy file"
+            }
             print(json.dumps({
                 "ok": False,
                 "fail_closed": True,
-                "error": f"policy_load_error: {str(e)}"
+                "error_type": "policy_load",
+                "errors": [error_obj]
             }, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
             sys.exit(3)
 
