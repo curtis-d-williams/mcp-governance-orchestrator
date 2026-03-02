@@ -1,8 +1,0 @@
-{
-  "require": [
-    {"tier": 1}
-  ],
-  "constraints": {
-    "disallow_tier3_only": true
-  }
-}
