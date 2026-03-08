@@ -304,6 +304,49 @@ class TestMainActionDriven:
         captured = capsys.readouterr()
         assert "falling back" in captured.out
 
+    def test_default_top_k_is_3(self, tmp_path):
+        """Default --top-k must be 3: three distinct mapped actions all selected."""
+        state = tmp_path / "state.json"
+        state.write_text("{}", encoding="utf-8")
+        actions = self._actions(
+            "refresh_repo_health",              # → repo_insights_example
+            "regenerate_missing_artifact",      # → build_portfolio_dashboard
+            "run_determinism_regression_suite", # → intelligence_layer_example
+        )
+        with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
+             unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
+            _mod.main(["--portfolio-state", str(state)])  # no explicit --top-k
+        tasks = mock_run.call_args[0][0]
+        assert "repo_insights_example" in tasks
+        assert "build_portfolio_dashboard" in tasks
+        assert "intelligence_layer_example" in tasks
+
+    def test_multi_action_selection_preserves_deterministic_order(self, tmp_path):
+        """top-k=3 maps three actions to tasks in first-occurrence order."""
+        state = tmp_path / "state.json"
+        state.write_text("{}", encoding="utf-8")
+        actions = self._actions(
+            "regenerate_missing_artifact",      # → build_portfolio_dashboard (1st)
+            "refresh_repo_health",              # → repo_insights_example (2nd)
+            "run_determinism_regression_suite", # → intelligence_layer_example (3rd)
+        )
+        with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
+             unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
+            _mod.main(["--portfolio-state", str(state), "--top-k", "3"])
+        tasks = mock_run.call_args[0][0]
+        assert tasks == ["build_portfolio_dashboard", "repo_insights_example", "intelligence_layer_example"]
+
+    def test_fallback_unchanged_when_all_three_unmapped(self, tmp_path):
+        """Even with top-k=3, all-unmapped queue falls back to ALL_TASKS."""
+        state = tmp_path / "state.json"
+        state.write_text("{}", encoding="utf-8")
+        actions = self._actions("unknown_a", "unknown_b", "unknown_c")
+        with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
+             unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
+            _mod.main(["--portfolio-state", str(state)])
+        tasks = mock_run.call_args[0][0]
+        assert sorted(tasks) == sorted(ALL_TASKS)
+
 
 def test_run_tasks_builds_portfolio_state_after_aggregation(tmp_path):
     output_path = tmp_path / "portfolio_state.json"

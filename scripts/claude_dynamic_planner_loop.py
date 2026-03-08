@@ -230,8 +230,8 @@ def main(argv=None):
                         help="Path to portfolio_state.json for action-driven selection.")
     parser.add_argument("--ledger", default=None, metavar="FILE",
                         help="Path to action_effectiveness_ledger.json (optional).")
-    parser.add_argument("--top-k", type=int, default=1, metavar="INT",
-                        help="Number of top actions to consider (default: 1).")
+    parser.add_argument("--top-k", type=int, default=3, metavar="INT",
+                        help="Number of top actions to consider (default: 3).")
     parser.add_argument("--portfolio-state-output", default=str(DEFAULT_PORTFOLIO_STATE_OUTPUT), metavar="FILE",
                         help="Destination path for post-run portfolio_state.json.")
     # Feedback capture (additive — disabled by default)
