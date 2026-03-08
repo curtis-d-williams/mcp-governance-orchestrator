@@ -166,6 +166,57 @@ def _map_actions_to_tasks(actions, top_k=1):
     return tasks
 
 
+def _selected_mapped_actions(actions, top_k=1):
+    """Return action dicts from actions[:top_k] whose action_type maps to a task.
+
+    Mirrors _map_actions_to_tasks deduplication: skips subsequent actions that
+    resolve to an already-selected task name. Preserves first-occurrence order.
+    """
+    seen_tasks = set()
+    result = []
+    for action in actions[:top_k]:
+        at = action.get("action_type", "")
+        task = ACTION_TO_TASK.get(at)
+        if task is None:
+            continue
+        if task not in seen_tasks:
+            seen_tasks.add(task)
+            result.append(action)
+    return result
+
+
+def _write_executed_actions(path, actions):
+    """Write selected executed actions as JSON. Creates parent dirs as needed."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8")
+
+
+def _invoke_capture_feedback(args):
+    """Call capture_execution_feedback.py as a subprocess. Exits on failure."""
+    cmd = [
+        sys.executable,
+        "scripts/capture_execution_feedback.py",
+        "--before-source", args.portfolio_state,
+        "--report", str(PORTFOLIO_CSV),
+        "--aggregate", str(AGGREGATE_JSON),
+        "--executed-actions", args.executed_actions_output,
+        "--before-output", args.feedback_before_output,
+        "--after-output", args.feedback_after_output,
+        "--evaluation-output", args.evaluation_output,
+        "--ledger-output", args.ledger_output,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    stdout = (result.stdout or "").strip()
+    if stdout:
+        log(stdout)
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        log(f"Feedback capture failed (rc={result.returncode}): {stderr}")
+        sys.exit(result.returncode)
+    log("Feedback capture completed")
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -183,12 +234,46 @@ def main(argv=None):
                         help="Number of top actions to consider (default: 1).")
     parser.add_argument("--portfolio-state-output", default=str(DEFAULT_PORTFOLIO_STATE_OUTPUT), metavar="FILE",
                         help="Destination path for post-run portfolio_state.json.")
+    # Feedback capture (additive — disabled by default)
+    parser.add_argument("--capture-feedback", action="store_true", default=False,
+                        help="Enable execution feedback capture after task run.")
+    parser.add_argument("--executed-actions-output", default=None, metavar="FILE",
+                        help="Destination for executed_actions.json (requires --capture-feedback).")
+    parser.add_argument("--feedback-before-output", default=None, metavar="FILE",
+                        help="Destination for before-state snapshot (requires --capture-feedback).")
+    parser.add_argument("--feedback-after-output", default=None, metavar="FILE",
+                        help="Destination for after-state snapshot (requires --capture-feedback).")
+    parser.add_argument("--evaluation-output", default=None, metavar="FILE",
+                        help="Destination for evaluation_records.json (requires --capture-feedback).")
+    parser.add_argument("--ledger-output", default=None, metavar="FILE",
+                        help="Destination for action_effectiveness_ledger.json (requires --capture-feedback).")
     args = parser.parse_args(argv)
 
+    # Fail closed: validate all required args when capture-feedback is enabled.
+    if args.capture_feedback:
+        missing = []
+        if not args.portfolio_state:
+            missing.append("--portfolio-state")
+        if not args.executed_actions_output:
+            missing.append("--executed-actions-output")
+        if not args.feedback_before_output:
+            missing.append("--feedback-before-output")
+        if not args.feedback_after_output:
+            missing.append("--feedback-after-output")
+        if not args.evaluation_output:
+            missing.append("--evaluation-output")
+        if not args.ledger_output:
+            missing.append("--ledger-output")
+        if missing:
+            parser.error(f"--capture-feedback requires: {', '.join(missing)}")
+
+    selected_actions = []
     if args.portfolio_state is not None:
         actions = _fetch_action_queue(args.portfolio_state, args.ledger)
         tasks_to_run = _map_actions_to_tasks(actions, args.top_k)
         if tasks_to_run:
+            if args.capture_feedback:
+                selected_actions = _selected_mapped_actions(actions, args.top_k)
             log(
                 f"Planner using action-driven selection: "
                 f"actions={[a.get('action_type') for a in actions[:args.top_k]]}, "
@@ -202,6 +287,10 @@ def main(argv=None):
         tasks_to_run = prioritize_tasks()
 
     run_tasks(tasks_to_run, Path(args.portfolio_state_output))
+
+    if args.capture_feedback:
+        _write_executed_actions(args.executed_actions_output, selected_actions)
+        _invoke_capture_feedback(args)
 
 
 if __name__ == "__main__":
