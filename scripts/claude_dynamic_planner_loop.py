@@ -55,6 +55,12 @@ SIGNAL_IMPACT_CLAMP = 0.15
 TARGETING_WEIGHT = 0.10
 TARGETING_CLAMP = 0.20
 
+# ---------------------------------------------------------------------------
+# v0.28: Confidence weighting constants
+# ---------------------------------------------------------------------------
+
+CONFIDENCE_THRESHOLD = 5.0
+
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -84,6 +90,32 @@ def load_effectiveness_ledger(path):
         }
     except Exception:
         return {}
+
+
+def compute_confidence_factor(action_type, ledger):
+    """Return a confidence factor in [0.0, 1.0] based on times_executed.
+
+    Logic:
+    - action_type absent from ledger → 0.0
+    - times_executed key absent from row → 1.0 (backward-compat: legacy entries
+      without the field retain full learning effect)
+    - invalid (non-numeric) or negative times_executed → 0.0
+    - otherwise: min(1.0, times_executed / CONFIDENCE_THRESHOLD)
+
+    Never raises.
+    """
+    row = ledger.get(action_type)
+    if row is None:
+        return 0.0
+    if "times_executed" not in row:
+        return 1.0  # backward-compat: field absent → full confidence
+    try:
+        te = float(row["times_executed"])
+    except (TypeError, ValueError):
+        return 0.0
+    if te < 0:
+        return 0.0
+    return min(1.0, te / CONFIDENCE_THRESHOLD)
 
 
 def compute_learning_adjustment(action_type, ledger):
@@ -194,9 +226,10 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None):
 
     def _sort_key(a):
         at = a.get("action_type", "")
+        confidence = compute_confidence_factor(at, ledger)
         adj = compute_learning_adjustment(at, ledger)
         targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
-        learning_priority = a.get("priority", 0.0) + adj + targeting_adj
+        learning_priority = a.get("priority", 0.0) + confidence * (adj + targeting_adj)
         return (
             -learning_priority,
             at,
