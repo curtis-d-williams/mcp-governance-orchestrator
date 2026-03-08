@@ -28,6 +28,7 @@ _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
 _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 _collect_actions = _mod._collect_actions
+_preconditions_met = _mod._preconditions_met
 _fmt_json = _mod._fmt_json
 _fmt_text = _mod._fmt_text
 _fmt_text_ledger = _mod._fmt_text_ledger
@@ -1029,3 +1030,169 @@ class TestLedgerBoostedAheadOfNeutral:
         results = [_run(["--input", str(s), "--ledger", str(l), "--json"]).stdout
                    for _ in range(5)]
         assert len(set(results)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Action preconditions (_preconditions_met + _collect_actions integration)
+# ---------------------------------------------------------------------------
+
+def _make_repo_with_signals(
+    repo_id: str,
+    actions: list,
+    *,
+    last_run_ok: bool = True,
+    artifact_completeness: float = 1.0,
+    determinism_ok: bool = True,
+) -> dict:
+    repo = _make_repo(repo_id, actions)
+    repo["signals"] = {
+        "last_run_ok": last_run_ok,
+        "artifact_completeness": artifact_completeness,
+        "determinism_ok": determinism_ok,
+        "recent_failures": 0,
+        "stale_runs": 0,
+    }
+    return repo
+
+
+def _action_with_preconditions(preconditions: list, action_id: str = "act-1") -> dict:
+    a = _make_action(action_id, "refresh_repo_health", 0.55)
+    a["preconditions"] = preconditions
+    return a
+
+
+class TestPreconditionsMet:
+    """Unit tests for _preconditions_met()."""
+
+    # --- empty / absent preconditions ---
+
+    def test_empty_preconditions_always_passes(self):
+        action = _action_with_preconditions([])
+        repo = _make_repo("r", [])
+        assert _preconditions_met(action, repo) is True
+
+    def test_absent_preconditions_key_always_passes(self):
+        action = _make_action("act", "refresh_repo_health", 0.55)  # no key at all
+        repo = _make_repo("r", [])
+        assert _preconditions_met(action, repo) is True
+
+    # --- last_run_failed ---
+
+    def test_last_run_failed_satisfied_when_last_run_ok_is_false(self):
+        action = _action_with_preconditions(["last_run_failed"])
+        repo = _make_repo_with_signals("r", [], last_run_ok=False)
+        assert _preconditions_met(action, repo) is True
+
+    def test_last_run_failed_unmet_when_last_run_ok_is_true(self):
+        action = _action_with_preconditions(["last_run_failed"])
+        repo = _make_repo_with_signals("r", [], last_run_ok=True)
+        assert _preconditions_met(action, repo) is False
+
+    # --- artifacts_missing ---
+
+    def test_artifacts_missing_satisfied_when_completeness_below_1(self):
+        action = _action_with_preconditions(["artifacts_missing"])
+        repo = _make_repo_with_signals("r", [], artifact_completeness=0.5)
+        assert _preconditions_met(action, repo) is True
+
+    def test_artifacts_missing_unmet_when_completeness_is_1(self):
+        action = _action_with_preconditions(["artifacts_missing"])
+        repo = _make_repo_with_signals("r", [], artifact_completeness=1.0)
+        assert _preconditions_met(action, repo) is False
+
+    def test_artifacts_missing_unmet_when_completeness_above_1(self):
+        action = _action_with_preconditions(["artifacts_missing"])
+        repo = _make_repo_with_signals("r", [], artifact_completeness=1.5)
+        assert _preconditions_met(action, repo) is False
+
+    # --- determinism_failed ---
+
+    def test_determinism_failed_satisfied_when_determinism_ok_is_false(self):
+        action = _action_with_preconditions(["determinism_failed"])
+        repo = _make_repo_with_signals("r", [], determinism_ok=False)
+        assert _preconditions_met(action, repo) is True
+
+    def test_determinism_failed_unmet_when_determinism_ok_is_true(self):
+        action = _action_with_preconditions(["determinism_failed"])
+        repo = _make_repo_with_signals("r", [], determinism_ok=True)
+        assert _preconditions_met(action, repo) is False
+
+    # --- unknown precondition → fail closed ---
+
+    def test_unknown_precondition_fails_closed(self):
+        action = _action_with_preconditions(["no_such_precondition"])
+        repo = _make_repo("r", [])
+        assert _preconditions_met(action, repo) is False
+
+    def test_unknown_precondition_mixed_with_valid_fails_closed(self):
+        """Even when the known precondition is satisfied, unknown one fails closed."""
+        action = _action_with_preconditions(["last_run_failed", "no_such_precondition"])
+        repo = _make_repo_with_signals("r", [], last_run_ok=False)
+        assert _preconditions_met(action, repo) is False
+
+    # --- multiple preconditions ---
+
+    def test_all_preconditions_must_be_satisfied(self):
+        action = _action_with_preconditions(["last_run_failed", "artifacts_missing"])
+        # last_run_failed met, artifacts_missing not met
+        repo = _make_repo_with_signals("r", [], last_run_ok=False, artifact_completeness=1.0)
+        assert _preconditions_met(action, repo) is False
+
+    def test_all_preconditions_satisfied_returns_true(self):
+        action = _action_with_preconditions(["last_run_failed", "artifacts_missing"])
+        repo = _make_repo_with_signals("r", [], last_run_ok=False, artifact_completeness=0.5)
+        assert _preconditions_met(action, repo) is True
+
+
+class TestCollectActionsWithPreconditions:
+    """Integration: _collect_actions respects preconditions."""
+
+    def test_action_with_satisfied_preconditions_is_included(self):
+        action = _action_with_preconditions(["last_run_failed"])
+        repo = _make_repo_with_signals("r", [action], last_run_ok=False)
+        result = _collect_actions(_make_state([repo]), None)
+        assert len(result) == 1
+        assert result[0]["action_id"] == "act-1"
+
+    def test_action_with_unmet_preconditions_is_excluded(self):
+        action = _action_with_preconditions(["last_run_failed"])
+        repo = _make_repo_with_signals("r", [action], last_run_ok=True)
+        result = _collect_actions(_make_state([repo]), None)
+        assert result == []
+
+    def test_action_with_unknown_precondition_is_excluded(self):
+        action = _action_with_preconditions(["unknown_precondition"])
+        repo = _make_repo("r", [action])
+        result = _collect_actions(_make_state([repo]), None)
+        assert result == []
+
+    def test_action_without_preconditions_included_as_before(self):
+        """No preconditions key → legacy behavior unchanged."""
+        action = _make_action("act-legacy", "refresh_repo_health", 0.55)
+        repo = _make_repo("r", [action])
+        result = _collect_actions(_make_state([repo]), None)
+        assert len(result) == 1
+
+    def test_mixed_preconditions_only_satisfied_included(self):
+        """Two actions: one with met precondition, one with unmet."""
+        met = _action_with_preconditions(["artifacts_missing"], action_id="met")
+        unmet = _action_with_preconditions(["last_run_failed"], action_id="unmet")
+        repo = _make_repo_with_signals(
+            "r", [met, unmet],
+            artifact_completeness=0.5,  # artifacts_missing satisfied
+            last_run_ok=True,           # last_run_failed NOT satisfied
+        )
+        result = _collect_actions(_make_state([repo]), None)
+        ids = [a["action_id"] for a in result]
+        assert "met" in ids
+        assert "unmet" not in ids
+
+    def test_deterministic_ordering_preserved_with_preconditions(self):
+        """Surviving actions are still sorted by priority desc."""
+        a_hi = _action_with_preconditions(["artifacts_missing"], action_id="hi")
+        a_hi["priority"] = 0.9
+        a_lo = _action_with_preconditions(["artifacts_missing"], action_id="lo")
+        a_lo["priority"] = 0.5
+        repo = _make_repo_with_signals("r", [a_lo, a_hi], artifact_completeness=0.5)
+        result = _collect_actions(_make_state([repo]), None)
+        assert [a["action_id"] for a in result] == ["hi", "lo"]

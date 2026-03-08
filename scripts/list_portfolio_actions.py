@@ -91,6 +91,36 @@ def _build_ledger_index(ledger: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 # Action collection
 # ---------------------------------------------------------------------------
 
+def _preconditions_met(action: Dict[str, Any], repo: Dict[str, Any]) -> bool:
+    """Return True iff all action preconditions are satisfied by the repo's signals.
+
+    Supported preconditions:
+        "last_run_failed"    – signals.last_run_ok must be False
+        "artifacts_missing"  – signals.artifact_completeness < 1.0
+        "determinism_failed" – signals.determinism_ok must be False
+
+    An empty preconditions list always passes.
+    Unknown preconditions fail closed (returns False).
+    """
+    preconditions = action.get("preconditions", [])
+    if not preconditions:
+        return True
+    signals = repo.get("signals", {})
+    for precondition in preconditions:
+        if precondition == "last_run_failed":
+            if signals.get("last_run_ok", True) is not False:
+                return False
+        elif precondition == "artifacts_missing":
+            if float(signals.get("artifact_completeness", 1.0)) >= 1.0:
+                return False
+        elif precondition == "determinism_failed":
+            if signals.get("determinism_ok", True) is not False:
+                return False
+        else:
+            return False  # unknown precondition — fail closed
+    return True
+
+
 def _collect_actions(
     state: Dict[str, Any],
     repo_id_filter: Optional[str],
@@ -111,6 +141,8 @@ def _collect_actions(
             if not isinstance(action, dict):
                 continue
             if not action.get("eligible", False):
+                continue
+            if not _preconditions_met(action, repo):
                 continue
             entry = dict(action)
             entry["repo_id"] = rid
