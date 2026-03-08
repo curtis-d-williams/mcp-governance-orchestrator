@@ -6,9 +6,11 @@ Verifies:
 - CSV row data appears in the output in source order (ordering preserved).
 - Empty CSV input produces valid HTML with a header row and no data rows.
 - Two runs on identical input produce byte-for-byte identical output.
+- Portfolio Signal Impact section aggregates effect_deltas correctly.
 """
 import csv
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -133,3 +135,149 @@ def test_deterministic_output_same_input(tmp_path):
     generate(str(csv_file), str(html_a))
     generate(str(csv_file), str(html_b))
     assert html_a.read_text() == html_b.read_text(), "Output is not deterministic across two runs on identical input"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for Portfolio Signal Impact tests
+# ---------------------------------------------------------------------------
+
+def _make_ledger(action_types: list) -> dict:
+    return {
+        "schema_version": "v1",
+        "generated_at": "",
+        "summary": {"actions_tracked": len(action_types)},
+        "action_types": action_types,
+    }
+
+
+def _write_ledger(path: Path, action_types: list) -> Path:
+    path.write_text(json.dumps(_make_ledger(action_types), indent=2), encoding="utf-8")
+    return path
+
+
+def _csv_empty(tmp_path: Path) -> Path:
+    return _write_csv(tmp_path / "input.csv", [])
+
+
+# ---------------------------------------------------------------------------
+# Portfolio Signal Impact section tests
+# ---------------------------------------------------------------------------
+
+class TestPortfolioSignalImpact:
+    """Tests for the additive Portfolio Signal Impact section."""
+
+    def _content(self, tmp_path: Path, action_types: list) -> str:
+        csv_file = _csv_empty(tmp_path)
+        ledger_file = _write_ledger(tmp_path / "ledger.json", action_types)
+        html_file = tmp_path / "out.html"
+        generate(str(csv_file), str(html_file), ledger_path=str(ledger_file))
+        return html_file.read_text(encoding="utf-8")
+
+    def test_section_header_present_when_ledger_given(self, tmp_path):
+        content = self._content(tmp_path, [])
+        assert "Portfolio Signal Impact" in content
+
+    def test_empty_ledger_renders_em_dash(self, tmp_path):
+        content = self._content(tmp_path, [])
+        assert "&#8212;" in content
+
+    def test_no_effect_deltas_renders_em_dash(self, tmp_path):
+        action_types = [{"action_type": "act", "effectiveness_score": 0.5,
+                         "classification": "neutral", "effect_deltas": {}}]
+        content = self._content(tmp_path, action_types)
+        assert "&#8212;" in content
+
+    def test_single_signal_appears(self, tmp_path):
+        action_types = [{"action_type": "act", "effect_deltas": {"artifact_completeness": 0.5}}]
+        content = self._content(tmp_path, action_types)
+        assert "artifact_completeness" in content
+        assert "+0.50" in content
+
+    def test_negative_signal_rendered_with_sign(self, tmp_path):
+        action_types = [{"action_type": "act", "effect_deltas": {"recent_failures": -3.0}}]
+        content = self._content(tmp_path, action_types)
+        assert "recent_failures" in content
+        assert "-3.00" in content
+
+    def test_signals_in_alphabetical_order(self, tmp_path):
+        action_types = [{"action_type": "act", "effect_deltas": {
+            "zzz_signal": 0.1,
+            "aaa_signal": 0.2,
+            "mmm_signal": 0.3,
+        }}]
+        content = self._content(tmp_path, action_types)
+        assert content.index("aaa_signal") < content.index("mmm_signal") < content.index("zzz_signal")
+
+    def test_mean_computed_across_multiple_actions(self, tmp_path):
+        # Two actions both report artifact_completeness: 0.4 and 0.6 → mean 0.5
+        action_types = [
+            {"action_type": "act_a", "effect_deltas": {"artifact_completeness": 0.4}},
+            {"action_type": "act_b", "effect_deltas": {"artifact_completeness": 0.6}},
+        ]
+        content = self._content(tmp_path, action_types)
+        assert "+0.50" in content
+
+    def test_signal_reported_by_only_one_action_uses_that_value(self, tmp_path):
+        action_types = [
+            {"action_type": "act_a", "effect_deltas": {"sig_x": 1.0}},
+            {"action_type": "act_b", "effect_deltas": {}},
+        ]
+        content = self._content(tmp_path, action_types)
+        assert "sig_x" in content
+        assert "+1.00" in content
+
+    def test_signal_names_html_escaped(self, tmp_path):
+        action_types = [{"action_type": "act", "effect_deltas": {"<xss>": 1.0}}]
+        content = self._content(tmp_path, action_types)
+        assert "<xss>" not in content
+        assert "&lt;xss&gt;" in content
+
+    def test_absent_ledger_path_omits_section(self, tmp_path):
+        csv_file = _csv_empty(tmp_path)
+        html_file = tmp_path / "out.html"
+        generate(str(csv_file), str(html_file))  # no ledger_path
+        content = html_file.read_text(encoding="utf-8")
+        assert "Portfolio Signal Impact" not in content
+
+    def test_missing_ledger_file_renders_em_dash(self, tmp_path):
+        csv_file = _csv_empty(tmp_path)
+        html_file = tmp_path / "out.html"
+        generate(str(csv_file), str(html_file),
+                 ledger_path=str(tmp_path / "nonexistent.json"))
+        content = html_file.read_text(encoding="utf-8")
+        assert "Portfolio Signal Impact" in content
+        assert "&#8212;" in content
+
+    def test_two_decimal_precision(self, tmp_path):
+        action_types = [{"action_type": "act", "effect_deltas": {"sig": 0.123456}}]
+        content = self._content(tmp_path, action_types)
+        assert "+0.12" in content
+        assert "0.123456" not in content
+
+    def test_deterministic_across_two_runs(self, tmp_path):
+        action_types = [
+            {"action_type": "act_a", "effect_deltas": {"artifact_completeness": 0.5, "last_run_ok": 1.0}},
+            {"action_type": "act_b", "effect_deltas": {"artifact_completeness": 0.3}},
+        ]
+        csv_file = _csv_empty(tmp_path)
+        ledger_file = _write_ledger(tmp_path / "ledger.json", action_types)
+        out1 = tmp_path / "run1.html"
+        out2 = tmp_path / "run2.html"
+        for out in (out1, out2):
+            generate(str(csv_file), str(out), ledger_path=str(ledger_file))
+        assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
+
+    def test_existing_csv_table_intact_with_ledger(self, tmp_path):
+        """CSV table must still render correctly when ledger_path is provided."""
+        csv_rows = [
+            {"Suggestion ID": "S-001", "Description": "Alpha", "Example Metric": "1", "Notes": "ok"},
+        ]
+        csv_file = _write_csv(tmp_path / "input.csv", csv_rows)
+        ledger_file = _write_ledger(tmp_path / "ledger.json",
+                                    [{"action_type": "act", "effect_deltas": {"sig": 0.5}}])
+        html_file = tmp_path / "out.html"
+        generate(str(csv_file), str(html_file), ledger_path=str(ledger_file))
+        content = html_file.read_text(encoding="utf-8")
+        assert "S-001" in content
+        assert "Alpha" in content
+        assert "Portfolio Signal Impact" in content
