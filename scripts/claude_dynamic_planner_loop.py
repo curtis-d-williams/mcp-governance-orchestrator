@@ -74,6 +74,12 @@ EXPLORATION_CLAMP = 0.10
 
 POLICY_WEIGHT_CLAMP = 5.0
 
+# ---------------------------------------------------------------------------
+# v0.31: Policy total-magnitude guardrail
+# ---------------------------------------------------------------------------
+
+POLICY_TOTAL_ABS_CAP = 20.0
+
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -225,6 +231,12 @@ def compute_weak_signal_targeting_adjustment(action_type, ledger, current_signal
 def load_planner_policy(path):
     """Load policy JSON and return {signal_name: weight}.
 
+    v0.31 extensions (additive):
+    - non-numeric weights are ignored (skipped silently)
+    - each weight is clamped to ±POLICY_WEIGHT_CLAMP
+    - if total absolute clamped weight exceeds POLICY_TOTAL_ABS_CAP,
+      all weights are scaled proportionally so the total equals the cap
+
     Returns an empty dict when:
     - path is None
     - file does not exist (fail-safe)
@@ -240,7 +252,28 @@ def load_planner_policy(path):
         data = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return {}
-        return {k: v for k, v in data.items() if isinstance(k, str)}
+        # Filter: string keys with numeric values only
+        numeric = {}
+        for k, v in data.items():
+            if not isinstance(k, str):
+                continue
+            try:
+                numeric[k] = float(v)
+            except (TypeError, ValueError):
+                continue  # non-numeric weight ignored
+        if not numeric:
+            return {}
+        # Per-weight clamp
+        clamped = {
+            k: max(-POLICY_WEIGHT_CLAMP, min(POLICY_WEIGHT_CLAMP, v))
+            for k, v in numeric.items()
+        }
+        # Total-magnitude cap: normalize proportionally if needed
+        total_abs = sum(abs(v) for v in clamped.values())
+        if total_abs > POLICY_TOTAL_ABS_CAP:
+            scale = POLICY_TOTAL_ABS_CAP / total_abs
+            return {k: v * scale for k, v in clamped.items()}
+        return clamped
     except Exception:
         return {}
 
@@ -306,6 +339,65 @@ def compute_exploration_bonus(action_type, ledger):
     uncertainty = 1.0 / (1.0 + times_executed)
     bonus = uncertainty * EXPLORATION_WEIGHT
     return max(-EXPLORATION_CLAMP, min(EXPLORATION_CLAMP, bonus))
+
+
+def _build_priority_breakdown(actions, ledger, current_signals, policy):
+    """Return a deterministic list of per-action priority component dicts.
+
+    Replicates the _sort_key arithmetic to expose each component without
+    affecting ranking. Read-only; never mutates inputs.
+
+    Each dict contains:
+        action_type, base_priority, effectiveness_component,
+        signal_delta_component, weak_signal_targeting_component,
+        policy_component, confidence_factor, exploration_component,
+        final_priority
+    """
+    _signals = current_signals or {}
+    _policy = policy or {}
+    breakdown = []
+    for a in actions:
+        at = a.get("action_type", "")
+        base = float(a.get("priority", 0.0))
+        confidence = compute_confidence_factor(at, ledger)
+
+        # Replicate compute_learning_adjustment components separately
+        row = ledger.get(at, {})
+        effectiveness_score = float(row.get("effectiveness_score", 0.0))
+        effectiveness_adj = min(
+            max(0.0, effectiveness_score * EFFECTIVENESS_WEIGHT),
+            EFFECTIVENESS_CLAMP,
+        )
+        effect_deltas = row.get("effect_deltas", {})
+        signal_impact = (
+            sum(abs(v) for v in effect_deltas.values()) if effect_deltas else 0.0
+        )
+        signal_delta_adj = min(
+            max(0.0, signal_impact * SIGNAL_IMPACT_WEIGHT),
+            SIGNAL_IMPACT_CLAMP,
+        )
+
+        targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
+        policy_adj = compute_policy_adjustment(at, ledger, _policy)
+        exploration = compute_exploration_bonus(at, ledger)
+
+        final = (
+            base
+            + confidence * (effectiveness_adj + signal_delta_adj + targeting_adj + policy_adj)
+            + exploration
+        )
+        breakdown.append({
+            "action_type": at,
+            "base_priority": round(base, 6),
+            "effectiveness_component": round(confidence * effectiveness_adj, 6),
+            "signal_delta_component": round(confidence * signal_delta_adj, 6),
+            "weak_signal_targeting_component": round(confidence * targeting_adj, 6),
+            "policy_component": round(confidence * policy_adj, 6),
+            "confidence_factor": round(confidence, 6),
+            "exploration_component": round(exploration, 6),
+            "final_priority": round(final, 6),
+        })
+    return breakdown
 
 
 def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None):
@@ -562,6 +654,10 @@ def main(argv=None):
                         help="Destination for evaluation_records.json (requires --capture-feedback).")
     parser.add_argument("--ledger-output", default=None, metavar="FILE",
                         help="Destination for action_effectiveness_ledger.json (requires --capture-feedback).")
+    # v0.31: explainability flag
+    parser.add_argument("--explain", action="store_true", default=False,
+                        help="Write planner_priority_breakdown.json with per-action scoring components. "
+                             "Read-only: does not affect ranking or planner behavior.")
     args = parser.parse_args(argv)
 
     # Fail closed: validate all required args when capture-feedback is enabled.
@@ -583,6 +679,12 @@ def main(argv=None):
             parser.error(f"--capture-feedback requires: {', '.join(missing)}")
 
     selected_actions = []
+    # v0.31: explain mode — ranked action list for breakdown (populated below)
+    _explain_actions = []
+    _explain_ledger = {}
+    _explain_signals = {}
+    _explain_policy = {}
+
     if args.portfolio_state is not None:
         actions = _fetch_action_queue(args.portfolio_state, args.ledger)
         # v0.26: apply planner-side learning adjustment (no-op when ledger absent).
@@ -591,6 +693,11 @@ def main(argv=None):
         current_signals = load_portfolio_signals(args.portfolio_state)
         planner_policy = load_planner_policy(args.policy)
         actions = _apply_learning_adjustments(actions, planner_ledger, current_signals, planner_policy)
+        # v0.31: capture ranked list for explain mode (read-only, after ranking)
+        _explain_actions = actions
+        _explain_ledger = planner_ledger
+        _explain_signals = current_signals
+        _explain_policy = planner_policy
         # Deterministic window: clamp offset so window always fits within the queue.
         start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
         end = start + args.top_k
@@ -611,6 +718,16 @@ def main(argv=None):
     else:
         log("Planner using fallback task selection (no portfolio state provided)")
         tasks_to_run = prioritize_tasks()
+
+    # v0.31: write explain artifact before running tasks (read-only, no ranking effect)
+    if args.explain:
+        breakdown = _build_priority_breakdown(
+            _explain_actions, _explain_ledger, _explain_signals, _explain_policy
+        )
+        Path("planner_priority_breakdown.json").write_text(
+            json.dumps(breakdown, indent=2) + "\n", encoding="utf-8"
+        )
+        log(f"Explain mode: wrote planner_priority_breakdown.json ({len(breakdown)} entries)")
 
     run_tasks(tasks_to_run, Path(args.portfolio_state_output))
 
