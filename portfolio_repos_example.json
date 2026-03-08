@@ -1,0 +1,5 @@
+{
+  "repos": [
+    { "id": "mcp-governance-orchestrator", "path": "." }
+  ]
+}
