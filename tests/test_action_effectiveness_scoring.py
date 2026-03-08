@@ -826,3 +826,110 @@ class TestObservedEffects:
         )
         row = _row(_build([rec]), "refresh_repo_health")
         assert row["observed_effects"] == []
+
+
+# ---------------------------------------------------------------------------
+# Signal delta learning (v0.20.0-alpha)
+# ---------------------------------------------------------------------------
+
+class TestEffectDeltas:
+    """effect_deltas field records average numeric signal delta magnitudes per action_type."""
+
+    def test_delta_detection_works(self):
+        """artifact_completeness 0.0→1.0 yields delta=1.0."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=0.0)),
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=1.0)),
+            [_exe("regenerate_missing_artifact", "r1")],
+        )
+        row = _row(_build([rec]), "regenerate_missing_artifact")
+        assert "artifact_completeness" in row["effect_deltas"]
+        assert row["effect_deltas"]["artifact_completeness"] == 1.0
+
+    def test_multiple_signals_aggregated(self):
+        """Two changed numeric signals both appear in effect_deltas."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      artifact_completeness=0.5, recent_failures=3)),
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      artifact_completeness=1.0, recent_failures=0)),
+            [_exe("rerun_failed_task", "r1")],
+        )
+        row = _row(_build([rec]), "rerun_failed_task")
+        assert "artifact_completeness" in row["effect_deltas"]
+        assert "recent_failures" in row["effect_deltas"]
+        assert row["effect_deltas"]["artifact_completeness"] == 0.5
+        assert row["effect_deltas"]["recent_failures"] == -3.0
+
+    def test_averages_computed_correctly(self):
+        """Two executions with different deltas: avg is computed correctly."""
+        rec = _rec(
+            _state(
+                _repo_with_signals("r1", "high", 0.5, artifact_completeness=0.0),
+                _repo_with_signals("r2", "high", 0.5, artifact_completeness=0.5),
+            ),
+            _state(
+                _repo_with_signals("r1", "high", 0.5, artifact_completeness=0.6),
+                _repo_with_signals("r2", "high", 0.5, artifact_completeness=1.0),
+            ),
+            [_exe("rerun_failed_task", "r1"), _exe("rerun_failed_task", "r2")],
+        )
+        row = _row(_build([rec]), "rerun_failed_task")
+        # r1 delta=0.6, r2 delta=0.5 → avg=0.55
+        assert row["effect_deltas"]["artifact_completeness"] == 0.55
+
+    def test_unchanged_signals_omitted(self):
+        """Signals with no change must not appear in effect_deltas."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      artifact_completeness=0.5, recent_failures=2)),
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      artifact_completeness=1.0, recent_failures=2)),
+            [_exe("regenerate_missing_artifact", "r1")],
+        )
+        row = _row(_build([rec]), "regenerate_missing_artifact")
+        assert "artifact_completeness" in row["effect_deltas"]
+        assert "recent_failures" not in row["effect_deltas"]
+
+    def test_negative_deltas_supported(self):
+        """Signals that worsen yield negative deltas."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "low", 1.0, recent_failures=0)),
+            _state(_repo_with_signals("r1", "low", 1.0, recent_failures=5)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert row["effect_deltas"]["recent_failures"] == 5.0
+
+    def test_deterministic_ordering_of_keys(self):
+        """effect_deltas keys must be in sorted (alphabetical) order."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      artifact_completeness=0.0,
+                                      recent_failures=3,
+                                      stale_runs=2)),
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      artifact_completeness=1.0,
+                                      recent_failures=0,
+                                      stale_runs=0)),
+            [_exe("rerun_failed_task", "r1")],
+        )
+        row = _row(_build([rec]), "rerun_failed_task")
+        keys = list(row["effect_deltas"].keys())
+        assert keys == sorted(keys)
+
+    def test_contract_compatibility_preserved(self):
+        """effect_deltas is a new field; observed_effects and all existing fields intact."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5, artifact_completeness=0.5)),
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=1.0)),
+            [_exe("regenerate_missing_artifact", "r1")],
+        )
+        row = _row(_build([rec]), "regenerate_missing_artifact")
+        # Existing fields still present and typed correctly
+        assert isinstance(row["observed_effects"], list)
+        assert isinstance(row["effect_deltas"], dict)
+        assert isinstance(row["effectiveness_score"], float)
+        assert isinstance(row["classification"], str)
+        assert "artifact_completeness" in row["observed_effects"]
+        assert "artifact_completeness" in row["effect_deltas"]

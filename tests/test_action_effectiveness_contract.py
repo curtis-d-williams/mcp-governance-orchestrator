@@ -71,7 +71,7 @@ _ROW_KEYS = {
     "action_type", "times_recommended", "times_executed", "success_rate",
     "avg_risk_delta", "avg_health_delta", "effectiveness_score",
     "recommended_priority_adjustment", "classification",
-    "observed_effects",
+    "observed_effects", "effect_deltas",
 }
 
 

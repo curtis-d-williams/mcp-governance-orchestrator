@@ -109,6 +109,26 @@ def _detect_observed_effects(
     return changed
 
 
+def _detect_signal_deltas(
+    before_repo: Dict[str, Any],
+    after_repo: Dict[str, Any],
+) -> Dict[str, float]:
+    """Return {signal: delta} for numeric (non-bool) signals that changed."""
+    before_signals = before_repo.get("signals", {})
+    after_signals = after_repo.get("signals", {})
+    deltas: Dict[str, float] = {}
+    for field in _SIGNAL_FIELDS:
+        b_val = before_signals.get(field)
+        a_val = after_signals.get(field)
+        if (
+            isinstance(b_val, (int, float)) and not isinstance(b_val, bool)
+            and isinstance(a_val, (int, float)) and not isinstance(a_val, bool)
+            and a_val != b_val
+        ):
+            deltas[field] = float(a_val) - float(b_val)
+    return deltas
+
+
 def build_action_effectiveness_ledger(
     records: List[Dict[str, Any]],
     *,
@@ -137,6 +157,7 @@ def build_action_effectiveness_ledger(
     exec_counts: Dict[str, int] = {}
     recommended_counts: Dict[str, int] = {}
     observed_effects: Dict[str, set] = {}
+    effect_deltas_raw: Dict[str, Dict[str, List[float]]] = {}
 
     for idx, rec in enumerate(records):
         before_idx = _repo_index(rec["before_state"], f"record[{idx}].before_state")
@@ -180,6 +201,10 @@ def build_action_effectiveness_ledger(
 
             effects = _detect_observed_effects(before_repo, after_repo)
             observed_effects.setdefault(at, set()).update(effects)
+
+            sig_deltas = _detect_signal_deltas(before_repo, after_repo)
+            for sig, delta in sig_deltas.items():
+                effect_deltas_raw.setdefault(at, {}).setdefault(sig, []).append(delta)
 
     # ---- Build action_types list -------------------------------------------
 
@@ -236,6 +261,12 @@ def build_action_effectiveness_ledger(
             priority_adj = 0.0
             classification = "neutral"
 
+        raw_deltas = effect_deltas_raw.get(at, {})
+        effect_deltas = {
+            sig: round(sum(vals) / len(vals), 2)
+            for sig, vals in sorted(raw_deltas.items())
+        }
+
         action_type_rows.append({
             "action_type": at,
             "times_recommended": t_rec,
@@ -247,6 +278,7 @@ def build_action_effectiveness_ledger(
             "recommended_priority_adjustment": priority_adj,
             "classification": classification,
             "observed_effects": sorted(observed_effects.get(at, set())),
+            "effect_deltas": effect_deltas,
         })
 
     # ---- Summary -----------------------------------------------------------
