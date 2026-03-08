@@ -35,6 +35,7 @@ _COLUMNS: list[tuple[str, str]] = [
     ("success_rate",       "Success Rate"),
     ("effectiveness_score","Effectiveness Score"),
     ("observed_effects",   "Observed Effects"),
+    ("effect_deltas",      "Effect Deltas"),
     ("classification",     "Classification"),
 ]
 
@@ -76,7 +77,23 @@ def _sort_rows(rows: list[dict]) -> list[dict]:
     )
 
 
+def _render_effect_deltas(value: object) -> str:
+    """Render effect_deltas dict: sorted signal names, signed two-decimal floats.
+
+    Empty or absent dict renders as em-dash. All values are HTML-escaped.
+    """
+    if not isinstance(value, dict) or not value:
+        return "<td>&#8212;</td>"
+    parts = [
+        html.escape(f"{sig}: {delta:+.2f}")
+        for sig, delta in sorted(value.items())
+    ]
+    return f"<td>{'<br>'.join(parts)}</td>"
+
+
 def _render_cell(field: str, value: object) -> str:
+    if field == "effect_deltas":
+        return _render_effect_deltas(value)
     if field == "observed_effects":
         items = value if isinstance(value, list) else []
         text = html.escape(", ".join(str(e) for e in items))
@@ -114,8 +131,9 @@ def _build_html(ledger: dict) -> str:
     for row in rows:
         cls = str(row.get("classification", ""))
         bg = _ROW_BG.get(cls, "#ffffff")
+        _defaults: dict[str, object] = {"observed_effects": [], "effect_deltas": {}}
         cells = "".join(
-            _render_cell(field, row.get(field, "" if field != "observed_effects" else []))
+            _render_cell(field, row.get(field, _defaults.get(field, "")))
             for field, _ in _COLUMNS
         )
         lines.append(f'<tr style="background:{bg}">{cells}</tr>')

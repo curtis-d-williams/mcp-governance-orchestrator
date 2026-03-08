@@ -331,3 +331,104 @@ class TestEmptyObservedEffects:
         rc, _, stderr, out = _run(tmp_path, ledger)
         assert rc == 0, stderr
         assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# 8. effect_deltas column renders correctly
+# ---------------------------------------------------------------------------
+
+def _make_row_with_deltas(
+    action_type: str,
+    effectiveness_score: float,
+    classification: str,
+    effect_deltas: dict | None = None,
+) -> dict:
+    row = _make_row(action_type, effectiveness_score, classification)
+    row["effect_deltas"] = effect_deltas if effect_deltas is not None else {}
+    return row
+
+
+class TestEffectDeltasRendering:
+    def _content(self, tmp_path: Path, rows: list[dict]) -> str:
+        rc, _, stderr, out = _run(tmp_path, _make_ledger(rows))
+        assert rc == 0, stderr
+        return out.read_text(encoding="utf-8")
+
+    def test_effect_deltas_column_header_present(self, tmp_path):
+        rows = [_make_row("act", 0.88, "effective")]
+        assert "Effect Deltas" in self._content(tmp_path, rows)
+
+    def test_single_signal_positive_delta(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.88, "effective",
+                                      {"artifact_completeness": 0.50})]
+        content = self._content(tmp_path, rows)
+        assert "artifact_completeness" in content
+        assert "+0.50" in content
+
+    def test_negative_delta_rendered_with_sign(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.88, "effective",
+                                      {"recent_failures": -3.00})]
+        content = self._content(tmp_path, rows)
+        assert "recent_failures" in content
+        assert "-3.00" in content
+
+    def test_multiple_signals_alphabetical_order(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.88, "effective", {
+            "zzz_signal": 0.10,
+            "aaa_signal": 0.20,
+            "mmm_signal": 0.30,
+        })]
+        content = self._content(tmp_path, rows)
+        assert content.index("aaa_signal") < content.index("mmm_signal") < content.index("zzz_signal")
+
+    def test_empty_dict_renders_em_dash(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.50, "neutral", {})]
+        content = self._content(tmp_path, rows)
+        assert "&#8212;" in content
+
+    def test_absent_effect_deltas_key_renders_em_dash(self, tmp_path):
+        """Row missing effect_deltas key entirely must render em-dash, not crash."""
+        rows = [_make_row("act", 0.88, "effective")]
+        content = self._content(tmp_path, rows)
+        assert "&#8212;" in content
+
+    def test_signal_names_html_escaped(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.88, "effective",
+                                      {"<xss>": 1.0})]
+        content = self._content(tmp_path, rows)
+        assert "<xss>" not in content
+        assert "&lt;xss&gt;" in content
+
+    def test_existing_columns_intact(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.88, "effective",
+                                      {"artifact_completeness": 0.5})]
+        content = self._content(tmp_path, rows)
+        for header in ("Action Type", "Times Executed", "Success Rate",
+                       "Effectiveness Score", "Observed Effects", "Classification"):
+            assert header in content, f"missing column: {header}"
+
+    def test_deterministic_across_two_runs(self, tmp_path):
+        rows = [
+            _make_row_with_deltas("act_a", 0.88, "effective",
+                                  {"artifact_completeness": 0.5, "last_run_ok": 1.0}),
+            _make_row_with_deltas("act_b", 0.50, "neutral", {}),
+        ]
+        ledger = _make_ledger(rows)
+        ledger_path = tmp_path / "ledger.json"
+        ledger_path.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
+        out1 = tmp_path / "run1.html"
+        out2 = tmp_path / "run2.html"
+        for out in (out1, out2):
+            subprocess.run(
+                [sys.executable, _SCRIPT,
+                 "--input", str(ledger_path), "--output", str(out)],
+                check=True,
+            )
+        assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
+
+    def test_two_decimal_precision(self, tmp_path):
+        rows = [_make_row_with_deltas("act", 0.88, "effective",
+                                      {"sig": 0.123456})]
+        content = self._content(tmp_path, rows)
+        assert "+0.12" in content
+        assert "0.123456" not in content
