@@ -238,7 +238,7 @@ class TestMainActionDriven:
              unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state)])
         mock_fetch.assert_called_once_with(str(state), None)
-        mock_run.assert_called_once_with(["repo_insights_example"])
+        mock_run.assert_called_once_with(["repo_insights_example"], Path("portfolio_state.json"))
 
     def test_action_driven_selection_with_ledger(self, tmp_path):
         state = tmp_path / "state.json"
@@ -250,7 +250,7 @@ class TestMainActionDriven:
              unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state), "--ledger", str(ledger)])
         mock_fetch.assert_called_once_with(str(state), str(ledger))
-        mock_run.assert_called_once_with(["build_portfolio_dashboard"])
+        mock_run.assert_called_once_with(["build_portfolio_dashboard"], Path("portfolio_state.json"))
 
     def test_empty_queue_falls_back_to_all_tasks(self, tmp_path):
         state = tmp_path / "state.json"
@@ -303,3 +303,29 @@ class TestMainActionDriven:
             _mod.main(["--portfolio-state", str(state)])
         captured = capsys.readouterr()
         assert "falling back" in captured.out
+
+
+def test_run_tasks_builds_portfolio_state_after_aggregation(tmp_path):
+    output_path = tmp_path / "portfolio_state.json"
+
+    calls = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(cmd)
+        class Proc:
+            returncode = 0
+            stdout = "wrote: " + str(output_path) + "\n"
+            stderr = ""
+        return Proc()
+
+    with unittest.mock.patch.object(_mod, "log"), \
+         unittest.mock.patch.object(_mod.subprocess, "run", side_effect=fake_run), \
+         unittest.mock.patch("pathlib.Path.exists", return_value=True):
+        _mod.run_tasks(["repo_insights_example"], output_path)
+
+    assert len(calls) == 3
+    assert any("run_portfolio_task.py" in str(part) for part in calls[0])
+    assert any("aggregate_multi_run_envelopes.py" in str(part) for part in calls[1])
+    assert any("build_portfolio_state_from_artifacts.py" in str(part) for part in calls[2])
+    assert "--output" in calls[2]
+    assert str(output_path) in calls[2]

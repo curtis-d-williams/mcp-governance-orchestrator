@@ -4,7 +4,7 @@ Selects and submits Tier-3 tasks in real-time with prioritization.
 Logs execution, aggregates results, and ensures deterministic outputs.
 
 When --portfolio-state is supplied the loop fetches a prioritized action queue
-from list_portfolio_actions.py and maps actions to tasks.  When that path is
+from list_portfolio_actions.py and maps actions to tasks. When that path is
 absent, or when the queue is empty / all actions are unmapped, it falls back to
 the deterministic ALL_TASKS ordering.
 """
@@ -21,6 +21,7 @@ MANIFEST_FILE = "portfolio_repos_example.json"
 PORTFOLIO_CSV = Path("tier3_portfolio_report.csv")
 AGGREGATE_JSON = Path("tier3_multi_run_aggregate.json")
 LOG_FILE = Path("tier3_execution.log")
+DEFAULT_PORTFOLIO_STATE_OUTPUT = Path("portfolio_state.json")
 
 # Available Tier-3 tasks
 ALL_TASKS = [
@@ -54,9 +55,42 @@ def prioritize_tasks(previous_results=None):
     return sorted(ALL_TASKS)
 
 
-def run_tasks(tasks):
+def _build_portfolio_state_from_current_artifacts(output_path):
     """
-    Run a list of Tier-3 tasks through the portfolio runner safely
+    Build portfolio_state.json from the current CSV + aggregate artifacts.
+
+    Returns True on success, False on any failure. Never raises.
+    """
+    if not PORTFOLIO_CSV.exists():
+        log("Skipping portfolio state build: portfolio CSV missing")
+        return False
+    if not AGGREGATE_JSON.exists():
+        log("Skipping portfolio state build: aggregate JSON missing")
+        return False
+
+    cmd = [
+        sys.executable,
+        "scripts/build_portfolio_state_from_artifacts.py",
+        "--report", str(PORTFOLIO_CSV),
+        "--aggregate", str(AGGREGATE_JSON),
+        "--output", str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        log(f"Portfolio state build failed (rc={result.returncode}): {stderr}")
+        return False
+
+    stdout = (result.stdout or "").strip()
+    if stdout:
+        log(stdout)
+    log(f"Portfolio state exists: {output_path}")
+    return True
+
+
+def run_tasks(tasks, portfolio_state_output=DEFAULT_PORTFOLIO_STATE_OUTPUT):
+    """
+    Run a list of Tier-3 tasks through the portfolio runner safely.
     """
     if not tasks:
         log("No tasks to run")
@@ -81,6 +115,8 @@ def run_tasks(tasks):
         log(f"Aggregate JSON exists: {AGGREGATE_JSON}")
     else:
         log("WARNING: Aggregate JSON missing!")
+
+    _build_portfolio_state_from_current_artifacts(portfolio_state_output)
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +151,7 @@ def _map_actions_to_tasks(actions, top_k=1):
     """Map the first top_k actions to task names via ACTION_TO_TASK.
 
     Skips unmapped action types and de-duplicates while preserving first-
-    occurrence order.  Returns [] when no actions map to known tasks.
+    occurrence order. Returns [] when no actions map to known tasks.
     """
     seen = set()
     tasks = []
@@ -145,6 +181,8 @@ def main(argv=None):
                         help="Path to action_effectiveness_ledger.json (optional).")
     parser.add_argument("--top-k", type=int, default=1, metavar="INT",
                         help="Number of top actions to consider (default: 1).")
+    parser.add_argument("--portfolio-state-output", default=str(DEFAULT_PORTFOLIO_STATE_OUTPUT), metavar="FILE",
+                        help="Destination path for post-run portfolio_state.json.")
     args = parser.parse_args(argv)
 
     if args.portfolio_state is not None:
@@ -163,7 +201,7 @@ def main(argv=None):
         log("Planner using fallback task selection (no portfolio state provided)")
         tasks_to_run = prioritize_tasks()
 
-    run_tasks(tasks_to_run)
+    run_tasks(tasks_to_run, Path(args.portfolio_state_output))
 
 
 if __name__ == "__main__":
