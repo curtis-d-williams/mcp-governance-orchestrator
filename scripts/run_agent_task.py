@@ -9,17 +9,14 @@ import sys
 from contextlib import redirect_stdout
 from importlib import import_module
 
-
-ALLOWED_TASKS = {
-    "build_portfolio_dashboard": "agent_tasks.build_portfolio_dashboard",
-}
+from agent_tasks.registry import TASK_REGISTRY
 
 
 def run_agent_task(task_name):
-    if task_name not in ALLOWED_TASKS:
+    if task_name not in TASK_REGISTRY:
         raise SystemExit(f"Unknown agent task: {task_name}")
 
-    module = import_module(ALLOWED_TASKS[task_name])
+    module = import_module(TASK_REGISTRY[task_name])
 
     buffer = io.StringIO()
     with redirect_stdout(buffer):
