@@ -236,3 +236,103 @@ class TestClassificationColoring:
         assert "Effective" in content
         assert "Neutral" in content
         assert "Ineffective" in content
+
+
+# ---------------------------------------------------------------------------
+# Test 4: effect_deltas column renders correctly
+# ---------------------------------------------------------------------------
+
+class TestEffectDeltasRendering:
+    def _content(self, tmp_path: Path, rows: list[dict]) -> str:
+        ledger = _make_ledger(rows)
+        rc, _, stderr, out = _run_script(tmp_path, ledger)
+        assert rc == 0, stderr
+        return out.read_text(encoding="utf-8")
+
+    def _row_with_deltas(self, action_type: str, score: float, classification: str,
+                         effect_deltas: dict) -> dict:
+        r = _row(action_type, score, classification)
+        r["effect_deltas"] = effect_deltas
+        return r
+
+    def test_effect_deltas_column_header_present(self, tmp_path):
+        rows = [_row("act", 0.88, "effective")]
+        content = self._content(tmp_path, rows)
+        assert "Effect Deltas" in content
+
+    def test_single_signal_delta_appears(self, tmp_path):
+        rows = [self._row_with_deltas("act", 0.88, "effective",
+                                      {"artifact_completeness": 0.50})]
+        content = self._content(tmp_path, rows)
+        assert "artifact_completeness" in content
+        assert "+0.50" in content
+
+    def test_negative_delta_rendered_with_sign(self, tmp_path):
+        rows = [self._row_with_deltas("act", 0.88, "effective",
+                                      {"recent_failures": -3.00})]
+        content = self._content(tmp_path, rows)
+        assert "recent_failures" in content
+        assert "-3.00" in content
+
+    def test_multiple_signals_deterministic_order(self, tmp_path):
+        rows = [self._row_with_deltas("act", 0.88, "effective", {
+            "zzz_signal": 0.10,
+            "aaa_signal": 0.20,
+            "mmm_signal": 0.30,
+        })]
+        content = self._content(tmp_path, rows)
+        pos_a = content.index("aaa_signal")
+        pos_m = content.index("mmm_signal")
+        pos_z = content.index("zzz_signal")
+        assert pos_a < pos_m < pos_z
+
+    def test_empty_effect_deltas_renders_without_error(self, tmp_path):
+        rows = [self._row_with_deltas("act", 0.50, "neutral", {})]
+        rc, _, stderr, _ = _run_script(tmp_path, _make_ledger(rows))
+        assert rc == 0, stderr
+
+    def test_empty_effect_deltas_cell_is_empty(self, tmp_path):
+        rows = [self._row_with_deltas("act", 0.50, "neutral", {})]
+        content = self._content(tmp_path, rows)
+        # Empty dict should render an empty <td></td>
+        assert "<td></td>" in content
+
+    def test_absent_effect_deltas_key_renders_gracefully(self, tmp_path):
+        """Row missing effect_deltas entirely must not crash."""
+        rows = [_row("act", 0.88, "effective")]
+        rc, _, stderr, _ = _run_script(tmp_path, _make_ledger(rows))
+        assert rc == 0, stderr
+
+    def test_effect_deltas_values_html_escaped(self, tmp_path):
+        """Signal names with special chars must be HTML-escaped."""
+        rows = [self._row_with_deltas("act", 0.88, "effective",
+                                      {"<sig>": 1.0})]
+        content = self._content(tmp_path, rows)
+        assert "<sig>" not in content
+        assert "&lt;sig&gt;" in content
+
+    def test_existing_columns_still_present_with_deltas(self, tmp_path):
+        """Adding effect_deltas column must not remove any existing column."""
+        rows = [self._row_with_deltas("act", 0.88, "effective",
+                                      {"artifact_completeness": 0.5})]
+        content = self._content(tmp_path, rows)
+        for expected in ("Action Type", "Recommended", "Executed",
+                         "Success Rate", "Effectiveness", "Classification"):
+            assert expected in content, f"Missing column: {expected}"
+
+    def test_two_runs_identical_with_effect_deltas(self, tmp_path):
+        """Determinism: two runs with effect_deltas produce identical HTML."""
+        rows = [self._row_with_deltas("act_a", 0.88, "effective",
+                                      {"artifact_completeness": 0.5, "last_run_ok": 1.0}),
+                self._row_with_deltas("act_b", 0.50, "neutral", {})]
+        ledger = _make_ledger(rows)
+        ledger_path = tmp_path / "ledger.json"
+        ledger_path.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
+        out1 = tmp_path / "run1.html"
+        out2 = tmp_path / "run2.html"
+        for out in (out1, out2):
+            subprocess.run(
+                [sys.executable, _SCRIPT, "--input", str(ledger_path), "--output", str(out)],
+                check=True,
+            )
+        assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")

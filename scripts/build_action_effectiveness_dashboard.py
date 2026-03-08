@@ -36,6 +36,7 @@ _COLUMNS: list[tuple[str, str]] = [
     ("effectiveness_score",            "Effectiveness"),
     ("recommended_priority_adjustment","Priority Adj"),
     ("classification",                 "Classification"),
+    ("effect_deltas",                  "Effect Deltas"),
 ]
 
 
@@ -75,7 +76,20 @@ def _sort_rows(rows: list[dict]) -> list[dict]:
     )
 
 
+def _render_effect_deltas(value: object) -> str:
+    """Render effect_deltas dict as sorted signal:delta pairs, safe on empty/missing."""
+    if not isinstance(value, dict) or not value:
+        return "<td></td>"
+    parts = [
+        html.escape(f"{sig}: {delta:+.2f}")
+        for sig, delta in sorted(value.items())
+    ]
+    return f"<td>{'<br>'.join(parts)}</td>"
+
+
 def _cell(value: object, field: str) -> str:
+    if field == "effect_deltas":
+        return _render_effect_deltas(value)
     text = html.escape(str(value))
     if field == "classification":
         cls = str(value)
