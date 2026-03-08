@@ -9,9 +9,11 @@ Enhanced Tier 3 portfolio HTML dashboard.
 - Fully read-only; preserves frozen composition invariants
 """
 
+import argparse
 import csv
 import html
 import json
+import sys
 from pathlib import Path
 
 
@@ -107,5 +109,52 @@ def generate_styled_dashboard(
         f.write("</body></html>\n")
     print(f"Enhanced HTML dashboard generated at {html_path}")
 
+def _validate_ledger_path(ledger_path: str) -> None:
+    """Fail closed: raise SystemExit if the ledger file exists but is unreadable or malformed."""
+    path = Path(ledger_path)
+    if not path.exists():
+        # Missing file is handled gracefully by _aggregate_effect_deltas (renders em-dash).
+        return
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        sys.stderr.write(f"error: cannot read ledger file: {exc}\n")
+        raise SystemExit(1)
+    try:
+        json.loads(raw)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(f"error: malformed ledger JSON: {exc}\n")
+        raise SystemExit(1)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate a styled Tier 3 portfolio HTML dashboard.",
+    )
+    parser.add_argument(
+        "--csv", default="tier3_portfolio_report.csv", metavar="FILE",
+        help="Path to CSV report (default: tier3_portfolio_report.csv).",
+    )
+    parser.add_argument(
+        "--output", default="tier3_portfolio_dashboard_styled.html", metavar="FILE",
+        help="Destination HTML file (default: tier3_portfolio_dashboard_styled.html).",
+    )
+    parser.add_argument(
+        "--ledger", default=None, metavar="FILE",
+        help="Optional path to action_effectiveness_ledger.json for Portfolio Signal Impact section.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.ledger is not None:
+        _validate_ledger_path(args.ledger)
+
+    generate_styled_dashboard(
+        csv_path=args.csv,
+        html_path=args.output,
+        ledger_path=args.ledger,
+    )
+    return 0
+
+
 if __name__ == "__main__":
-    generate_styled_dashboard()
+    raise SystemExit(main())

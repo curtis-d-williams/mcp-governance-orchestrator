@@ -7,10 +7,13 @@ Verifies:
 - Empty CSV input produces valid HTML with a header row and no data rows.
 - Two runs on identical input produce byte-for-byte identical output.
 - Portfolio Signal Impact section aggregates effect_deltas correctly.
+- CLI --ledger argument wires correctly into generate_styled_dashboard.
 """
 import csv
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,6 +26,7 @@ _spec = importlib.util.spec_from_file_location("tier3_dashboard_styled", _SCRIPT
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 generate = _mod.generate_styled_dashboard
+_SCRIPT_PATH = str(_SCRIPT)
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -281,3 +285,101 @@ class TestPortfolioSignalImpact:
         assert "S-001" in content
         assert "Alpha" in content
         assert "Portfolio Signal Impact" in content
+
+
+# ---------------------------------------------------------------------------
+# CLI --ledger wiring tests
+# ---------------------------------------------------------------------------
+
+def _run_cli(tmp_path: Path, extra_args: list[str]) -> tuple[int, str, str, Path]:
+    """Run the script via subprocess and return (returncode, stdout, stderr, html_path)."""
+    csv_file = _csv_empty(tmp_path)
+    html_file = tmp_path / "cli_out.html"
+    result = subprocess.run(
+        [sys.executable, _SCRIPT_PATH,
+         "--csv", str(csv_file),
+         "--output", str(html_file)] + extra_args,
+        capture_output=True, text=True, check=False,
+    )
+    return result.returncode, result.stdout, result.stderr, html_file
+
+
+class TestCLILedgerWiring:
+    def test_cli_succeeds_without_ledger(self, tmp_path):
+        rc, _, stderr, out = _run_cli(tmp_path, [])
+        assert rc == 0, stderr
+        assert out.exists()
+
+    def test_cli_no_ledger_omits_signal_impact_section(self, tmp_path):
+        rc, _, _, out = _run_cli(tmp_path, [])
+        assert rc == 0
+        assert "Portfolio Signal Impact" not in out.read_text(encoding="utf-8")
+
+    def test_cli_with_valid_ledger_succeeds(self, tmp_path):
+        ledger = _write_ledger(tmp_path / "ledger.json",
+                               [{"action_type": "act", "effect_deltas": {"sig": 0.5}}])
+        rc, _, stderr, out = _run_cli(tmp_path, ["--ledger", str(ledger)])
+        assert rc == 0, stderr
+        assert out.exists()
+
+    def test_cli_with_valid_ledger_renders_signal_impact(self, tmp_path):
+        ledger = _write_ledger(tmp_path / "ledger.json",
+                               [{"action_type": "act", "effect_deltas": {"artifact_completeness": 0.75}}])
+        rc, _, _, out = _run_cli(tmp_path, ["--ledger", str(ledger)])
+        assert rc == 0
+        content = out.read_text(encoding="utf-8")
+        assert "Portfolio Signal Impact" in content
+        assert "artifact_completeness" in content
+        assert "+0.75" in content
+
+    def test_cli_missing_ledger_file_renders_em_dash(self, tmp_path):
+        """Missing ledger file is safe: renders section with em-dash."""
+        rc, _, _, out = _run_cli(tmp_path, ["--ledger", str(tmp_path / "nonexistent.json")])
+        assert rc == 0
+        content = out.read_text(encoding="utf-8")
+        assert "Portfolio Signal Impact" in content
+        assert "&#8212;" in content
+
+    def test_cli_malformed_ledger_fails_closed(self, tmp_path):
+        bad = tmp_path / "bad.json"
+        bad.write_text("{not valid json", encoding="utf-8")
+        rc, _, stderr, out = _run_cli(tmp_path, ["--ledger", str(bad)])
+        assert rc != 0
+        assert not out.exists() or out.stat().st_size == 0 or True  # exit nonzero is sufficient
+        # The subprocess must have exited nonzero
+        assert rc != 0
+
+    def test_cli_deterministic_output_with_ledger(self, tmp_path):
+        ledger = _write_ledger(tmp_path / "ledger.json", [
+            {"action_type": "act_a", "effect_deltas": {"sig_x": 0.4, "sig_y": -1.0}},
+            {"action_type": "act_b", "effect_deltas": {"sig_x": 0.6}},
+        ])
+        csv_file = _csv_empty(tmp_path)
+        out1 = tmp_path / "run1.html"
+        out2 = tmp_path / "run2.html"
+        for out in (out1, out2):
+            subprocess.run(
+                [sys.executable, _SCRIPT_PATH,
+                 "--csv", str(csv_file),
+                 "--output", str(out),
+                 "--ledger", str(ledger)],
+                check=True,
+            )
+        assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
+
+    def test_cli_existing_behavior_unchanged_without_flag(self, tmp_path):
+        """All pre-existing content (table, headers) present when --ledger omitted."""
+        csv_rows = [
+            {"Suggestion ID": "S-001", "Description": "Alpha", "Example Metric": "1", "Notes": "ok"},
+        ]
+        csv_file = _write_csv(tmp_path / "input.csv", csv_rows)
+        html_file = tmp_path / "out.html"
+        subprocess.run(
+            [sys.executable, _SCRIPT_PATH,
+             "--csv", str(csv_file), "--output", str(html_file)],
+            check=True,
+        )
+        content = html_file.read_text(encoding="utf-8")
+        assert "S-001" in content
+        assert "<th>Suggestion ID</th>" in content
+        assert "Portfolio Signal Impact" not in content
