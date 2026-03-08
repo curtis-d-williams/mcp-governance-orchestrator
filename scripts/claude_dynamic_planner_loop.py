@@ -38,6 +38,96 @@ ACTION_TO_TASK = {
     "run_determinism_regression_suite": "intelligence_layer_example",
 }
 
+# ---------------------------------------------------------------------------
+# v0.26: Planner learning adjustment constants
+# ---------------------------------------------------------------------------
+
+EFFECTIVENESS_WEIGHT = 0.15
+EFFECTIVENESS_CLAMP = 0.20
+
+SIGNAL_IMPACT_WEIGHT = 0.05
+SIGNAL_IMPACT_CLAMP = 0.15
+
+
+# ---------------------------------------------------------------------------
+# v0.26: Ledger loading and learning adjustment helpers
+# ---------------------------------------------------------------------------
+
+def load_effectiveness_ledger(path):
+    """Load ledger JSON and return {action_type: row_dict}.
+
+    Returns an empty dict when:
+    - path is None
+    - file does not exist (fail-safe)
+    - file is unreadable or malformed
+    Never raises.
+    """
+    if path is None:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        rows = data.get("action_types", [])
+        return {
+            row["action_type"]: row
+            for row in rows
+            if isinstance(row, dict) and isinstance(row.get("action_type"), str)
+        }
+    except Exception:
+        return {}
+
+
+def compute_learning_adjustment(action_type, ledger):
+    """Return the total learning priority adjustment for action_type.
+
+    effectiveness_adj = clamp(effectiveness_score * EFFECTIVENESS_WEIGHT,
+                              0.0, EFFECTIVENESS_CLAMP)
+    signal_delta_adj  = clamp(sum(abs(effect_deltas)) * SIGNAL_IMPACT_WEIGHT,
+                              0.0, SIGNAL_IMPACT_CLAMP)
+
+    Returns 0.0 when action_type is absent from ledger.
+    """
+    row = ledger.get(action_type, {})
+
+    effectiveness_score = float(row.get("effectiveness_score", 0.0))
+    effectiveness_adj = min(
+        max(0.0, effectiveness_score * EFFECTIVENESS_WEIGHT),
+        EFFECTIVENESS_CLAMP,
+    )
+
+    effect_deltas = row.get("effect_deltas", {})
+    signal_impact = sum(abs(v) for v in effect_deltas.values()) if effect_deltas else 0.0
+    signal_delta_adj = min(
+        max(0.0, signal_impact * SIGNAL_IMPACT_WEIGHT),
+        SIGNAL_IMPACT_CLAMP,
+    )
+
+    return effectiveness_adj + signal_delta_adj
+
+
+def _apply_learning_adjustments(actions, ledger):
+    """Re-sort actions by base_priority + learning_adjustment (deterministic).
+
+    Returns the original list unchanged when ledger is empty.
+    Tiebreaker order: action_type asc, action_id asc, repo_id asc.
+    """
+    if not ledger:
+        return actions
+
+    def _sort_key(a):
+        adj = compute_learning_adjustment(a.get("action_type", ""), ledger)
+        learning_priority = a.get("priority", 0.0) + adj
+        return (
+            -learning_priority,
+            a.get("action_type", ""),
+            a.get("action_id", ""),
+            a.get("repo_id", ""),
+        )
+
+    return sorted(actions, key=_sort_key)
+
 
 def log(message):
     timestamp = datetime.now().isoformat()
@@ -272,6 +362,9 @@ def main(argv=None):
     selected_actions = []
     if args.portfolio_state is not None:
         actions = _fetch_action_queue(args.portfolio_state, args.ledger)
+        # v0.26: apply planner-side learning adjustment (no-op when ledger absent).
+        planner_ledger = load_effectiveness_ledger(args.ledger)
+        actions = _apply_learning_adjustments(actions, planner_ledger)
         # Deterministic window: clamp offset so window always fits within the queue.
         start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
         end = start + args.top_k
