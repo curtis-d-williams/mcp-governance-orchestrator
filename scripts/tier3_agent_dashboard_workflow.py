@@ -1,41 +1,44 @@
 #!/usr/bin/env python3
 """
-Tier 3 agent workflow using portfolio dashboard.
+Tier 3 agent dashboard workflow entrypoint.
 
-- Reads Tier 3 dashboard outputs
-- Performs deterministic, read-only actions
-- Fully preserves frozen composition invariants
+Orchestrates:
+  1. Aggregate Tier 3 outputs  (tier3_agent_aggregate)
+  2. Write CSV portfolio report (tier3_generate_report)
+  3. Generate styled HTML dashboard (tier3_generate_html_dashboard_styled)
+
+Produces deterministic default outputs:
+  - tier3_portfolio_report.csv
+  - tier3_portfolio_dashboard_styled.html
 """
 
-import importlib
-from collections import OrderedDict
+import sys
+from pathlib import Path
 
-# Tier 3 templates
-tier3_guardians = [
-    "templates.sample_template.server",
-    "templates.repo_insights.server",
-    "templates.intelligence_layer_template.server",
-]
+_SCRIPTS_DIR = Path(__file__).parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
-def run_dashboard_agent_workflow():
-    dashboard = OrderedDict()
-    all_outputs = [importlib.import_module(g).main() for g in tier3_guardians]
+from tier3_agent_aggregate import aggregate_tier3_outputs
+from tier3_generate_report import write_csv_from_aggregate
+from tier3_generate_html_dashboard_styled import generate_styled_dashboard
 
-    # Aggregate all outputs deterministically
-    for out in all_outputs:
-        sid = out["suggestions"]["suggestion_id"]
-        dashboard[sid] = {
-            "description": out["suggestions"].get("description", ""),
-            "metrics": out["suggestions"].get("metrics", {}),
-            "notes": out["suggestions"].get("notes", ""),
-        }
 
-    # Example deterministic agent tasks
-    for sid, data in dashboard.items():
-        print(f"[Agent Workflow] Processing {sid}")
-        print(f"Metrics: {data['metrics']}")
-        print(f"Notes: {data['notes']}")
-        # Future: add reporting, cross-repo summaries, alerts, etc.
+def run_dashboard_agent_workflow(
+    csv_path="tier3_portfolio_report.csv",
+    html_path="tier3_portfolio_dashboard_styled.html",
+    _aggregate=None,
+):
+    """
+    Orchestrate aggregate -> CSV report -> HTML dashboard.
+
+    _aggregate: optional pre-built OrderedDict; used for deterministic testing.
+                If None, calls aggregate_tier3_outputs() from tier3_agent_aggregate.
+    """
+    aggregated = _aggregate if _aggregate is not None else aggregate_tier3_outputs()
+    write_csv_from_aggregate(aggregated, csv_path)
+    generate_styled_dashboard(csv_path, html_path)
+
 
 if __name__ == "__main__":
     run_dashboard_agent_workflow()

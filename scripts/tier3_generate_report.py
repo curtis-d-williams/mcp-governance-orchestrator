@@ -43,5 +43,19 @@ def write_csv_report(filepath="tier3_portfolio_report.csv"):
             ])
     print(f"Tier 3 portfolio report written to {filepath}")
 
+def write_csv_from_aggregate(aggregated, filepath="tier3_portfolio_report.csv"):
+    """Write a CSV report from a pre-built aggregate dict (e.g. from tier3_agent_aggregate)."""
+    with open(filepath, mode="w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Suggestion ID", "Description", "Example Metric", "Notes"])
+        for sid, data in aggregated.items():
+            writer.writerow([
+                sid,
+                data.get("description", ""),
+                data.get("metrics", {}).get("example_metric", 0),
+                data.get("notes", ""),
+            ])
+    print(f"Tier 3 portfolio report written to {filepath}")
+
 if __name__ == "__main__":
     write_csv_report()

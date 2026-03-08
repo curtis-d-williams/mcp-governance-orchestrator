@@ -26,6 +26,7 @@ def aggregate_tier3_outputs():
         notes = out["suggestions"]["notes"]
 
         aggregated[sid] = {
+            "description": out["suggestions"].get("description", ""),
             "metrics": metrics,
             "notes": notes,
         }
