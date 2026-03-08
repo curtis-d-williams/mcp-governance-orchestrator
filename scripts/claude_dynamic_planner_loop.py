@@ -48,6 +48,13 @@ EFFECTIVENESS_CLAMP = 0.20
 SIGNAL_IMPACT_WEIGHT = 0.05
 SIGNAL_IMPACT_CLAMP = 0.15
 
+# ---------------------------------------------------------------------------
+# v0.27: Weak-signal targeting constants
+# ---------------------------------------------------------------------------
+
+TARGETING_WEIGHT = 0.10
+TARGETING_CLAMP = 0.20
+
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -107,21 +114,92 @@ def compute_learning_adjustment(action_type, ledger):
     return effectiveness_adj + signal_delta_adj
 
 
-def _apply_learning_adjustments(actions, ledger):
+def load_portfolio_signals(portfolio_state_path):
+    """Load portfolio-level signal averages from portfolio_state.json.
+
+    Returns {signal_name: float_value} where values are averaged across all
+    repos. Non-numeric (e.g. boolean) signal values are ignored.
+
+    Returns {} when:
+    - path is None
+    - file does not exist (fail-safe)
+    - file is unreadable or malformed
+    Never raises.
+    """
+    if portfolio_state_path is None:
+        return {}
+    p = Path(portfolio_state_path)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        repos = data.get("repos", [])
+        totals = {}
+        counts = {}
+        for repo in repos:
+            for name, value in repo.get("signals", {}).items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                totals[name] = totals.get(name, 0.0) + float(value)
+                counts[name] = counts.get(name, 0) + 1
+        return {name: totals[name] / counts[name] for name in totals}
+    except Exception:
+        return {}
+
+
+def compute_weak_signal_targeting_adjustment(action_type, ledger, current_signals):
+    """Return weak-signal targeting priority adjustment for action_type.
+
+    weakness(signal) = max(0.0, 1.0 - signal_value)
+    targeting_score  = sum(max(0.0, delta) * weakness
+                           for each signal in effect_deltas)
+    adjustment       = clamp(targeting_score * TARGETING_WEIGHT, ±TARGETING_CLAMP)
+
+    Returns 0.0 when:
+    - current_signals is empty
+    - action_type is absent from ledger
+    - effect_deltas is empty or no matching signals in current_signals
+    - all deltas are non-positive
+    """
+    if not current_signals:
+        return 0.0
+    row = ledger.get(action_type, {})
+    if not row:
+        return 0.0
+    effect_deltas = row.get("effect_deltas", {})
+    if not effect_deltas:
+        return 0.0
+    targeting_score = sum(
+        max(0.0, float(delta)) * max(0.0, 1.0 - current_signals[sig])
+        for sig, delta in effect_deltas.items()
+        if sig in current_signals
+    )
+    return max(-TARGETING_CLAMP, min(TARGETING_CLAMP, targeting_score * TARGETING_WEIGHT))
+
+
+def _apply_learning_adjustments(actions, ledger, current_signals=None):
     """Re-sort actions by base_priority + learning_adjustment (deterministic).
 
     Returns the original list unchanged when ledger is empty.
     Tiebreaker order: action_type asc, action_id asc, repo_id asc.
+
+    current_signals: optional {signal_name: float} portfolio signal averages
+        (v0.27). When absent or empty, targeting adjustment is zero and
+        v0.26 behavior is preserved.
     """
     if not ledger:
         return actions
 
+    _signals = current_signals or {}
+
     def _sort_key(a):
-        adj = compute_learning_adjustment(a.get("action_type", ""), ledger)
-        learning_priority = a.get("priority", 0.0) + adj
+        at = a.get("action_type", "")
+        adj = compute_learning_adjustment(at, ledger)
+        targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
+        learning_priority = a.get("priority", 0.0) + adj + targeting_adj
         return (
             -learning_priority,
-            a.get("action_type", ""),
+            at,
             a.get("action_id", ""),
             a.get("repo_id", ""),
         )
@@ -363,8 +441,10 @@ def main(argv=None):
     if args.portfolio_state is not None:
         actions = _fetch_action_queue(args.portfolio_state, args.ledger)
         # v0.26: apply planner-side learning adjustment (no-op when ledger absent).
+        # v0.27: load portfolio signals for weak-signal targeting (no-op when absent).
         planner_ledger = load_effectiveness_ledger(args.ledger)
-        actions = _apply_learning_adjustments(actions, planner_ledger)
+        current_signals = load_portfolio_signals(args.portfolio_state)
+        actions = _apply_learning_adjustments(actions, planner_ledger, current_signals)
         # Deterministic window: clamp offset so window always fits within the queue.
         start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
         end = start + args.top_k
