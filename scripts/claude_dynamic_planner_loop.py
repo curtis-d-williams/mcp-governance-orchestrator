@@ -13,6 +13,7 @@ import argparse
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -341,11 +342,117 @@ def compute_exploration_bonus(action_type, ledger):
     return max(-EXPLORATION_CLAMP, min(EXPLORATION_CLAMP, bonus))
 
 
+# ---------------------------------------------------------------------------
+# v0.32: PriorityBreakdown — single deterministic structure for all scoring
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PriorityBreakdown:
+    """Internal per-action priority component record (v0.32).
+
+    All weighted components are stored confidence-scaled (multiplied by
+    confidence_factor) so that:
+
+        final_priority = (
+            base_priority
+            + effectiveness_component
+            + signal_delta_component
+            + weak_signal_targeting_component
+            + policy_component
+            + exploration_component
+        )
+
+    confidence_factor is stored separately for reference / explain output.
+    Never raises; all fields are float (or str for action_type).
+    """
+    action_type: str
+    base_priority: float
+    effectiveness_component: float        # = confidence_factor * raw_effectiveness_adj
+    signal_delta_component: float         # = confidence_factor * raw_signal_delta_adj
+    weak_signal_targeting_component: float  # = confidence_factor * raw_targeting_adj
+    policy_component: float               # = confidence_factor * raw_policy_adj
+    confidence_factor: float
+    exploration_component: float
+    final_priority: float
+
+    def to_dict(self):
+        """Return a rounded, JSON-serialisable dict matching the explain schema."""
+        return {
+            "action_type": self.action_type,
+            "base_priority": round(self.base_priority, 6),
+            "effectiveness_component": round(self.effectiveness_component, 6),
+            "signal_delta_component": round(self.signal_delta_component, 6),
+            "weak_signal_targeting_component": round(self.weak_signal_targeting_component, 6),
+            "policy_component": round(self.policy_component, 6),
+            "confidence_factor": round(self.confidence_factor, 6),
+            "exploration_component": round(self.exploration_component, 6),
+            "final_priority": round(self.final_priority, 6),
+        }
+
+
+def _compute_priority_breakdown(action, ledger, current_signals, policy):
+    """Build a PriorityBreakdown for a single action. Read-only; never raises.
+
+    Single canonical path for all priority arithmetic — used by both the
+    ranking sort key and the explain artifact builder.
+
+    Args:
+        action:          action dict with at least 'action_type' and 'priority'.
+        ledger:          {action_type: row_dict} from load_effectiveness_ledger.
+        current_signals: {signal_name: float} portfolio signal averages.
+        policy:          {signal_name: weight} from load_planner_policy.
+
+    Returns:
+        PriorityBreakdown instance with all components populated.
+    """
+    at = action.get("action_type", "")
+    base = float(action.get("priority", 0.0))
+    confidence = compute_confidence_factor(at, ledger)
+
+    row = ledger.get(at, {})
+    effectiveness_score = float(row.get("effectiveness_score", 0.0))
+    effectiveness_adj = min(
+        max(0.0, effectiveness_score * EFFECTIVENESS_WEIGHT),
+        EFFECTIVENESS_CLAMP,
+    )
+    effect_deltas = row.get("effect_deltas", {})
+    signal_impact = (
+        sum(abs(v) for v in effect_deltas.values()) if effect_deltas else 0.0
+    )
+    signal_delta_adj = min(
+        max(0.0, signal_impact * SIGNAL_IMPACT_WEIGHT),
+        SIGNAL_IMPACT_CLAMP,
+    )
+
+    targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, current_signals)
+    policy_adj = compute_policy_adjustment(at, ledger, policy)
+    exploration = compute_exploration_bonus(at, ledger)
+
+    final = (
+        base
+        + confidence * (effectiveness_adj + signal_delta_adj + targeting_adj + policy_adj)
+        + exploration
+    )
+
+    return PriorityBreakdown(
+        action_type=at,
+        base_priority=base,
+        effectiveness_component=confidence * effectiveness_adj,
+        signal_delta_component=confidence * signal_delta_adj,
+        weak_signal_targeting_component=confidence * targeting_adj,
+        policy_component=confidence * policy_adj,
+        confidence_factor=confidence,
+        exploration_component=exploration,
+        final_priority=final,
+    )
+
+
 def _build_priority_breakdown(actions, ledger, current_signals, policy):
     """Return a deterministic list of per-action priority component dicts.
 
-    Replicates the _sort_key arithmetic to expose each component without
-    affecting ranking. Read-only; never mutates inputs.
+    Delegates to _compute_priority_breakdown for each action so that explain
+    mode and ranking share a single arithmetic path. Read-only; never mutates
+    inputs.
 
     Each dict contains:
         action_type, base_priority, effectiveness_component,
@@ -355,49 +462,10 @@ def _build_priority_breakdown(actions, ledger, current_signals, policy):
     """
     _signals = current_signals or {}
     _policy = policy or {}
-    breakdown = []
-    for a in actions:
-        at = a.get("action_type", "")
-        base = float(a.get("priority", 0.0))
-        confidence = compute_confidence_factor(at, ledger)
-
-        # Replicate compute_learning_adjustment components separately
-        row = ledger.get(at, {})
-        effectiveness_score = float(row.get("effectiveness_score", 0.0))
-        effectiveness_adj = min(
-            max(0.0, effectiveness_score * EFFECTIVENESS_WEIGHT),
-            EFFECTIVENESS_CLAMP,
-        )
-        effect_deltas = row.get("effect_deltas", {})
-        signal_impact = (
-            sum(abs(v) for v in effect_deltas.values()) if effect_deltas else 0.0
-        )
-        signal_delta_adj = min(
-            max(0.0, signal_impact * SIGNAL_IMPACT_WEIGHT),
-            SIGNAL_IMPACT_CLAMP,
-        )
-
-        targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
-        policy_adj = compute_policy_adjustment(at, ledger, _policy)
-        exploration = compute_exploration_bonus(at, ledger)
-
-        final = (
-            base
-            + confidence * (effectiveness_adj + signal_delta_adj + targeting_adj + policy_adj)
-            + exploration
-        )
-        breakdown.append({
-            "action_type": at,
-            "base_priority": round(base, 6),
-            "effectiveness_component": round(confidence * effectiveness_adj, 6),
-            "signal_delta_component": round(confidence * signal_delta_adj, 6),
-            "weak_signal_targeting_component": round(confidence * targeting_adj, 6),
-            "policy_component": round(confidence * policy_adj, 6),
-            "confidence_factor": round(confidence, 6),
-            "exploration_component": round(exploration, 6),
-            "final_priority": round(final, 6),
-        })
-    return breakdown
+    return [
+        _compute_priority_breakdown(a, ledger, _signals, _policy).to_dict()
+        for a in actions
+    ]
 
 
 def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None):
@@ -421,20 +489,10 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=No
     _policy = policy or {}
 
     def _sort_key(a):
-        at = a.get("action_type", "")
-        confidence = compute_confidence_factor(at, ledger)
-        adj = compute_learning_adjustment(at, ledger)
-        targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
-        policy_adj = compute_policy_adjustment(at, ledger, _policy)
-        exploration_bonus = compute_exploration_bonus(at, ledger)
-        learning_priority = (
-            a.get("priority", 0.0)
-            + confidence * (adj + targeting_adj + policy_adj)
-            + exploration_bonus
-        )
+        bd = _compute_priority_breakdown(a, ledger, _signals, _policy)
         return (
-            -learning_priority,
-            at,
+            -bd.final_priority,
+            bd.action_type,
             a.get("action_id", ""),
             a.get("repo_id", ""),
         )
