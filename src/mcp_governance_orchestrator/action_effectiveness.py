@@ -86,6 +86,29 @@ def _count_recommended(action_type: str, state: Dict[str, Any]) -> int:
     return total
 
 
+_SIGNAL_FIELDS = (
+    "last_run_ok",
+    "artifact_completeness",
+    "determinism_ok",
+    "recent_failures",
+    "stale_runs",
+)
+
+
+def _detect_observed_effects(
+    before_repo: Dict[str, Any],
+    after_repo: Dict[str, Any],
+) -> set:
+    """Return the set of signal field names that changed between before and after."""
+    before_signals = before_repo.get("signals", {})
+    after_signals = after_repo.get("signals", {})
+    changed: set = set()
+    for field in _SIGNAL_FIELDS:
+        if before_signals.get(field) != after_signals.get(field):
+            changed.add(field)
+    return changed
+
+
 def build_action_effectiveness_ledger(
     records: List[Dict[str, Any]],
     *,
@@ -113,6 +136,7 @@ def build_action_effectiveness_ledger(
     exec_successes: Dict[str, int] = {}
     exec_counts: Dict[str, int] = {}
     recommended_counts: Dict[str, int] = {}
+    observed_effects: Dict[str, set] = {}
 
     for idx, rec in enumerate(records):
         before_idx = _repo_index(rec["before_state"], f"record[{idx}].before_state")
@@ -153,6 +177,9 @@ def build_action_effectiveness_ledger(
                 exec_successes[at] = exec_successes.get(at, 0) + 1
             else:
                 exec_successes.setdefault(at, 0)
+
+            effects = _detect_observed_effects(before_repo, after_repo)
+            observed_effects.setdefault(at, set()).update(effects)
 
     # ---- Build action_types list -------------------------------------------
 
@@ -219,6 +246,7 @@ def build_action_effectiveness_ledger(
             "effectiveness_score": effectiveness_score,
             "recommended_priority_adjustment": priority_adj,
             "classification": classification,
+            "observed_effects": sorted(observed_effects.get(at, set())),
         })
 
     # ---- Summary -----------------------------------------------------------

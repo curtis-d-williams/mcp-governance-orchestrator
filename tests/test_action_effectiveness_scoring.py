@@ -669,3 +669,160 @@ class TestUnexecutedActionConservative:
         assert row["times_executed"] == 1
         assert row["recommended_priority_adjustment"] == -0.05
         assert row["classification"] == "ineffective"
+
+
+# ---------------------------------------------------------------------------
+# Observed action effects
+# ---------------------------------------------------------------------------
+
+def _repo_with_signals(
+    repo_id: str,
+    risk: str,
+    health: float,
+    *,
+    actions: list | None = None,
+    last_run_ok: bool = True,
+    artifact_completeness: float = 1.0,
+    determinism_ok: bool = True,
+    recent_failures: int = 0,
+    stale_runs: int = 0,
+) -> dict:
+    r = _repo(repo_id, risk, health, actions)
+    r["signals"] = {
+        "last_run_ok": last_run_ok,
+        "artifact_completeness": artifact_completeness,
+        "determinism_ok": determinism_ok,
+        "recent_failures": recent_failures,
+        "stale_runs": stale_runs,
+    }
+    return r
+
+
+class TestObservedEffects:
+    """observed_effects field is recorded correctly in ledger rows."""
+
+    def test_no_signal_change_yields_empty_effects(self):
+        """Unchanged signals → observed_effects is []."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.6)),
+            _state(_repo_with_signals("r1", "high", 0.6)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert row["observed_effects"] == []
+
+    def test_last_run_ok_change_recorded(self):
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.6, last_run_ok=False)),
+            _state(_repo_with_signals("r1", "high", 0.6, last_run_ok=True)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert "last_run_ok" in row["observed_effects"]
+
+    def test_artifact_completeness_change_recorded(self):
+        rec = _rec(
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=0.5)),
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=1.0)),
+            [_exe("regenerate_missing_artifact", "r1")],
+        )
+        row = _row(_build([rec]), "regenerate_missing_artifact")
+        assert "artifact_completeness" in row["observed_effects"]
+
+    def test_determinism_ok_change_recorded(self):
+        rec = _rec(
+            _state(_repo_with_signals("r1", "medium", 0.8, determinism_ok=False)),
+            _state(_repo_with_signals("r1", "medium", 0.8, determinism_ok=True)),
+            [_exe("run_determinism_regression_suite", "r1")],
+        )
+        row = _row(_build([rec]), "run_determinism_regression_suite")
+        assert "determinism_ok" in row["observed_effects"]
+
+    def test_recent_failures_change_recorded(self):
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5, recent_failures=3)),
+            _state(_repo_with_signals("r1", "high", 0.5, recent_failures=0)),
+            [_exe("rerun_failed_task", "r1")],
+        )
+        row = _row(_build([rec]), "rerun_failed_task")
+        assert "recent_failures" in row["observed_effects"]
+
+    def test_stale_runs_change_recorded(self):
+        rec = _rec(
+            _state(_repo_with_signals("r1", "low", 1.0, stale_runs=2)),
+            _state(_repo_with_signals("r1", "low", 1.0, stale_runs=0)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert "stale_runs" in row["observed_effects"]
+
+    def test_multiple_signals_changed_all_recorded(self):
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      last_run_ok=False, artifact_completeness=0.5)),
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      last_run_ok=True, artifact_completeness=1.0)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert "last_run_ok" in row["observed_effects"]
+        assert "artifact_completeness" in row["observed_effects"]
+
+    def test_unchanged_signals_not_included(self):
+        """Only changed signals appear; unchanged ones must be absent."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      last_run_ok=False, determinism_ok=True)),
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      last_run_ok=True, determinism_ok=True)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert "last_run_ok" in row["observed_effects"]
+        assert "determinism_ok" not in row["observed_effects"]
+
+    def test_observed_effects_sorted_deterministically(self):
+        """observed_effects must be a sorted list (deterministic ordering)."""
+        rec = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5,
+                                      last_run_ok=False, artifact_completeness=0.5,
+                                      determinism_ok=False)),
+            _state(_repo_with_signals("r1", "low", 1.0,
+                                      last_run_ok=True, artifact_completeness=1.0,
+                                      determinism_ok=True)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        effects = row["observed_effects"]
+        assert effects == sorted(effects)
+
+    def test_effects_accumulate_across_two_records(self):
+        """Effects from two records for the same action_type are unioned."""
+        rec1 = _rec(
+            _state(_repo_with_signals("r1", "high", 0.5, last_run_ok=False)),
+            _state(_repo_with_signals("r1", "high", 0.5, last_run_ok=True)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        rec2 = _rec(
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=0.5)),
+            _state(_repo_with_signals("r1", "low", 1.0, artifact_completeness=1.0)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec1, rec2]), "refresh_repo_health")
+        assert "last_run_ok" in row["observed_effects"]
+        assert "artifact_completeness" in row["observed_effects"]
+
+    def test_unexecuted_action_type_has_empty_effects(self):
+        """Action types with zero executions must have observed_effects=[]."""
+        action_obj = {
+            "action_id": "act", "action_type": "refresh_repo_health",
+            "priority": 0.55, "reason": "r", "eligible": True,
+            "blocked_by": [], "task_binding": {"task_id": "t", "args": {}},
+        }
+        rec = _rec(
+            _state(_repo_with_signals("r1", "medium", 0.8, actions=[action_obj])),
+            _state(_repo_with_signals("r1", "low", 1.0)),
+            [],  # nothing executed
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert row["observed_effects"] == []
