@@ -95,6 +95,34 @@ def test_empty_csv_produces_valid_html_no_data_rows(tmp_path):
     assert "<td>" not in content, "Empty CSV should produce no <td> data cells"
 
 
+def test_html_special_chars_are_escaped(tmp_path):
+    rows = [
+        {
+            "Suggestion ID": "S-XSS",
+            "Description": "<script>alert('xss')</script>",
+            "Example Metric": "a&b",
+            "Notes": "x>y and x<z",
+        },
+    ]
+    csv_file = _write_csv(tmp_path / "input.csv", rows)
+    html_file = tmp_path / "output.html"
+    generate(str(csv_file), str(html_file))
+    content = html_file.read_text()
+
+    # Raw special characters must not appear inside <td> cells.
+    assert "<script>" not in content
+    assert "alert('xss')" not in content or "&lt;script&gt;" in content
+    assert "a&b" not in content
+    assert "x>y" not in content
+    assert "x<z" not in content
+
+    # Escaped forms must be present.
+    assert "&lt;script&gt;" in content
+    assert "a&amp;b" in content
+    assert "x&gt;y" in content
+    assert "x&lt;z" in content
+
+
 def test_deterministic_output_same_input(tmp_path):
     rows = [
         {"Suggestion ID": "S-042", "Description": "Stable", "Example Metric": "99", "Notes": "repeat"},

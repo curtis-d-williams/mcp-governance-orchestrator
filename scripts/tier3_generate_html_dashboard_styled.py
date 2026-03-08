@@ -8,6 +8,7 @@ Enhanced Tier 3 portfolio HTML dashboard.
 """
 
 import csv
+import html
 
 def generate_styled_dashboard(csv_path="tier3_portfolio_report.csv", html_path="tier3_portfolio_dashboard_styled.html"):
     rows = []
@@ -28,7 +29,7 @@ def generate_styled_dashboard(csv_path="tier3_portfolio_report.csv", html_path="
         f.write("<table>\n")
         f.write("<tr><th>Suggestion ID</th><th>Description</th><th>Example Metric</th><th>Notes</th></tr>\n")
         for row in rows:
-            f.write(f"<tr><td>{row['Suggestion ID']}</td><td>{row['Description']}</td><td>{row['Example Metric']}</td><td>{row['Notes']}</td></tr>\n")
+            f.write(f"<tr><td>{html.escape(row['Suggestion ID'])}</td><td>{html.escape(row['Description'])}</td><td>{html.escape(row['Example Metric'])}</td><td>{html.escape(row['Notes'])}</td></tr>\n")
         f.write("</table></body></html>\n")
     print(f"Enhanced HTML dashboard generated at {html_path}")
 
