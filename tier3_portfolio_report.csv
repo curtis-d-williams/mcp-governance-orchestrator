@@ -1,0 +1,4 @@
+Suggestion ID,Description,Example Metric,Notes
+sample_template_example,Dry-run Tier 3 scaffold,42,"Non-enforcing, deterministic"
+repo_insights_example,Repo insights (Tier 3) template scaffold,42,"Non-enforcing, deterministic"
+intelligence_layer_example,Example suggestion-only artifact,42,"Non-enforcing, deterministic"
