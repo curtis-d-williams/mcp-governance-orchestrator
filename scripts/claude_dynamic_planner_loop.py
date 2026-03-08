@@ -232,6 +232,8 @@ def main(argv=None):
                         help="Path to action_effectiveness_ledger.json (optional).")
     parser.add_argument("--top-k", type=int, default=3, metavar="INT",
                         help="Number of top actions to consider (default: 3).")
+    parser.add_argument("--exploration-offset", type=int, default=0, metavar="INT",
+                        help="Start index into the action queue window (default: 0, clamped to valid range).")
     parser.add_argument("--portfolio-state-output", default=str(DEFAULT_PORTFOLIO_STATE_OUTPUT), metavar="FILE",
                         help="Destination path for post-run portfolio_state.json.")
     # Feedback capture (additive — disabled by default)
@@ -270,13 +272,18 @@ def main(argv=None):
     selected_actions = []
     if args.portfolio_state is not None:
         actions = _fetch_action_queue(args.portfolio_state, args.ledger)
-        tasks_to_run = _map_actions_to_tasks(actions, args.top_k)
+        # Deterministic window: clamp offset so window always fits within the queue.
+        start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
+        end = start + args.top_k
+        window_actions = actions[start:end]
+        tasks_to_run = _map_actions_to_tasks(window_actions, args.top_k)
         if tasks_to_run:
             if args.capture_feedback:
-                selected_actions = _selected_mapped_actions(actions, args.top_k)
+                selected_actions = _selected_mapped_actions(window_actions, args.top_k)
             log(
                 f"Planner using action-driven selection: "
-                f"actions={[a.get('action_type') for a in actions[:args.top_k]]}, "
+                f"offset={start}, window={len(window_actions)}, "
+                f"actions={[a.get('action_type') for a in window_actions]}, "
                 f"tasks={tasks_to_run}"
             )
         else:

@@ -348,6 +348,93 @@ class TestMainActionDriven:
         assert sorted(tasks) == sorted(ALL_TASKS)
 
 
+class TestExplorationOffset:
+    """--exploration-offset shifts the action window deterministically."""
+
+    def _actions(self, *action_types):
+        return [{"action_type": at, "priority": 0.9} for at in action_types]
+
+    def _run(self, tmp_path, actions, extra_argv=None):
+        state = tmp_path / "state.json"
+        state.write_text("{}", encoding="utf-8")
+        with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
+             unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
+            _mod.main(["--portfolio-state", str(state)] + (extra_argv or []))
+        return mock_run.call_args[0][0]
+
+    def test_default_offset_zero_preserves_previous_behavior(self, tmp_path):
+        """No --exploration-offset → same tasks as offset=0 explicitly."""
+        actions = self._actions(
+            "regenerate_missing_artifact",      # → build_portfolio_dashboard
+            "run_determinism_regression_suite", # → intelligence_layer_example
+            "refresh_repo_health",              # → repo_insights_example
+        )
+        tasks_default = self._run(tmp_path, actions, ["--top-k", "2"])
+        tasks_explicit = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "0"])
+        assert tasks_default == tasks_explicit
+
+    def test_offset_shifts_window_to_different_actions(self, tmp_path):
+        """offset=0 picks first window; offset=2 picks a later window."""
+        # 4-action queue, top_k=2
+        actions = self._actions(
+            "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
+            "run_determinism_regression_suite", # [1] → intelligence_layer_example
+            "refresh_repo_health",              # [2] → repo_insights_example
+            "no_such_action",                   # [3] unmapped
+        )
+        tasks_offset0 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "0"])
+        tasks_offset2 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "2"])
+        # offset=0: window=[0,1] → build_portfolio_dashboard, intelligence_layer_example
+        assert "build_portfolio_dashboard" in tasks_offset0
+        assert "intelligence_layer_example" in tasks_offset0
+        # offset=2: window=[2,3] → only repo_insights_example (index 3 is unmapped)
+        assert "repo_insights_example" in tasks_offset2
+        assert "build_portfolio_dashboard" not in tasks_offset2
+
+    def test_offset_one_skips_first_action(self, tmp_path):
+        """offset=1 skips index 0 and picks from index 1."""
+        actions = self._actions(
+            "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
+            "refresh_repo_health",              # [1] → repo_insights_example
+            "run_determinism_regression_suite", # [2] → intelligence_layer_example
+        )
+        tasks = self._run(tmp_path, actions, ["--top-k", "1", "--exploration-offset", "1"])
+        assert tasks == ["repo_insights_example"]
+        assert "build_portfolio_dashboard" not in tasks
+
+    def test_large_offset_clamps_to_last_valid_window(self, tmp_path):
+        """offset beyond queue length clamps to the last valid window."""
+        # 3 actions, top_k=2 → max valid start = max(0, 3-2) = 1
+        actions = self._actions(
+            "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
+            "refresh_repo_health",              # [1] → repo_insights_example
+            "run_determinism_regression_suite", # [2] → intelligence_layer_example
+        )
+        tasks_huge = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "999"])
+        tasks_clamped = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "1"])
+        assert tasks_huge == tasks_clamped
+
+    def test_offset_with_top_k_ge_queue_length_always_uses_full_queue(self, tmp_path):
+        """When top_k >= queue size, offset is always clamped to 0."""
+        actions = self._actions("refresh_repo_health", "regenerate_missing_artifact")
+        # top_k=5 > len=2 → max start = max(0, 2-5) = 0 → any offset clamps to 0
+        tasks_off0 = self._run(tmp_path, actions, ["--top-k", "5", "--exploration-offset", "0"])
+        tasks_off99 = self._run(tmp_path, actions, ["--top-k", "5", "--exploration-offset", "99"])
+        assert tasks_off0 == tasks_off99
+
+    def test_offset_in_log_message(self, tmp_path, capsys):
+        """Log must include offset and window fields."""
+        state = tmp_path / "state.json"
+        state.write_text("{}", encoding="utf-8")
+        actions = self._actions("refresh_repo_health")
+        with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
+             unittest.mock.patch.object(_mod, "run_tasks"):
+            _mod.main(["--portfolio-state", str(state), "--exploration-offset", "0"])
+        out = capsys.readouterr().out
+        assert "offset=0" in out
+        assert "window=" in out
+
+
 def test_run_tasks_builds_portfolio_state_after_aggregation(tmp_path):
     output_path = tmp_path / "portfolio_state.json"
 
