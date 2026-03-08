@@ -953,3 +953,79 @@ class TestLedgerOrdering:
         results = [_run(["--input", str(s), "--ledger", str(l), "--json"]).stdout
                    for _ in range(10)]
         assert len(set(results)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Boosted (effective) actions rank ahead of neutral (unexecuted) ones
+# ---------------------------------------------------------------------------
+
+class TestLedgerBoostedAheadOfNeutral:
+    """With --ledger, effective (boosted) actions must rank above neutral
+    (unexecuted) actions that share the same base priority, deterministically."""
+
+    def test_boosted_ranks_above_neutral_at_same_base_priority(self, tmp_path):
+        """adj_priority: 0.70+0.10=0.80 > 0.70+0.00=0.70 → effective first."""
+        s = tmp_path / "state.json"
+        l = tmp_path / "ledger.json"
+        _write_state(s, _make_state([
+            _make_repo("r", [
+                _make_action("act-neutral", "regenerate_missing_artifact", 0.70),
+                _make_action("act-boost", "refresh_repo_health", 0.70),
+            ])
+        ]))
+        _write_ledger(l, _make_ledger([
+            _make_ledger_row("refresh_repo_health", 0.88, 0.10, "effective"),
+            _make_ledger_row("regenerate_missing_artifact", 0.0, 0.0, "neutral"),
+        ]))
+        r = _run(["--input", str(s), "--ledger", str(l), "--json"])
+        parsed = json.loads(r.stdout)
+        assert parsed[0]["action_id"] == "act-boost"
+        assert parsed[0]["classification"] == "effective"
+        assert parsed[1]["action_id"] == "act-neutral"
+        assert parsed[1]["classification"] == "neutral"
+
+    def test_neutral_adjusted_priority_equals_base_priority(self, tmp_path):
+        """Neutral action: adjusted_priority == priority (no offset)."""
+        s = tmp_path / "state.json"
+        l = tmp_path / "ledger.json"
+        _write_state(s, _make_state([
+            _make_repo("r", [_make_action("act-a", "regenerate_missing_artifact", 0.55)])
+        ]))
+        _write_ledger(l, _make_ledger([
+            _make_ledger_row("regenerate_missing_artifact", 0.0, 0.0, "neutral"),
+        ]))
+        r = _run(["--input", str(s), "--ledger", str(l), "--json"])
+        parsed = json.loads(r.stdout)
+        assert parsed[0]["adjusted_priority"] == pytest.approx(0.55)
+
+    def test_boosted_adjusted_priority_equals_base_plus_offset(self, tmp_path):
+        """Effective action: adjusted_priority == priority + 0.10."""
+        s = tmp_path / "state.json"
+        l = tmp_path / "ledger.json"
+        _write_state(s, _make_state([
+            _make_repo("r", [_make_action("act-b", "refresh_repo_health", 0.55)])
+        ]))
+        _write_ledger(l, _make_ledger([
+            _make_ledger_row("refresh_repo_health", 0.88, 0.10, "effective"),
+        ]))
+        r = _run(["--input", str(s), "--ledger", str(l), "--json"])
+        parsed = json.loads(r.stdout)
+        assert parsed[0]["adjusted_priority"] == pytest.approx(0.65)
+
+    def test_ranking_deterministic_across_repeated_calls(self, tmp_path):
+        """Identical inputs produce byte-identical JSON output."""
+        s = tmp_path / "state.json"
+        l = tmp_path / "ledger.json"
+        _write_state(s, _make_state([
+            _make_repo("r", [
+                _make_action("act-neutral", "regenerate_missing_artifact", 0.70),
+                _make_action("act-boost", "refresh_repo_health", 0.70),
+            ])
+        ]))
+        _write_ledger(l, _make_ledger([
+            _make_ledger_row("refresh_repo_health", 0.88, 0.10, "effective"),
+            _make_ledger_row("regenerate_missing_artifact", 0.0, 0.0, "neutral"),
+        ]))
+        results = [_run(["--input", str(s), "--ledger", str(l), "--json"]).stdout
+                   for _ in range(5)]
+        assert len(set(results)) == 1

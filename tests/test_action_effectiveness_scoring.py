@@ -606,3 +606,66 @@ class TestMultipleRecords:
         ledger = build_action_effectiveness_ledger([], generated_at="")
         assert ledger["action_types"] == []
         assert ledger["summary"]["actions_tracked"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Conservative ledger: unexecuted action types are neutral with 0.0 adjustment
+# ---------------------------------------------------------------------------
+
+class TestUnexecutedActionConservative:
+    """times_executed==0 must yield classification=neutral, adjustment=0.0."""
+
+    def _unexecuted_row(self) -> dict:
+        action_obj = {
+            "action_id": "act", "action_type": "refresh_repo_health",
+            "priority": 0.55, "reason": "r", "eligible": True,
+            "blocked_by": [], "task_binding": {"task_id": "t", "args": {}},
+        }
+        rec = _rec(
+            _state(_repo("r1", "medium", 0.8, actions=[action_obj])),
+            _state(_repo("r1", "low", 1.0)),
+            [],  # nothing executed
+        )
+        return _row(_build([rec]), "refresh_repo_health")
+
+    def test_unexecuted_classification_is_neutral(self):
+        row = self._unexecuted_row()
+        assert row["times_executed"] == 0
+        assert row["classification"] == "neutral"
+
+    def test_unexecuted_priority_adjustment_is_zero(self):
+        row = self._unexecuted_row()
+        assert row["times_executed"] == 0
+        assert row["recommended_priority_adjustment"] == 0.0
+
+    def test_unexecuted_success_rate_is_zero(self):
+        row = self._unexecuted_row()
+        assert row["success_rate"] == 0.0
+
+    def test_unexecuted_effectiveness_score_is_zero(self):
+        row = self._unexecuted_row()
+        assert row["effectiveness_score"] == 0.0
+
+    def test_executed_effective_action_still_gets_positive_adjustment(self):
+        """Executed action with clear improvement must not be affected by the override."""
+        rec = _rec(
+            _state(_repo("r1", "critical", 0.4)),
+            _state(_repo("r1", "low", 1.0)),
+            [_exe("run_determinism_regression_suite", "r1")],
+        )
+        row = _row(_build([rec]), "run_determinism_regression_suite")
+        assert row["times_executed"] == 1
+        assert row["recommended_priority_adjustment"] == 0.10
+        assert row["classification"] == "effective"
+
+    def test_executed_ineffective_action_still_penalised(self):
+        """Executed action with no improvement must remain ineffective/negative."""
+        rec = _rec(
+            _state(_repo("r1", "high", 0.6)),
+            _state(_repo("r1", "high", 0.6)),
+            [_exe("refresh_repo_health", "r1")],
+        )
+        row = _row(_build([rec]), "refresh_repo_health")
+        assert row["times_executed"] == 1
+        assert row["recommended_priority_adjustment"] == -0.05
+        assert row["classification"] == "ineffective"

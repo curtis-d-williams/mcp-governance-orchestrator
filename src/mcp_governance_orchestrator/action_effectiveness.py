@@ -203,6 +203,12 @@ def build_action_effectiveness_ledger(
         else:
             classification = "ineffective"
 
+        # Conservative ledger: unexecuted action types have no history to judge.
+        # Override to neutral/zero so they are not penalised before any data exists.
+        if t_exec == 0:
+            priority_adj = 0.0
+            classification = "neutral"
+
         action_type_rows.append({
             "action_type": at,
             "times_recommended": t_rec,
