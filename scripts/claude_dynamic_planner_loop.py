@@ -61,6 +61,13 @@ TARGETING_CLAMP = 0.20
 
 CONFIDENCE_THRESHOLD = 5.0
 
+# ---------------------------------------------------------------------------
+# v0.29: Uncertainty-driven exploration constants
+# ---------------------------------------------------------------------------
+
+EXPLORATION_WEIGHT = 0.05
+EXPLORATION_CLAMP = 0.10
+
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -209,6 +216,33 @@ def compute_weak_signal_targeting_adjustment(action_type, ledger, current_signal
     return max(-TARGETING_CLAMP, min(TARGETING_CLAMP, targeting_score * TARGETING_WEIGHT))
 
 
+def compute_exploration_bonus(action_type, ledger):
+    """Return a deterministic exploration bonus for action_type.
+
+    uncertainty = 1 / (1 + times_executed)
+    bonus       = clamp(uncertainty * EXPLORATION_WEIGHT, ±EXPLORATION_CLAMP)
+
+    Missing ledger entry assumes times_executed = 0 (maximum uncertainty).
+    Missing times_executed field in an existing row assumes times_executed = 0.
+    Invalid (non-numeric) or negative times_executed assumes times_executed = 0.
+    Never raises.
+    """
+    row = ledger.get(action_type)
+    if row is None:
+        times_executed = 0
+    else:
+        te_raw = row.get("times_executed", 0)
+        try:
+            te = float(te_raw)
+        except (TypeError, ValueError):
+            te = 0.0
+        times_executed = max(0.0, te)
+
+    uncertainty = 1.0 / (1.0 + times_executed)
+    bonus = uncertainty * EXPLORATION_WEIGHT
+    return max(-EXPLORATION_CLAMP, min(EXPLORATION_CLAMP, bonus))
+
+
 def _apply_learning_adjustments(actions, ledger, current_signals=None):
     """Re-sort actions by base_priority + learning_adjustment (deterministic).
 
@@ -229,7 +263,12 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None):
         confidence = compute_confidence_factor(at, ledger)
         adj = compute_learning_adjustment(at, ledger)
         targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
-        learning_priority = a.get("priority", 0.0) + confidence * (adj + targeting_adj)
+        exploration_bonus = compute_exploration_bonus(at, ledger)
+        learning_priority = (
+            a.get("priority", 0.0)
+            + confidence * (adj + targeting_adj)
+            + exploration_bonus
+        )
         return (
             -learning_priority,
             at,

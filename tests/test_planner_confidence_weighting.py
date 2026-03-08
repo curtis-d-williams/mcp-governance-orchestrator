@@ -181,21 +181,30 @@ class TestConfidenceScaledLearningAdjustment:
 # ---------------------------------------------------------------------------
 
 class TestApplyLearningAdjustmentsConfidence:
-    def test_zero_executions_action_not_boosted(self):
-        """Action with 0 executions should not overtake action with same base priority."""
-        actions = _make_actions([
-            ("type_a", 0.5),  # no ledger entry → 0 confidence
-            ("type_b", 0.5),  # 0 executions → 0 confidence despite high effectiveness
-        ])
+    def test_zero_executions_confidence_term_not_boosted(self):
+        """Action with 0 executions gets zero confidence → learning term is zero.
+
+        v0.28: confidence=0 means the effectiveness learning term is suppressed.
+        v0.29: an exploration_bonus is still added on top (outside confidence),
+               so the zero-execution action may rank higher via exploration alone.
+        This test focuses on the confidence-term isolation (unit behavior), not
+        final sort order which is now v0.29-aware.
+        """
+        from scripts.claude_dynamic_planner_loop import (
+            compute_confidence_factor,
+            compute_learning_adjustment,
+        )
         ledger = {
             "type_a": {"effectiveness_score": 0.0, "effect_deltas": {}, "times_executed": 10},
             "type_b": {"effectiveness_score": 999.0, "effect_deltas": {}, "times_executed": 0},
         }
-        result = _apply_learning_adjustments(actions, ledger)
-        # type_a: 0.5 + 1.0 * 0 = 0.5; type_b: 0.5 + 0.0 * large = 0.5
-        # tiebreak alphabetical → type_a first
-        assert result[0]["action_type"] == "type_a"
-        assert result[1]["action_type"] == "type_b"
+        # Core v0.28 invariant: confidence is 0 for zero executions
+        assert compute_confidence_factor("type_b", ledger) == pytest.approx(0.0)
+        # Learning adjustment exists but is fully suppressed by zero confidence
+        raw_adj = compute_learning_adjustment("type_b", ledger)
+        assert raw_adj > 0.0, "precondition: raw adjustment should be large"
+        confidence = compute_confidence_factor("type_b", ledger)
+        assert confidence * raw_adj == pytest.approx(0.0)
 
     def test_high_confidence_action_overtakes_low_confidence(self):
         """Action at threshold executions should overtake sparse-evidence action."""
