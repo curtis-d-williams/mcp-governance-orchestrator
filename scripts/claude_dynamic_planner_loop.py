@@ -68,6 +68,12 @@ CONFIDENCE_THRESHOLD = 5.0
 EXPLORATION_WEIGHT = 0.05
 EXPLORATION_CLAMP = 0.10
 
+# ---------------------------------------------------------------------------
+# v0.30: Policy-weighted signal optimization constants
+# ---------------------------------------------------------------------------
+
+POLICY_WEIGHT_CLAMP = 5.0
+
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -216,6 +222,65 @@ def compute_weak_signal_targeting_adjustment(action_type, ledger, current_signal
     return max(-TARGETING_CLAMP, min(TARGETING_CLAMP, targeting_score * TARGETING_WEIGHT))
 
 
+def load_planner_policy(path):
+    """Load policy JSON and return {signal_name: weight}.
+
+    Returns an empty dict when:
+    - path is None
+    - file does not exist (fail-safe)
+    - file is unreadable or malformed
+    Never raises.
+    """
+    if path is None:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        return {k: v for k, v in data.items() if isinstance(k, str)}
+    except Exception:
+        return {}
+
+
+def compute_policy_adjustment(action_type, ledger, policy):
+    """Return policy-weighted signal priority adjustment for action_type.
+
+    policy_adjustment = sum(clamp(weight, ±POLICY_WEIGHT_CLAMP) * delta
+                            for each (signal, weight) in policy
+                            if signal in effect_deltas)
+
+    Returns 0.0 when:
+    - policy is empty or None
+    - action_type is absent from ledger
+    - effect_deltas is empty or no signals match the policy
+    Non-numeric weights or deltas are skipped. Never raises.
+    """
+    if not policy:
+        return 0.0
+    row = ledger.get(action_type, {})
+    if not row:
+        return 0.0
+    effect_deltas = row.get("effect_deltas", {})
+    if not effect_deltas:
+        return 0.0
+    total = 0.0
+    for signal, weight in policy.items():
+        delta = effect_deltas.get(signal)
+        if delta is None:
+            continue
+        try:
+            w = float(weight)
+            d = float(delta)
+        except (TypeError, ValueError):
+            continue
+        clamped_w = max(-POLICY_WEIGHT_CLAMP, min(POLICY_WEIGHT_CLAMP, w))
+        total += clamped_w * d
+    return total
+
+
 def compute_exploration_bonus(action_type, ledger):
     """Return a deterministic exploration bonus for action_type.
 
@@ -243,7 +308,7 @@ def compute_exploration_bonus(action_type, ledger):
     return max(-EXPLORATION_CLAMP, min(EXPLORATION_CLAMP, bonus))
 
 
-def _apply_learning_adjustments(actions, ledger, current_signals=None):
+def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None):
     """Re-sort actions by base_priority + learning_adjustment (deterministic).
 
     Returns the original list unchanged when ledger is empty.
@@ -252,21 +317,27 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None):
     current_signals: optional {signal_name: float} portfolio signal averages
         (v0.27). When absent or empty, targeting adjustment is zero and
         v0.26 behavior is preserved.
+
+    policy: optional {signal_name: weight} governance policy weights (v0.30).
+        When absent or empty, policy_adjustment is zero and v0.29 behavior
+        is preserved.
     """
     if not ledger:
         return actions
 
     _signals = current_signals or {}
+    _policy = policy or {}
 
     def _sort_key(a):
         at = a.get("action_type", "")
         confidence = compute_confidence_factor(at, ledger)
         adj = compute_learning_adjustment(at, ledger)
         targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, _signals)
+        policy_adj = compute_policy_adjustment(at, ledger, _policy)
         exploration_bonus = compute_exploration_bonus(at, ledger)
         learning_priority = (
             a.get("priority", 0.0)
-            + confidence * (adj + targeting_adj)
+            + confidence * (adj + targeting_adj + policy_adj)
             + exploration_bonus
         )
         return (
@@ -470,6 +541,8 @@ def main(argv=None):
                         help="Path to portfolio_state.json for action-driven selection.")
     parser.add_argument("--ledger", default=None, metavar="FILE",
                         help="Path to action_effectiveness_ledger.json (optional).")
+    parser.add_argument("--policy", default=None, metavar="FILE",
+                        help="Path to planner_policy.json for governance signal weights (optional).")
     parser.add_argument("--top-k", type=int, default=3, metavar="INT",
                         help="Number of top actions to consider (default: 3).")
     parser.add_argument("--exploration-offset", type=int, default=0, metavar="INT",
@@ -516,7 +589,8 @@ def main(argv=None):
         # v0.27: load portfolio signals for weak-signal targeting (no-op when absent).
         planner_ledger = load_effectiveness_ledger(args.ledger)
         current_signals = load_portfolio_signals(args.portfolio_state)
-        actions = _apply_learning_adjustments(actions, planner_ledger, current_signals)
+        planner_policy = load_planner_policy(args.policy)
+        actions = _apply_learning_adjustments(actions, planner_ledger, current_signals, planner_policy)
         # Deterministic window: clamp offset so window always fits within the queue.
         start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
         end = start + args.top_k
