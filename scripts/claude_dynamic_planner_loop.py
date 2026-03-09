@@ -247,6 +247,65 @@ def _invoke_capture_feedback(args):
 
 
 # ---------------------------------------------------------------------------
+# v0.34: Orchestration helpers
+# ---------------------------------------------------------------------------
+
+def load_runtime_context(args):
+    """Load ledger, portfolio signals, and policy from CLI args.
+
+    Returns (ledger, signals, policy) — all degrade safely to empty dicts
+    when the corresponding files are absent or unreadable.
+    """
+    ledger = load_effectiveness_ledger(args.ledger)
+    signals = load_portfolio_signals(args.portfolio_state)
+    policy = load_planner_policy(args.policy)
+    return ledger, signals, policy
+
+
+def select_actions(args, raw_actions, ledger, signals, policy):
+    """Apply ranking, compute exploration window, and map actions to tasks.
+
+    Args:
+        args:        parsed CLI namespace (reads top_k, exploration_offset).
+        raw_actions: unranked action list from _fetch_action_queue.
+        ledger:      effectiveness ledger dict.
+        signals:     portfolio signal averages dict.
+        policy:      planner policy weight dict.
+
+    Returns:
+        (tasks_to_run, selected_action_dicts, sorted_actions)
+        - tasks_to_run:           list of Tier-3 task names.
+        - selected_action_dicts:  action dicts for feedback capture (empty
+                                  when no tasks are mapped).
+        - sorted_actions:         full ranked list (for explain artifact).
+    """
+    actions = _apply_learning_adjustments(raw_actions, ledger, signals, policy)
+    start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
+    end = start + args.top_k
+    window = actions[start:end]
+    tasks_to_run = _map_actions_to_tasks(window, args.top_k)
+    selected_action_dicts = _selected_mapped_actions(window, args.top_k) if tasks_to_run else []
+    return tasks_to_run, selected_action_dicts, actions
+
+
+def run_selected_actions(tasks, portfolio_state_output):
+    """Delegate to run_tasks. Provided as an explicit orchestration entry point."""
+    run_tasks(tasks, portfolio_state_output)
+
+
+def write_explain_artifact(explain_actions, ledger, signals, policy):
+    """Write planner_priority_breakdown.json for --explain mode.
+
+    Read-only with respect to ranking — does not affect planner behavior.
+    """
+    breakdown = _build_priority_breakdown(explain_actions, ledger, signals, policy)
+    Path("planner_priority_breakdown.json").write_text(
+        json.dumps(breakdown, indent=2) + "\n", encoding="utf-8"
+    )
+    log(f"Explain mode: wrote planner_priority_breakdown.json ({len(breakdown)} entries)")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -265,6 +324,9 @@ def main(argv=None):
                         help="Number of top actions to consider (default: 3).")
     parser.add_argument("--exploration-offset", type=int, default=0, metavar="INT",
                         help="Start index into the action queue window (default: 0, clamped to valid range).")
+    parser.add_argument("--max-actions", type=int, default=None, metavar="INT",
+                        help="Cap selected actions to at most this many (default: no cap). "
+                             "When present, selected tasks are clamped to min(top_k, max_actions).")
     parser.add_argument("--portfolio-state-output", default=str(DEFAULT_PORTFOLIO_STATE_OUTPUT), metavar="FILE",
                         help="Destination path for post-run portfolio_state.json.")
     # Feedback capture (additive — disabled by default)
@@ -305,37 +367,25 @@ def main(argv=None):
             parser.error(f"--capture-feedback requires: {', '.join(missing)}")
 
     selected_actions = []
-    # v0.31: explain mode — ranked action list for breakdown (populated below)
     _explain_actions = []
     _explain_ledger = {}
     _explain_signals = {}
     _explain_policy = {}
 
     if args.portfolio_state is not None:
-        actions = _fetch_action_queue(args.portfolio_state, args.ledger)
-        # v0.26: apply planner-side learning adjustment (no-op when ledger absent).
-        # v0.27: load portfolio signals for weak-signal targeting (no-op when absent).
-        planner_ledger = load_effectiveness_ledger(args.ledger)
-        current_signals = load_portfolio_signals(args.portfolio_state)
-        planner_policy = load_planner_policy(args.policy)
-        actions = _apply_learning_adjustments(actions, planner_ledger, current_signals, planner_policy)
-        # v0.31: capture ranked list for explain mode (read-only, after ranking)
-        _explain_actions = actions
-        _explain_ledger = planner_ledger
-        _explain_signals = current_signals
-        _explain_policy = planner_policy
-        # Deterministic window: clamp offset so window always fits within the queue.
-        start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
-        end = start + args.top_k
-        window_actions = actions[start:end]
-        tasks_to_run = _map_actions_to_tasks(window_actions, args.top_k)
+        raw_actions = _fetch_action_queue(args.portfolio_state, args.ledger)
+        _explain_ledger, _explain_signals, _explain_policy = load_runtime_context(args)
+        tasks_to_run, action_dicts, _explain_actions = select_actions(
+            args, raw_actions, _explain_ledger, _explain_signals, _explain_policy
+        )
         if tasks_to_run:
             if args.capture_feedback:
-                selected_actions = _selected_mapped_actions(window_actions, args.top_k)
+                selected_actions = action_dicts
+            start = max(0, min(args.exploration_offset, max(0, len(_explain_actions) - args.top_k)))
             log(
                 f"Planner using action-driven selection: "
-                f"offset={start}, window={len(window_actions)}, "
-                f"actions={[a.get('action_type') for a in window_actions]}, "
+                f"offset={start}, window={min(args.top_k, len(_explain_actions) - start)}, "
+                f"actions={[a.get('action_type') for a in _explain_actions[start:start + args.top_k]]}, "
                 f"tasks={tasks_to_run}"
             )
         else:
@@ -345,17 +395,15 @@ def main(argv=None):
         log("Planner using fallback task selection (no portfolio state provided)")
         tasks_to_run = prioritize_tasks()
 
+    # v0.34: optional runtime safety cap — deterministically limits selected actions.
+    if args.max_actions is not None:
+        tasks_to_run = tasks_to_run[:args.max_actions]
+
     # v0.31: write explain artifact before running tasks (read-only, no ranking effect)
     if args.explain:
-        breakdown = _build_priority_breakdown(
-            _explain_actions, _explain_ledger, _explain_signals, _explain_policy
-        )
-        Path("planner_priority_breakdown.json").write_text(
-            json.dumps(breakdown, indent=2) + "\n", encoding="utf-8"
-        )
-        log(f"Explain mode: wrote planner_priority_breakdown.json ({len(breakdown)} entries)")
+        write_explain_artifact(_explain_actions, _explain_ledger, _explain_signals, _explain_policy)
 
-    run_tasks(tasks_to_run, Path(args.portfolio_state_output))
+    run_selected_actions(tasks_to_run, Path(args.portfolio_state_output))
 
     if args.capture_feedback:
         _write_executed_actions(args.executed_actions_output, selected_actions)
