@@ -18,6 +18,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Ensure the repo root is on sys.path so `from scripts.*` imports work
+# whether the script is invoked directly (python3 scripts/this.py) or
+# imported via importlib from the repo root.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # ---------------------------------------------------------------------------
 # v0.33: Pure scoring logic lives in planner_scoring; re-exported here for
 # backward compatibility so all existing imports from this module still work.

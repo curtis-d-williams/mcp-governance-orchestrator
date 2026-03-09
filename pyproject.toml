@@ -47,4 +47,4 @@ testpaths = ["tests"]
 
 [project.optional-dependencies]
 release_guardian = ["mcp-release-guardian==0.1.4"]
-dev = ["pandas"]
+dev = ["pandas", "matplotlib"]
