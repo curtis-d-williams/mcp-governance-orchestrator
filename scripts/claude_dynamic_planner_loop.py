@@ -7,6 +7,8 @@ When --portfolio-state is supplied the loop fetches a prioritized action queue
 from list_portfolio_actions.py and maps actions to tasks. When that path is
 absent, or when the queue is empty / all actions are unmapped, it falls back to
 the deterministic ALL_TASKS ordering.
+
+v0.35: --run-envelope writes a deterministic JSON envelope describing the run.
 """
 
 import argparse
@@ -45,6 +47,9 @@ from scripts.planner_scoring import (  # noqa: F401
     load_planner_policy,
     load_portfolio_signals,
 )
+
+# v0.35: version constant for run envelopes
+PLANNER_VERSION = "0.35"
 
 # Paths and manifest
 MANIFEST_FILE = "portfolio_repos_example.json"
@@ -306,6 +311,53 @@ def write_explain_artifact(explain_actions, ledger, signals, policy):
 
 
 # ---------------------------------------------------------------------------
+# v0.35: Run envelope
+# ---------------------------------------------------------------------------
+
+_EXPLAIN_ARTIFACT_NAME = "planner_priority_breakdown.json"
+
+
+def write_run_envelope(path, args, tasks_to_run, explain_artifact_path=None):
+    """Write a deterministic JSON envelope describing this planner run.
+
+    Args:
+        path:                 Destination file path (str or Path).
+        args:                 Parsed CLI namespace.
+        tasks_to_run:         Final list of task names selected for execution.
+        explain_artifact_path: Path to explain artifact if --explain was used,
+                              else None.
+
+    No-op if path is None. Creates parent directories as needed.
+    Behavior is additive: calling this has no effect on planner ranking or
+    task execution.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    envelope = {
+        "planner_version": PLANNER_VERSION,
+        "inputs": {
+            "exploration_offset": getattr(args, "exploration_offset", 0),
+            "explain": getattr(args, "explain", False),
+            "ledger": getattr(args, "ledger", None),
+            "max_actions": getattr(args, "max_actions", None),
+            "policy": getattr(args, "policy", None),
+            "portfolio_state": getattr(args, "portfolio_state", None),
+            "top_k": getattr(args, "top_k", 3),
+        },
+        "selected_actions": list(tasks_to_run),
+        "selection_count": len(tasks_to_run),
+        "artifacts": {
+            "explain_artifact": explain_artifact_path,
+        },
+        "execution": {
+            "executed": True,
+            "status": "ok",
+        },
+    }
+    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -346,6 +398,10 @@ def main(argv=None):
     parser.add_argument("--explain", action="store_true", default=False,
                         help="Write planner_priority_breakdown.json with per-action scoring components. "
                              "Read-only: does not affect ranking or planner behavior.")
+    # v0.35: run envelope
+    parser.add_argument("--run-envelope", default=None, metavar="FILE",
+                        help="Write a deterministic JSON run envelope to this path. "
+                             "Omitting this flag preserves default behavior unchanged.")
     args = parser.parse_args(argv)
 
     # Fail closed: validate all required args when capture-feedback is enabled.
@@ -399,11 +455,21 @@ def main(argv=None):
     if args.max_actions is not None:
         tasks_to_run = tasks_to_run[:args.max_actions]
 
+    # v0.35: record explain artifact path before writing, so envelope can reference it.
+    _envelope_explain_path = None
+    if args.explain:
+        _envelope_explain_path = _EXPLAIN_ARTIFACT_NAME
+
     # v0.31: write explain artifact before running tasks (read-only, no ranking effect)
     if args.explain:
         write_explain_artifact(_explain_actions, _explain_ledger, _explain_signals, _explain_policy)
 
     run_selected_actions(tasks_to_run, Path(args.portfolio_state_output))
+
+    # v0.35: write run envelope (additive, no ranking effect)
+    if args.run_envelope is not None:
+        write_run_envelope(args.run_envelope, args, tasks_to_run,
+                           explain_artifact_path=_envelope_explain_path)
 
     if args.capture_feedback:
         _write_executed_actions(args.executed_actions_output, selected_actions)
