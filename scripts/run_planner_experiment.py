@@ -19,6 +19,10 @@ in the same directory as --output.
 v0.37: --config support for JSON-driven experiment configuration.
        CLI flags override config values when both are supplied.
        Existing CLI-only behaviour unchanged.
+v0.38: policy_sweep support in config.  When config contains a non-empty
+       "policy_sweep" list each entry is run as a separate experiment with
+       a materialised policy file; results are aggregated into
+       policy_sweep_results.json.  Existing non-sweep behaviour unchanged.
 stdlib only (except shared project imports).
 """
 
@@ -159,6 +163,120 @@ def run_experiment(args, planner_main=None):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Policy sweep helpers (v0.38)
+# ---------------------------------------------------------------------------
+
+# Ordered list of all experiment arg attributes.  Used to copy args safely
+# regardless of whether the object uses instance or class-level defaults.
+_ARGS_ATTRS = (
+    "runs", "portfolio_state", "ledger", "policy", "top_k",
+    "exploration_offset", "max_actions", "explain", "output",
+    "envelope_prefix",
+)
+
+
+def _sweep_policy_filename(name):
+    """Return deterministic policy filename for a named sweep entry."""
+    return f"sweep_{name}_policy.json"
+
+
+def _sweep_result_filename(name):
+    """Return deterministic experiment result filename for a named sweep entry."""
+    return f"sweep_{name}_experiment_results.json"
+
+
+def _sweep_envelope_prefix(name):
+    """Return deterministic envelope prefix for a named sweep entry."""
+    return f"sweep_{name}_envelope"
+
+
+def _materialize_sweep_policy(output_dir, entry):
+    """Write the weights dict for *entry* to a policy JSON file.
+
+    The file is written to *output_dir*/<sweep_policy_filename>.
+    Returns the Path of the written file.
+    """
+    path = output_dir / _sweep_policy_filename(entry["name"])
+    weights = entry.get("weights", {})
+    path.write_text(
+        json.dumps(weights, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def _copy_args(args):
+    """Return a shallow copy of *args* containing only known experiment attrs."""
+    obj = type("Args", (), {})()
+    for attr in _ARGS_ATTRS:
+        setattr(obj, attr, getattr(args, attr, None))
+    return obj
+
+
+def run_policy_sweep(sweep_entries, base_args, planner_main=None):
+    """Execute the configured experiment for each policy sweep entry.
+
+    For each entry in *sweep_entries*:
+    - materialises a deterministic policy JSON file in the output directory
+    - runs the experiment with that policy
+    - writes a per-entry experiment result file
+
+    Then writes a top-level aggregate file ``policy_sweep_results.json`` in
+    the same output directory.
+
+    Args:
+        sweep_entries: list of dicts, each with keys ``name`` (str) and
+                       ``weights`` (dict).
+        base_args:     Namespace-like object with the same attrs as the args
+                       passed to run_experiment (runs, top_k, etc.).
+        planner_main:  Optional planner callable injected for testing.
+
+    Returns:
+        A dict with keys: sweep_count, entries, aggregate_path.
+    """
+    if planner_main is None:
+        from scripts.claude_dynamic_planner_loop import main as planner_main  # noqa: PLC0415
+
+    output_dir = Path(base_args.output).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    entries = []
+    for entry in sweep_entries:
+        name = entry["name"]
+        weights = entry.get("weights", {})
+
+        policy_path = _materialize_sweep_policy(output_dir, entry)
+
+        sweep_args = _copy_args(base_args)
+        sweep_args.policy = str(policy_path)
+        sweep_args.output = str(output_dir / _sweep_result_filename(name))
+        sweep_args.envelope_prefix = _sweep_envelope_prefix(name)
+
+        result = run_experiment(sweep_args, planner_main=planner_main)
+
+        entries.append({
+            "name": name,
+            "weights": weights,
+            "experiment_results_path": sweep_args.output,
+            "evaluation_summary": result["evaluation_summary"],
+            "run_envelope_paths": result["envelope_paths"],
+        })
+
+    aggregate = {
+        "sweep_count": len(entries),
+        "entries": entries,
+    }
+    aggregate_path = output_dir / "policy_sweep_results.json"
+    aggregate_path.write_text(
+        json.dumps(aggregate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return {
+        "sweep_count": len(entries),
+        "entries": entries,
+        "aggregate_path": str(aggregate_path),
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Run a deterministic planner experiment over N runs.",
@@ -197,12 +315,20 @@ def main(argv=None):
     if args.runs < 1:
         parser.error("--runs must be at least 1.")
 
-    result = run_experiment(args)
-    sys.stdout.write(
-        f"Experiment complete: {result['run_count']} run(s), "
-        f"identical={result['evaluation_summary']['identical']}, "
-        f"results at {args.output}\n"
-    )
+    sweep = config.get("policy_sweep") or []
+    if sweep:
+        result = run_policy_sweep(sweep, args)
+        sys.stdout.write(
+            f"Policy sweep complete: {result['sweep_count']} entry(s), "
+            f"aggregate at {result['aggregate_path']}\n"
+        )
+    else:
+        result = run_experiment(args)
+        sys.stdout.write(
+            f"Experiment complete: {result['run_count']} run(s), "
+            f"identical={result['evaluation_summary']['identical']}, "
+            f"results at {args.output}\n"
+        )
 
 
 if __name__ == "__main__":
