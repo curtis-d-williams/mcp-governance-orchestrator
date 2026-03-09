@@ -120,6 +120,14 @@ experiment_results.json
 experiment_report.json
 experiment_report.md
 
+### Single-command local run
+
+./scripts/run_experiment.sh
+
+Optional custom config:
+
+./scripts/run_experiment.sh path/to/experiment_config.json
+
 ### Policy sweep experiments
 
 Experiments can define multiple governance policies inside the config file.
