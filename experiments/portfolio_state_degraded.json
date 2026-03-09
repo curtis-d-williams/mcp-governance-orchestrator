@@ -1,0 +1,79 @@
+{
+  "schema_version": "v1",
+  "portfolio_id": "portfolio-experiment-degraded",
+  "generated_at": "",
+  "summary": {
+    "repo_count": 1,
+    "repos_healthy": 0,
+    "repos_degraded": 1,
+    "repos_failing": 0,
+    "repos_stale": 1,
+    "open_issues_total": 2,
+    "eligible_actions_total": 3,
+    "blocked_actions_total": 0
+  },
+  "repos": [
+    {
+      "repo_id": "mcp-governance-orchestrator",
+      "status": "degraded",
+      "health_score": 0.58,
+      "risk_level": "medium",
+      "signals": {
+        "last_run_ok": false,
+        "artifact_completeness": 0.4,
+        "determinism_ok": true,
+        "recent_failures": 2,
+        "stale_runs": 3
+      },
+      "open_issues": [
+        "missing_artifacts",
+        "stale_execution"
+      ],
+      "recommended_actions": [
+        {
+          "action_id": "regen-artifacts-01",
+          "action_type": "regenerate_missing_artifact",
+          "priority": 0.95,
+          "eligible": true,
+          "preconditions": ["artifacts_missing"],
+          "reason": "artifact completeness below target"
+        },
+        {
+          "action_id": "refresh-health-01",
+          "action_type": "refresh_repo_health",
+          "priority": 0.80,
+          "eligible": true,
+          "preconditions": [],
+          "reason": "repo state is stale"
+        },
+        {
+          "action_id": "rerun-failed-01",
+          "action_type": "rerun_failed_task",
+          "priority": 0.70,
+          "eligible": true,
+          "preconditions": ["last_run_failed"],
+          "reason": "recent failures detected"
+        }
+      ],
+      "action_history": [],
+      "cooldowns": [],
+      "escalations": []
+    }
+  ],
+  "portfolio_recommendations": [
+    {
+      "action_id": "portfolio-regen-01",
+      "action_type": "regenerate_missing_artifact",
+      "priority": 0.95,
+      "eligible": true,
+      "reason": "portfolio artifact completeness low"
+    },
+    {
+      "action_id": "portfolio-refresh-01",
+      "action_type": "refresh_repo_health",
+      "priority": 0.80,
+      "eligible": true,
+      "reason": "staleness above target"
+    }
+  ]
+}

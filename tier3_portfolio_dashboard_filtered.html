@@ -1,0 +1,30 @@
+<html><head><title>Tier 3 Interactive Dashboard</title>
+<style>
+table { border-collapse: collapse; width: 100%; }th, td { border: 1px solid #333; padding: 8px; text-align: left; }tr:nth-child(even) { background-color: #f2f2f2; }th { background-color: #4CAF50; color: white; cursor: pointer; }
+</style>
+<script>
+function sortTable(n) { /* same sortTable function as before */
+var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+table = document.getElementById('tier3Table'); switching = true; dir = 'asc';
+while(switching) { switching=false; rows=table.rows;
+for(i=1;i<rows.length-1;i++){shouldSwitch=false;x=rows[i].getElementsByTagName('TD')[n];y=rows[i+1].getElementsByTagName('TD')[n];
+if(dir=='asc'){if(x.innerHTML.toLowerCase()>y.innerHTML.toLowerCase()){shouldSwitch=true;break;}}
+else if(dir=='desc'){if(x.innerHTML.toLowerCase()<y.innerHTML.toLowerCase()){shouldSwitch=true;break;}}
+}if(shouldSwitch){rows[i].parentNode.insertBefore(rows[i+1],rows[i]);switching=true;switchcount++;}
+else{if(switchcount==0&&dir=='asc'){dir='desc';switching=true;}}}}
+function filterTable() {
+var input, filter, table, tr, td, i, txtValue;
+input = document.getElementById('filterInput'); filter = input.value.toUpperCase();
+table = document.getElementById('tier3Table'); tr = table.getElementsByTagName('tr');
+for(i=1;i<tr.length;i++){td=tr[i].getElementsByTagName('td')[0];
+if(td){txtValue=td.textContent||td.innerText;if(txtValue.toUpperCase().indexOf(filter)>-1){tr[i].style.display='';}else{tr[i].style.display='none';}}}
+}
+</script></head><body>
+<h1>Tier 3 Interactive Dashboard with Filter</h1>
+<input type='text' id='filterInput' onkeyup='filterTable()' placeholder='Filter by Suggestion ID...' style='margin-bottom:10px;width:50%'><br>
+<table id='tier3Table'>
+<tr><th onclick='sortTable(0)'>Suggestion ID</th><th onclick='sortTable(1)'>Description</th><th onclick='sortTable(2)'>Example Metric</th><th onclick='sortTable(3)'>Notes</th></tr>
+<tr><td>sample_template_example</td><td>Dry-run Tier 3 scaffold</td><td>42</td><td>Non-enforcing, deterministic</td></tr>
+<tr><td>repo_insights_example</td><td>Repo insights (Tier 3) template scaffold</td><td>42</td><td>Non-enforcing, deterministic</td></tr>
+<tr><td>intelligence_layer_example</td><td>Example suggestion-only artifact</td><td>42</td><td>Non-enforcing, deterministic</td></tr>
+</table></body></html>

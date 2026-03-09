@@ -18,3 +18,22 @@ dist/
 
 # generated run artifacts
 artifacts/
+
+# -----------------------------------------
+# Planner / experiment runtime artifacts
+# -----------------------------------------
+
+planner_priority_breakdown.json
+experiment_results.json
+policy_sweep_results.json
+experiment_report.json
+experiment_report.md
+
+planner_run_envelope_*.json
+tier3_run_envelope.json
+tier3_multi_run_aggregate.json
+
+portfolio_state.json
+tier3_execution.log
+
+tier3_portfolio_dashboard_summary.png

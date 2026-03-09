@@ -1,60 +1,154 @@
-# mcp-governance-orchestrator
+# MCP Governance Orchestrator
+Adaptive automation factory for multi-repository governance and analysis.
 
-Deterministic, network-free, read-only orchestrator that aggregates MCP “guardian” outputs without interpretation.
+Current architecture milestone: **v0.10.0-alpha**
 
-## V1 Contract
+This repository implements a deterministic automation system that:
 
-See:
-- `docs/V1_CONTRACT.md`
-- `docs/EXAMPLE_OUTPUTS.md`
+- executes Tier-3 portfolio tasks
+- derives portfolio state
+- generates prioritized actions
+- evaluates action outcomes
+- adaptively adjusts task prioritization
 
-## Adding a guardian (V1)
+The system forms a closed optimization loop.
 
-V1 is intentionally static:
-- Add a new guardian by inserting a single entry in the orchestrator routing table (see `src/mcp_governance_orchestrator/server.py`).
-- No dynamic discovery/registry/plugins.
-- Guardian outputs are preserved verbatim; the orchestrator does not normalize or reinterpret them.
+---
 
-After adding a routing entry, install the guardian package locally and run a composed invocation. Canonical composed JSON examples are captured in `docs/EXAMPLE_OUTPUTS.md`.
+# Architecture
 
-## Development
+Full architecture reference:
 
-```bash
+docs/ARCHITECTURE_V0_10.md
+
+High-level loop:
+
+Tier-3 execution  
+→ artifact bridge  
+→ portfolio_state.json  
+→ prioritized action queue  
+→ effectiveness ledger  
+→ adaptive planner  
+→ next execution
+
+---
+
+# Core Scripts
+
+Tier-3 execution
+
+scripts/run_portfolio_task.py
+
+Portfolio state
+
+scripts/build_portfolio_state_from_artifacts.py  
+scripts/build_portfolio_state.py
+
+Action queue
+
+scripts/list_portfolio_actions.py
+
+Effectiveness evaluation
+
+scripts/build_action_effectiveness_ledger.py
+
+Adaptive planner
+
+scripts/claude_dynamic_planner_loop.py
+
+---
+
+# Running Tests
+
+Run the full regression suite:
+
 pytest -q
-python3 -m build --sdist --wheel
 
-```
+Current coverage:
 
-## Optional: install release guardian
+> ~335 tests passing
 
-The orchestrator can invoke `mcp-release-guardian:v1` in-process when the release guardian package is installed. If it is not installed, invocation fail-closes deterministically with `fail-closed: guardian_import_failed`.
+---
 
-Install:
+# Key Artifacts
 
-```bash
-pip install "mcp-governance-orchestrator[release_guardian]==0.2.1"
+Tier-3 outputs
 
+tier3_portfolio_report.csv  
+tier3_multi_run_aggregate.json  
 
-```
+Control plane
 
-## Create a new MCP repo (factory)
+portfolio_state.json  
 
-This repository includes a deterministic scaffold script that creates a new MCP repository from the golden template and verifies Tier-1 compliance using the installed orchestrator distribution (treat as 0.2.3 until explicitly upgraded).
+Adaptive evaluation
 
-Prerequisites:
-- Python 3.11+
-- mcp-governance-orchestrator installed (editable is fine)
-- Guardians installed:
-  - mcp-repo-hygiene-guardian:v1
-  - mcp-release-guardian:v1
+action_effectiveness_ledger.json  
 
-Create a new repository:
+---
 
-    ./tools/scaffold_new_mcp.sh mcp-my-domain-guardian
+# Development Status
 
-The script will:
-- Copy the golden scaffold (mcp-test-guardian)
-- Initialize git and commit
-- Run Tier-1 guardians deterministically
-- Write canonical JSON to docs/EXAMPLE_OUTPUTS.md
-- Commit the canonical output
+Current milestone:
+
+v0.10.0-alpha
+
+Adaptive portfolio control plane and effectiveness-driven planner loop implemented.
+
+Next milestone:
+
+v0.11  
+automatic evaluation record generation to fully close the optimization loop.
+
+---
+
+## Running Planner Experiments
+
+The repository includes a deterministic experiment pipeline for evaluating planner behavior.
+
+### Run a local experiment
+
+python scripts/run_planner_experiment.py --config experiment_config.json
+
+### Generate a report
+
+python scripts/generate_experiment_report.py
+
+This produces:
+
+experiment_results.json
+experiment_report.json
+experiment_report.md
+
+### Single-command local run
+
+./scripts/run_experiment.sh
+
+Optional custom config:
+
+./scripts/run_experiment.sh path/to/experiment_config.json
+
+### Policy sweep experiments
+
+Experiments can define multiple governance policies inside the config file.
+
+python scripts/run_planner_experiment.py --config experiment_config.json
+
+The system will generate:
+
+policy_sweep_results.json
+
+### CI experiments
+
+The repository includes a GitHub Actions workflow that runs experiments automatically when:
+
+- a commit is pushed
+- a pull request is opened
+
+Artifacts produced by CI include:
+
+experiment_results.json  
+policy_sweep_results.json  
+experiment_report.json  
+experiment_report.md  
+planner_run_envelope_*.json

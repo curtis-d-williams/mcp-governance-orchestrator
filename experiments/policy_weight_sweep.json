@@ -1,0 +1,48 @@
+{
+  "runs": 50,
+  "planner": {
+    "top_k": 3
+  },
+  "output": {
+    "experiment_results": "experiment_results.json",
+    "envelope_prefix": "planner_run_envelope"
+  },
+  "policy_sweep": [
+    {
+      "name": "artifact_heavy",
+      "weights": {
+        "artifact_completeness": 2.0,
+        "recent_failures": 0.5,
+        "stale_runs": 0.5,
+        "determinism_ok": 0.5
+      }
+    },
+    {
+      "name": "determinism_heavy",
+      "weights": {
+        "artifact_completeness": 0.5,
+        "recent_failures": 1.5,
+        "stale_runs": 1.0,
+        "determinism_ok": 2.0
+      }
+    },
+    {
+      "name": "balanced",
+      "weights": {
+        "artifact_completeness": 1.0,
+        "recent_failures": 1.0,
+        "stale_runs": 1.0,
+        "determinism_ok": 1.0
+      }
+    },
+    {
+      "name": "failure_reduction",
+      "weights": {
+        "artifact_completeness": 0.5,
+        "recent_failures": 2.0,
+        "stale_runs": 1.5,
+        "determinism_ok": 1.0
+      }
+    }
+  ]
+}

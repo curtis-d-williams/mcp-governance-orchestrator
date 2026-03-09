@@ -1,0 +1,1012 @@
+{
+  "envelope_paths": [
+    "sweep_artifact_heavy_envelope_run1.json",
+    "sweep_artifact_heavy_envelope_run2.json",
+    "sweep_artifact_heavy_envelope_run3.json",
+    "sweep_artifact_heavy_envelope_run4.json",
+    "sweep_artifact_heavy_envelope_run5.json",
+    "sweep_artifact_heavy_envelope_run6.json",
+    "sweep_artifact_heavy_envelope_run7.json",
+    "sweep_artifact_heavy_envelope_run8.json",
+    "sweep_artifact_heavy_envelope_run9.json",
+    "sweep_artifact_heavy_envelope_run10.json",
+    "sweep_artifact_heavy_envelope_run11.json",
+    "sweep_artifact_heavy_envelope_run12.json",
+    "sweep_artifact_heavy_envelope_run13.json",
+    "sweep_artifact_heavy_envelope_run14.json",
+    "sweep_artifact_heavy_envelope_run15.json",
+    "sweep_artifact_heavy_envelope_run16.json",
+    "sweep_artifact_heavy_envelope_run17.json",
+    "sweep_artifact_heavy_envelope_run18.json",
+    "sweep_artifact_heavy_envelope_run19.json",
+    "sweep_artifact_heavy_envelope_run20.json",
+    "sweep_artifact_heavy_envelope_run21.json",
+    "sweep_artifact_heavy_envelope_run22.json",
+    "sweep_artifact_heavy_envelope_run23.json",
+    "sweep_artifact_heavy_envelope_run24.json",
+    "sweep_artifact_heavy_envelope_run25.json",
+    "sweep_artifact_heavy_envelope_run26.json",
+    "sweep_artifact_heavy_envelope_run27.json",
+    "sweep_artifact_heavy_envelope_run28.json",
+    "sweep_artifact_heavy_envelope_run29.json",
+    "sweep_artifact_heavy_envelope_run30.json",
+    "sweep_artifact_heavy_envelope_run31.json",
+    "sweep_artifact_heavy_envelope_run32.json",
+    "sweep_artifact_heavy_envelope_run33.json",
+    "sweep_artifact_heavy_envelope_run34.json",
+    "sweep_artifact_heavy_envelope_run35.json",
+    "sweep_artifact_heavy_envelope_run36.json",
+    "sweep_artifact_heavy_envelope_run37.json",
+    "sweep_artifact_heavy_envelope_run38.json",
+    "sweep_artifact_heavy_envelope_run39.json",
+    "sweep_artifact_heavy_envelope_run40.json",
+    "sweep_artifact_heavy_envelope_run41.json",
+    "sweep_artifact_heavy_envelope_run42.json",
+    "sweep_artifact_heavy_envelope_run43.json",
+    "sweep_artifact_heavy_envelope_run44.json",
+    "sweep_artifact_heavy_envelope_run45.json",
+    "sweep_artifact_heavy_envelope_run46.json",
+    "sweep_artifact_heavy_envelope_run47.json",
+    "sweep_artifact_heavy_envelope_run48.json",
+    "sweep_artifact_heavy_envelope_run49.json",
+    "sweep_artifact_heavy_envelope_run50.json"
+  ],
+  "evaluation_summary": {
+    "envelope_count": 50,
+    "identical": true,
+    "ordering_differences": false,
+    "runs": [
+      {
+        "index": 0,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 1,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 2,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 3,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 4,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 5,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 6,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 7,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 8,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 9,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 10,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 11,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 12,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 13,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 14,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 15,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 16,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 17,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 18,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 19,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 20,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 21,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 22,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 23,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 24,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 25,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 26,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 27,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 28,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 29,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 30,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 31,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 32,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 33,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 34,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 35,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 36,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 37,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 38,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 39,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 40,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 41,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 42,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 43,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 44,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 45,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 46,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 47,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 48,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      },
+      {
+        "index": 49,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": "sweep_artifact_heavy_policy.json",
+          "portfolio_state": null,
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "intelligence_layer_example",
+          "repo_insights_example"
+        ],
+        "selection_count": 3
+      }
+    ]
+  },
+  "run_count": 50
+}

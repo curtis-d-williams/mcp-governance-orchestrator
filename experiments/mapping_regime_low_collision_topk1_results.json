@@ -1,0 +1,43 @@
+{
+  "envelope_paths": [
+    "experiments/mapping_regime_low_collision_topk1_envelope_run1.json"
+  ],
+  "evaluation_summary": {
+    "envelope_count": 1,
+    "identical": true,
+    "ordering_differences": false,
+    "runs": [
+      {
+        "index": 0,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+          "max_actions": null,
+          "policy": null,
+          "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+          "top_k": 1
+        },
+        "planner_version": "0.36",
+        "selected_actions": [
+          "build_portfolio_dashboard"
+        ],
+        "selection_count": 1,
+        "selection_detail": {
+          "action_task_collapse_count": 0,
+          "active_action_to_task_mapping": {
+            "analyze_repo_insights": "planner_determinism_example",
+            "recover_failed_workflow": "artifact_audit_example",
+            "refresh_repo_health": "repo_insights_example",
+            "regenerate_missing_artifact": "build_portfolio_dashboard",
+            "rerun_failed_task": "failure_recovery_example"
+          },
+          "ranked_action_window": [
+            "regenerate_missing_artifact"
+          ]
+        }
+      }
+    ]
+  },
+  "run_count": 1
+}

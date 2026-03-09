@@ -1,0 +1,31 @@
+{
+  "envelope_paths": [
+    "experiments/planner_run_envelope_run1.json"
+  ],
+  "evaluation_summary": {
+    "envelope_count": 1,
+    "identical": true,
+    "ordering_differences": false,
+    "runs": [
+      {
+        "index": 0,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": null,
+          "max_actions": null,
+          "policy": null,
+          "portfolio_state": "experiments/portfolio_state_degraded.json",
+          "top_k": 3
+        },
+        "planner_version": "0.35",
+        "selected_actions": [
+          "build_portfolio_dashboard",
+          "repo_insights_example"
+        ],
+        "selection_count": 2
+      }
+    ]
+  },
+  "run_count": 1
+}

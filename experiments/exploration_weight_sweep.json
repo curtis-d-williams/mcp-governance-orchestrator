@@ -1,0 +1,15 @@
+{
+  "experiment_name": "exploration_weight_sweep",
+  "runs_per_config": 50,
+  "configs": [
+    {
+      "exploration_weight": 0.0
+    },
+    {
+      "exploration_weight": 0.05
+    },
+    {
+      "exploration_weight": 0.10
+    }
+  ]
+}

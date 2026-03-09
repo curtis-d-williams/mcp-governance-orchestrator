@@ -1,0 +1,6 @@
+{
+  "artifact_completeness": 0.5,
+  "determinism_ok": 1.0,
+  "recent_failures": 2.0,
+  "stale_runs": 1.5
+}

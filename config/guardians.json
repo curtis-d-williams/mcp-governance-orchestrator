@@ -11,6 +11,12 @@
     "module_path": "templates.repo_insights.server",
     "tier": 3
   },
+  "sample_guardian:v1": {
+    "callable": "main",
+    "description": "Dry-run Tier 3 scaffold",
+    "module_path": "templates.sample_template.server",
+    "tier": 3
+  },
   "tier1_smoke:v1": {
     "callable": "main",
     "description": "Tier 1 deterministic smoke guardian (CI-safe)",
