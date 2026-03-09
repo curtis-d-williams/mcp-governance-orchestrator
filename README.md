@@ -99,3 +99,48 @@ Next milestone:
 
 v0.11  
 automatic evaluation record generation to fully close the optimization loop.
+
+---
+
+## Running Planner Experiments
+
+The repository includes a deterministic experiment pipeline for evaluating planner behavior.
+
+### Run a local experiment
+
+python scripts/run_planner_experiment.py --config experiment_config.json
+
+### Generate a report
+
+python scripts/generate_experiment_report.py
+
+This produces:
+
+experiment_results.json
+experiment_report.json
+experiment_report.md
+
+### Policy sweep experiments
+
+Experiments can define multiple governance policies inside the config file.
+
+python scripts/run_planner_experiment.py --config experiment_config.json
+
+The system will generate:
+
+policy_sweep_results.json
+
+### CI experiments
+
+The repository includes a GitHub Actions workflow that runs experiments automatically when:
+
+- a commit is pushed
+- a pull request is opened
+
+Artifacts produced by CI include:
+
+experiment_results.json  
+policy_sweep_results.json  
+experiment_report.json  
+experiment_report.md  
+planner_run_envelope_*.json
