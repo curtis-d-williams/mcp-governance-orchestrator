@@ -1,0 +1,114 @@
+{
+  "envelope_paths": [
+    "experiments/policy_x_collision_frfocused_high_envelope_run1.json",
+    "experiments/policy_x_collision_frfocused_high_envelope_run2.json",
+    "experiments/policy_x_collision_frfocused_high_envelope_run3.json"
+  ],
+  "evaluation_summary": {
+    "envelope_count": 3,
+    "identical": true,
+    "ordering_differences": false,
+    "runs": [
+      {
+        "index": 0,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+          "max_actions": null,
+          "policy": "experiments/policy_failure_recovery_focused.json",
+          "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+          "top_k": 3
+        },
+        "planner_version": "0.36",
+        "selected_actions": [
+          "failure_recovery_example",
+          "build_portfolio_dashboard"
+        ],
+        "selection_count": 2,
+        "selection_detail": {
+          "action_task_collapse_count": 1,
+          "active_action_to_task_mapping": {
+            "analyze_repo_insights": "repo_insights_example",
+            "recover_failed_workflow": "failure_recovery_example",
+            "refresh_repo_health": "build_portfolio_dashboard",
+            "regenerate_missing_artifact": "build_portfolio_dashboard",
+            "rerun_failed_task": "build_portfolio_dashboard"
+          },
+          "ranked_action_window": [
+            "recover_failed_workflow",
+            "rerun_failed_task",
+            "refresh_repo_health"
+          ]
+        }
+      },
+      {
+        "index": 1,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+          "max_actions": null,
+          "policy": "experiments/policy_failure_recovery_focused.json",
+          "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+          "top_k": 3
+        },
+        "planner_version": "0.36",
+        "selected_actions": [
+          "failure_recovery_example",
+          "build_portfolio_dashboard"
+        ],
+        "selection_count": 2,
+        "selection_detail": {
+          "action_task_collapse_count": 1,
+          "active_action_to_task_mapping": {
+            "analyze_repo_insights": "repo_insights_example",
+            "recover_failed_workflow": "failure_recovery_example",
+            "refresh_repo_health": "build_portfolio_dashboard",
+            "regenerate_missing_artifact": "build_portfolio_dashboard",
+            "rerun_failed_task": "build_portfolio_dashboard"
+          },
+          "ranked_action_window": [
+            "recover_failed_workflow",
+            "rerun_failed_task",
+            "refresh_repo_health"
+          ]
+        }
+      },
+      {
+        "index": 2,
+        "inputs": {
+          "explain": false,
+          "exploration_offset": 0,
+          "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+          "max_actions": null,
+          "policy": "experiments/policy_failure_recovery_focused.json",
+          "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+          "top_k": 3
+        },
+        "planner_version": "0.36",
+        "selected_actions": [
+          "failure_recovery_example",
+          "build_portfolio_dashboard"
+        ],
+        "selection_count": 2,
+        "selection_detail": {
+          "action_task_collapse_count": 1,
+          "active_action_to_task_mapping": {
+            "analyze_repo_insights": "repo_insights_example",
+            "recover_failed_workflow": "failure_recovery_example",
+            "refresh_repo_health": "build_portfolio_dashboard",
+            "regenerate_missing_artifact": "build_portfolio_dashboard",
+            "rerun_failed_task": "build_portfolio_dashboard"
+          },
+          "ranked_action_window": [
+            "recover_failed_workflow",
+            "rerun_failed_task",
+            "refresh_repo_health"
+          ]
+        }
+      }
+    ]
+  },
+  "run_count": 3
+}

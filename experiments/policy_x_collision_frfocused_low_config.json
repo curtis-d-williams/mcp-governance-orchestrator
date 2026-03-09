@@ -1,0 +1,22 @@
+{
+  "runs": 3,
+  "planner": {
+    "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+    "policy": "experiments/policy_failure_recovery_focused.json",
+    "top_k": 3,
+    "exploration_offset": 0,
+    "explain": false
+  },
+  "output": {
+    "experiment_results": "experiments/policy_x_collision_frfocused_low_results.json",
+    "envelope_prefix": "policy_x_collision_frfocused_low_envelope"
+  },
+  "mapping_override": {
+    "regenerate_missing_artifact": "build_portfolio_dashboard",
+    "refresh_repo_health": "repo_insights_example",
+    "rerun_failed_task": "failure_recovery_example",
+    "analyze_repo_insights": "planner_determinism_example",
+    "recover_failed_workflow": "artifact_audit_example"
+  }
+}
