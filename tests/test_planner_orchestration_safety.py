@@ -86,32 +86,32 @@ class TestMaxActionsFlag:
     """--max-actions is the only behavioral addition in v0.34."""
 
     def test_max_actions_caps_to_one(self, tmp_path):
-        """Three mapped actions → only one when --max-actions 1."""
+        """Three mapped actions (all dedup to one) → one when --max-actions 1."""
         actions = _actions(
-            "refresh_repo_health",              # → repo_insights_example
-            "regenerate_missing_artifact",      # → build_portfolio_dashboard
-            "run_determinism_regression_suite", # → intelligence_layer_example
+            "refresh_repo_health",              # → build_portfolio_dashboard
+            "regenerate_missing_artifact",      # → build_portfolio_dashboard (dup)
+            "run_determinism_regression_suite", # → build_portfolio_dashboard (dup)
         )
         tasks = _run_main(tmp_path, ["--top-k", "3", "--max-actions", "1"], actions)
         assert len(tasks) == 1
-        assert tasks[0] == "repo_insights_example"
+        assert tasks[0] == "build_portfolio_dashboard"
 
     def test_max_actions_caps_to_two(self, tmp_path):
-        """Three mapped actions → two when --max-actions 2."""
+        """All mapped actions dedup to one task; max-actions 2 does not increase count."""
         actions = _actions(
             "refresh_repo_health",
             "regenerate_missing_artifact",
             "run_determinism_regression_suite",
         )
         tasks = _run_main(tmp_path, ["--top-k", "3", "--max-actions", "2"], actions)
-        assert len(tasks) == 2
-        assert tasks == ["repo_insights_example", "build_portfolio_dashboard"]
+        assert len(tasks) == 1
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_max_actions_larger_than_queue_does_not_truncate(self, tmp_path):
-        """--max-actions 10 with only 2 actions → both returned."""
+        """--max-actions 10 with only 1 deduped task → that one task returned."""
         actions = _actions("refresh_repo_health", "regenerate_missing_artifact")
         tasks = _run_main(tmp_path, ["--top-k", "2", "--max-actions", "10"], actions)
-        assert len(tasks) == 2
+        assert len(tasks) == 1
 
     def test_max_actions_zero_produces_empty_list(self, tmp_path):
         """--max-actions 0 → empty task list (no-op run)."""
@@ -131,15 +131,14 @@ class TestMaxActionsFlag:
         assert tasks_a == tasks_b
 
     def test_max_actions_applied_after_ranking_preserves_order(self, tmp_path):
-        """Capping preserves first-occurrence order of mapped actions."""
-        # Action order matters: regenerate first, then refresh
+        """Capping preserves first-occurrence order; all action types dedup to one task."""
         actions = _actions(
             "regenerate_missing_artifact",      # → build_portfolio_dashboard (1st)
-            "refresh_repo_health",              # → repo_insights_example (2nd)
-            "run_determinism_regression_suite", # → intelligence_layer_example (3rd)
+            "refresh_repo_health",              # → build_portfolio_dashboard (dup)
+            "run_determinism_regression_suite", # → build_portfolio_dashboard (dup)
         )
         tasks = _run_main(tmp_path, ["--top-k", "3", "--max-actions", "2"], actions)
-        assert tasks == ["build_portfolio_dashboard", "repo_insights_example"]
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_max_actions_applies_to_fallback_tasks_too(self, tmp_path):
         """--max-actions caps the ALL_TASKS fallback when queue is empty."""
@@ -148,14 +147,14 @@ class TestMaxActionsFlag:
         assert len(tasks) == 1
 
     def test_max_actions_absent_does_not_cap(self, tmp_path):
-        """Without --max-actions, all mapped tasks are returned."""
+        """Without --max-actions, all deduped tasks are returned (currently one)."""
         actions = _actions(
             "refresh_repo_health",
             "regenerate_missing_artifact",
             "run_determinism_regression_suite",
         )
         tasks = _run_main(tmp_path, ["--top-k", "3"], actions)
-        assert len(tasks) == 3
+        assert len(tasks) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +169,10 @@ class TestDefaultBehaviorPreserved:
         assert sorted(tasks) == sorted(_mod.ALL_TASKS)
 
     def test_action_driven_without_flag_returns_mapped_tasks(self, tmp_path):
+        # Both action types map to build_portfolio_dashboard; dedup yields one task.
         actions = _actions("refresh_repo_health", "regenerate_missing_artifact")
         tasks = _run_main(tmp_path, ["--top-k", "2"], actions)
-        assert "repo_insights_example" in tasks
-        assert "build_portfolio_dashboard" in tasks
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_top_k_unaffected_by_absence_of_max_actions(self, tmp_path):
         actions = _actions(
@@ -181,9 +180,9 @@ class TestDefaultBehaviorPreserved:
             "regenerate_missing_artifact",
             "run_determinism_regression_suite",
         )
-        # top-k=2 → two tasks; no cap
+        # All action types map to build_portfolio_dashboard; dedup → 1 task regardless of top-k
         tasks = _run_main(tmp_path, ["--top-k", "2"], actions)
-        assert len(tasks) == 2
+        assert len(tasks) == 1
 
     def test_no_portfolio_state_uses_fallback_unchanged(self):
         with unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
@@ -201,10 +200,11 @@ class TestEmptyQueueNoOp:
         tasks = _run_main(tmp_path, [], [])
         assert sorted(tasks) == sorted(_mod.ALL_TASKS)
 
-    def test_empty_queue_with_max_actions_still_returns_tasks(self, tmp_path):
-        """Empty queue → fallback tasks, then capped by max_actions."""
+    def test_empty_queue_with_max_actions_caps_fallback_tasks(self, tmp_path):
+        """Empty queue → fallback tasks, max-actions=2 cap limits to 2 tasks."""
         tasks = _run_main(tmp_path, ["--max-actions", "2"], [])
         assert len(tasks) == 2
+        assert all(t in _mod.ALL_TASKS for t in tasks)
 
     def test_run_tasks_empty_list_is_noop(self, capsys):
         """run_tasks([]) logs no-tasks and returns without subprocess calls."""
@@ -359,7 +359,7 @@ class TestSelectActions:
         tasks, _, sorted_actions = _mod.select_actions(
             self._fake_args(top_k=1), actions, {}, {}, {}
         )
-        assert tasks == ["repo_insights_example"]
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_sorted_actions_contains_full_list(self):
         actions = [_action("refresh_repo_health"), _action("regenerate_missing_artifact")]

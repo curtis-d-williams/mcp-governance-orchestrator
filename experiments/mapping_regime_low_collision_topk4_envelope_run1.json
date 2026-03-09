@@ -1,0 +1,42 @@
+{
+  "artifacts": {
+    "explain_artifact": null
+  },
+  "execution": {
+    "executed": true,
+    "status": "ok"
+  },
+  "inputs": {
+    "explain": false,
+    "exploration_offset": 0,
+    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+    "max_actions": null,
+    "policy": null,
+    "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+    "top_k": 4
+  },
+  "planner_version": "0.36",
+  "selected_actions": [
+    "build_portfolio_dashboard",
+    "artifact_audit_example",
+    "repo_insights_example",
+    "planner_determinism_example"
+  ],
+  "selection_count": 4,
+  "selection_detail": {
+    "action_task_collapse_count": 0,
+    "active_action_to_task_mapping": {
+      "analyze_repo_insights": "planner_determinism_example",
+      "recover_failed_workflow": "artifact_audit_example",
+      "refresh_repo_health": "repo_insights_example",
+      "regenerate_missing_artifact": "build_portfolio_dashboard",
+      "rerun_failed_task": "failure_recovery_example"
+    },
+    "ranked_action_window": [
+      "regenerate_missing_artifact",
+      "recover_failed_workflow",
+      "refresh_repo_health",
+      "analyze_repo_insights"
+    ]
+  }
+}

@@ -59,6 +59,7 @@ def evaluate_envelopes(envelopes):
             "planner_version": env.get("planner_version"),
             "selected_actions": env.get("selected_actions", []),
             "selection_count": env.get("selection_count", 0),
+            "selection_detail": env.get("selection_detail", {}),
         })
 
     all_keys = [_selected_key(e) for e in envelopes]

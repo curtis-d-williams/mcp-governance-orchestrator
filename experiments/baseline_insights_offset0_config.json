@@ -1,0 +1,15 @@
+{
+  "runs": 1,
+  "planner": {
+    "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+    "policy": "experiments/policy_insights_first.json",
+    "top_k": 2,
+    "exploration_offset": 0,
+    "explain": true
+  },
+  "output": {
+    "experiment_results": "experiments/baseline_insights_offset0_results.json",
+    "envelope_prefix": "baseline_insights_offset0_envelope"
+  }
+}

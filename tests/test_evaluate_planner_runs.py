@@ -165,6 +165,23 @@ class TestEvaluateEnvelopes:
         r2 = _mod.evaluate_envelopes([env_a, env_b])
         assert r1 == r2
 
+    def test_runs_contain_selection_detail_passthrough(self):
+        """selection_detail from envelope is propagated to the per-run summary."""
+        env = _make_envelope(["repo_insights_example"])
+        env["selection_detail"] = {
+            "ranked_action_window": ["analyze_repo_insights"],
+            "action_task_collapse_count": 0,
+        }
+        result = _mod.evaluate_envelopes([env])
+        assert result["runs"][0]["selection_detail"] == env["selection_detail"]
+
+    def test_runs_selection_detail_defaults_empty_dict_when_absent(self):
+        """Envelopes without selection_detail yield an empty dict in per-run summary."""
+        env = _make_envelope([])
+        # No selection_detail key.
+        result = _mod.evaluate_envelopes([env])
+        assert result["runs"][0]["selection_detail"] == {}
+
 
 # ---------------------------------------------------------------------------
 # 2. load_envelope

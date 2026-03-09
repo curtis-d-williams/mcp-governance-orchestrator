@@ -32,11 +32,9 @@ PORTFOLIO_CSV = Path("tier3_portfolio_report.csv")
 AGGREGATE_JSON = Path("tier3_multi_run_aggregate.json")
 LOG_FILE = Path("tier3_execution.log")
 
-# Tasks expected from the dynamic planner
+# Tasks expected from the dynamic planner (must match TASK_REGISTRY)
 DYNAMIC_TASKS = [
     "build_portfolio_dashboard",
-    "repo_insights_example",
-    "intelligence_layer_example"
 ]
 
 def test_dynamic_planner_loop_execution():
@@ -83,7 +81,7 @@ class TestMapActionsToTasks:
 
     def test_single_mapped_action_returns_task(self):
         actions = [self._action("refresh_repo_health")]
-        assert _map_actions_to_tasks(actions) == ["repo_insights_example"]
+        assert _map_actions_to_tasks(actions) == ["build_portfolio_dashboard"]
 
     def test_single_unmapped_action_returns_empty(self):
         actions = [self._action("unknown_action_type")]
@@ -101,22 +99,22 @@ class TestMapActionsToTasks:
         assert _map_actions_to_tasks(actions, top_k=1) == []
 
     def test_top_k_two_includes_second_action(self):
+        # Both action types map to build_portfolio_dashboard; deduplication yields one task.
         actions = [
             self._action("refresh_repo_health"),
             self._action("regenerate_missing_artifact"),
         ]
         result = _map_actions_to_tasks(actions, top_k=2)
-        assert "repo_insights_example" in result
-        assert "build_portfolio_dashboard" in result
+        assert result == ["build_portfolio_dashboard"]
 
     def test_deduplication_preserves_first_occurrence(self):
         # Both map to the same task — only one entry in output
         actions = [
-            self._action("refresh_repo_health"),   # → repo_insights_example
-            self._action("rerun_failed_task"),      # → repo_insights_example (dup)
+            self._action("refresh_repo_health"),   # → build_portfolio_dashboard
+            self._action("rerun_failed_task"),      # → build_portfolio_dashboard (dup)
         ]
         result = _map_actions_to_tasks(actions, top_k=2)
-        assert result == ["repo_insights_example"]
+        assert result == ["build_portfolio_dashboard"]
 
     def test_all_mapped_action_types_covered(self):
         for action_type, expected_task in ACTION_TO_TASK.items():
@@ -128,12 +126,13 @@ class TestMapActionsToTasks:
         assert _map_actions_to_tasks(actions) == []
 
     def test_order_preserved_for_distinct_mapped_tasks(self):
+        # Both action types now map to build_portfolio_dashboard; deduplication yields one task.
         actions = [
             self._action("regenerate_missing_artifact"),  # → build_portfolio_dashboard
-            self._action("refresh_repo_health"),          # → repo_insights_example
+            self._action("refresh_repo_health"),          # → build_portfolio_dashboard (dup)
         ]
         result = _map_actions_to_tasks(actions, top_k=2)
-        assert result == ["build_portfolio_dashboard", "repo_insights_example"]
+        assert result == ["build_portfolio_dashboard"]
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +237,7 @@ class TestMainActionDriven:
              unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state)])
         mock_fetch.assert_called_once_with(str(state), None)
-        mock_run.assert_called_once_with(["repo_insights_example"], Path("portfolio_state.json"))
+        mock_run.assert_called_once_with(["build_portfolio_dashboard"], Path("portfolio_state.json"))
 
     def test_action_driven_selection_with_ledger(self, tmp_path):
         state = tmp_path / "state.json"
@@ -275,15 +274,14 @@ class TestMainActionDriven:
         state = tmp_path / "state.json"
         state.write_text("{}", encoding="utf-8")
         actions = self._actions(
-            "refresh_repo_health",           # → repo_insights_example
-            "regenerate_missing_artifact",   # → build_portfolio_dashboard
+            "refresh_repo_health",           # → build_portfolio_dashboard
+            "regenerate_missing_artifact",   # → build_portfolio_dashboard (dup, deduplicated)
         )
         with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
              unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state), "--top-k", "2"])
         tasks = mock_run.call_args[0][0]
-        assert "repo_insights_example" in tasks
-        assert "build_portfolio_dashboard" in tasks
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_action_driven_logs_selection_message(self, tmp_path, capsys):
         state = tmp_path / "state.json"
@@ -309,32 +307,30 @@ class TestMainActionDriven:
         state = tmp_path / "state.json"
         state.write_text("{}", encoding="utf-8")
         actions = self._actions(
-            "refresh_repo_health",              # → repo_insights_example
-            "regenerate_missing_artifact",      # → build_portfolio_dashboard
-            "run_determinism_regression_suite", # → intelligence_layer_example
+            "refresh_repo_health",              # → build_portfolio_dashboard
+            "regenerate_missing_artifact",      # → build_portfolio_dashboard (dup)
+            "run_determinism_regression_suite", # → build_portfolio_dashboard (dup)
         )
         with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
              unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state)])  # no explicit --top-k
         tasks = mock_run.call_args[0][0]
-        assert "repo_insights_example" in tasks
-        assert "build_portfolio_dashboard" in tasks
-        assert "intelligence_layer_example" in tasks
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_multi_action_selection_preserves_deterministic_order(self, tmp_path):
-        """top-k=3 maps three actions to tasks in first-occurrence order."""
+        """top-k=3: all mapped action types resolve to build_portfolio_dashboard after dedup."""
         state = tmp_path / "state.json"
         state.write_text("{}", encoding="utf-8")
         actions = self._actions(
             "regenerate_missing_artifact",      # → build_portfolio_dashboard (1st)
-            "refresh_repo_health",              # → repo_insights_example (2nd)
-            "run_determinism_regression_suite", # → intelligence_layer_example (3rd)
+            "refresh_repo_health",              # → build_portfolio_dashboard (dup)
+            "run_determinism_regression_suite", # → build_portfolio_dashboard (dup)
         )
         with unittest.mock.patch.object(_mod, "_fetch_action_queue", return_value=actions), \
              unittest.mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state), "--top-k", "3"])
         tasks = mock_run.call_args[0][0]
-        assert tasks == ["build_portfolio_dashboard", "repo_insights_example", "intelligence_layer_example"]
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_fallback_unchanged_when_all_three_unmapped(self, tmp_path):
         """Even with top-k=3, all-unmapped queue falls back to ALL_TASKS."""
@@ -375,32 +371,29 @@ class TestExplorationOffset:
 
     def test_offset_shifts_window_to_different_actions(self, tmp_path):
         """offset=0 picks first window; offset=2 picks a later window."""
-        # 4-action queue, top_k=2
+        # 4-action queue, top_k=2; all mapped action types resolve to build_portfolio_dashboard
         actions = self._actions(
             "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
-            "run_determinism_regression_suite", # [1] → intelligence_layer_example
-            "refresh_repo_health",              # [2] → repo_insights_example
+            "run_determinism_regression_suite", # [1] → build_portfolio_dashboard
+            "refresh_repo_health",              # [2] → build_portfolio_dashboard
             "no_such_action",                   # [3] unmapped
         )
         tasks_offset0 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "0"])
         tasks_offset2 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "2"])
-        # offset=0: window=[0,1] → build_portfolio_dashboard, intelligence_layer_example
+        # offset=0: window=[0,1] → both map to build_portfolio_dashboard
         assert "build_portfolio_dashboard" in tasks_offset0
-        assert "intelligence_layer_example" in tasks_offset0
-        # offset=2: window=[2,3] → only repo_insights_example (index 3 is unmapped)
-        assert "repo_insights_example" in tasks_offset2
-        assert "build_portfolio_dashboard" not in tasks_offset2
+        # offset=2: window=[2,3] → refresh_repo_health maps to build_portfolio_dashboard; no_such_action unmapped
+        assert "build_portfolio_dashboard" in tasks_offset2
 
     def test_offset_one_skips_first_action(self, tmp_path):
         """offset=1 skips index 0 and picks from index 1."""
         actions = self._actions(
             "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
-            "refresh_repo_health",              # [1] → repo_insights_example
-            "run_determinism_regression_suite", # [2] → intelligence_layer_example
+            "refresh_repo_health",              # [1] → build_portfolio_dashboard
+            "run_determinism_regression_suite", # [2] → build_portfolio_dashboard
         )
         tasks = self._run(tmp_path, actions, ["--top-k", "1", "--exploration-offset", "1"])
-        assert tasks == ["repo_insights_example"]
-        assert "build_portfolio_dashboard" not in tasks
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_large_offset_clamps_to_last_valid_window(self, tmp_path):
         """offset beyond queue length clamps to the last valid window."""
@@ -459,3 +452,31 @@ def test_run_tasks_builds_portfolio_state_after_aggregation(tmp_path):
     assert any("build_portfolio_state_from_artifacts.py" in str(part) for part in calls[2])
     assert "--output" in calls[2]
     assert str(output_path) in calls[2]
+
+
+# ---------------------------------------------------------------------------
+# Registry alignment regression guard
+# ---------------------------------------------------------------------------
+
+class TestRegistryAlignment:
+    """ALL_TASKS and ACTION_TO_TASK must only reference tasks present in TASK_REGISTRY.
+
+    This is a regression guard: if either list drifts out of sync with the registry,
+    planner experiments will fail at runtime with 'Unknown task' errors.
+    """
+
+    def test_all_tasks_in_registry(self):
+        from agent_tasks.registry import TASK_REGISTRY
+        for task in ALL_TASKS:
+            assert task in TASK_REGISTRY, (
+                f"ALL_TASKS references unknown task: {task!r}. "
+                "Add it to TASK_REGISTRY or remove it from ALL_TASKS."
+            )
+
+    def test_action_to_task_values_in_registry(self):
+        from agent_tasks.registry import TASK_REGISTRY
+        for action_type, task in ACTION_TO_TASK.items():
+            assert task in TASK_REGISTRY, (
+                f"ACTION_TO_TASK[{action_type!r}] → unknown task: {task!r}. "
+                "Add it to TASK_REGISTRY or update ACTION_TO_TASK."
+            )

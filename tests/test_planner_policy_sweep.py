@@ -463,9 +463,9 @@ class TestExistingTestsUnaffected:
         with pytest.raises(SystemExit):
             _mod.main(["--runs", "0", "--output", str(output)])
 
-    def test_planner_version_still_0_35(self):
+    def test_planner_version_is_0_36(self):
         from scripts.claude_dynamic_planner_loop import PLANNER_VERSION
-        assert PLANNER_VERSION == "0.35"
+        assert PLANNER_VERSION == "0.36"
 
     def test_evaluate_envelopes_still_callable(self):
         from scripts.evaluate_planner_runs import evaluate_envelopes

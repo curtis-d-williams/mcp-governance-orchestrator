@@ -73,7 +73,7 @@ class TestNewSymbolsImportable:
     def test_planner_version_present(self):
         assert hasattr(_mod, "PLANNER_VERSION")
         assert isinstance(_mod.PLANNER_VERSION, str)
-        assert _mod.PLANNER_VERSION == "0.35"
+        assert _mod.PLANNER_VERSION == "0.36"
 
 
 # ---------------------------------------------------------------------------
@@ -87,11 +87,11 @@ class TestNoEnvelopeFlagPreservesDefault:
         assert not envelope_path.exists()
 
     def test_tasks_unchanged_without_envelope_flag(self, tmp_path):
+        # Both action types map to build_portfolio_dashboard; dedup yields one task.
         actions = _actions("refresh_repo_health", "regenerate_missing_artifact")
         mock_run = _run_main(tmp_path, ["--top-k", "2"], actions)
         tasks = mock_run.call_args[0][0]
-        assert "repo_insights_example" in tasks
-        assert "build_portfolio_dashboard" in tasks
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_no_portfolio_state_no_envelope(self, tmp_path):
         with unittest.mock.patch.object(_mod, "run_tasks"):
@@ -359,3 +359,112 @@ class TestBackwardCompatImports:
             load_runtime_context, select_actions,
             run_selected_actions, write_explain_artifact,
         )
+
+
+# ---------------------------------------------------------------------------
+# 8. v0.36: selection_detail in envelope
+# ---------------------------------------------------------------------------
+
+class TestSelectionDetail:
+    """Tests for the selection_detail subkey added in v0.36."""
+
+    def test_selection_detail_present_in_envelope(self, tmp_path):
+        out = tmp_path / "env.json"
+        _mod.write_run_envelope(str(out), _FakeArgs(), [])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert "selection_detail" in data
+
+    def test_selection_detail_has_ranked_action_window(self, tmp_path):
+        out = tmp_path / "env.json"
+        _mod.write_run_envelope(str(out), _FakeArgs(), [])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert "ranked_action_window" in data["selection_detail"]
+
+    def test_selection_detail_has_collapse_count(self, tmp_path):
+        out = tmp_path / "env.json"
+        _mod.write_run_envelope(str(out), _FakeArgs(), [])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert "action_task_collapse_count" in data["selection_detail"]
+
+    def test_ranked_action_window_default_empty(self, tmp_path):
+        out = tmp_path / "env.json"
+        _mod.write_run_envelope(str(out), _FakeArgs(), [])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["ranked_action_window"] == []
+
+    def test_collapse_count_default_zero(self, tmp_path):
+        out = tmp_path / "env.json"
+        _mod.write_run_envelope(str(out), _FakeArgs(), [])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["action_task_collapse_count"] == 0
+
+    def test_ranked_action_window_stored_correctly(self, tmp_path):
+        out = tmp_path / "env.json"
+        window = ["refresh_repo_health", "analyze_repo_insights"]
+        _mod.write_run_envelope(str(out), _FakeArgs(), ["build_portfolio_dashboard"],
+                                ranked_action_window=window)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["ranked_action_window"] == window
+
+    def test_collapse_count_stored_correctly(self, tmp_path):
+        out = tmp_path / "env.json"
+        _mod.write_run_envelope(str(out), _FakeArgs(), ["build_portfolio_dashboard"],
+                                ranked_action_window=["refresh_repo_health", "analyze_repo_insights"],
+                                action_task_collapse_count=1)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["action_task_collapse_count"] == 1
+
+    def test_selection_detail_deterministic(self, tmp_path):
+        out_a = tmp_path / "a.json"
+        out_b = tmp_path / "b.json"
+        window = ["refresh_repo_health"]
+        for out in [out_a, out_b]:
+            _mod.write_run_envelope(str(out), _FakeArgs(), ["build_portfolio_dashboard"],
+                                    ranked_action_window=window, action_task_collapse_count=0)
+        assert out_a.read_text(encoding="utf-8") == out_b.read_text(encoding="utf-8")
+
+    def test_envelope_via_main_has_selection_detail(self, tmp_path):
+        """main() populates selection_detail when writing envelope."""
+        ep = tmp_path / "run.json"
+        actions = [{"action_type": "refresh_repo_health", "priority": 0.9}]
+        _run_main(tmp_path, ["--top-k", "1", "--run-envelope", str(ep)], actions)
+        data = json.loads(ep.read_text(encoding="utf-8"))
+        assert "selection_detail" in data
+        assert isinstance(data["selection_detail"]["ranked_action_window"], list)
+        assert isinstance(data["selection_detail"]["action_task_collapse_count"], int)
+
+    def test_envelope_via_main_window_matches_action_type(self, tmp_path):
+        """ranked_action_window contains action_type strings from the exploration window."""
+        ep = tmp_path / "run.json"
+        actions = [{"action_type": "refresh_repo_health", "priority": 0.9}]
+        _run_main(tmp_path, ["--top-k", "1", "--run-envelope", str(ep)], actions)
+        data = json.loads(ep.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["ranked_action_window"] == ["refresh_repo_health"]
+
+    def test_collapse_count_reflects_dedup(self, tmp_path):
+        """Two actions that both map to the same task → collapse count = 1."""
+        ep = tmp_path / "run.json"
+        actions = [
+            {"action_type": "refresh_repo_health", "priority": 0.9},
+            {"action_type": "regenerate_missing_artifact", "priority": 0.8},
+        ]
+        _run_main(tmp_path, ["--top-k", "2", "--run-envelope", str(ep)], actions)
+        data = json.loads(ep.read_text(encoding="utf-8"))
+        # Window has 2 actions, 1 unique task selected → collapse = 1
+        assert data["selection_detail"]["action_task_collapse_count"] == 1
+
+    def test_fallback_mode_window_is_empty(self, tmp_path):
+        """Fallback path (no portfolio state) produces empty ranked_action_window."""
+        ep = tmp_path / "run.json"
+        with unittest.mock.patch.object(_mod, "run_tasks"):
+            _mod.main(["--run-envelope", str(ep)])
+        data = json.loads(ep.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["ranked_action_window"] == []
+
+    def test_fallback_mode_collapse_is_zero(self, tmp_path):
+        """Fallback path (no portfolio state) produces collapse_count = 0."""
+        ep = tmp_path / "run.json"
+        with unittest.mock.patch.object(_mod, "run_tasks"):
+            _mod.main(["--run-envelope", str(ep)])
+        data = json.loads(ep.read_text(encoding="utf-8"))
+        assert data["selection_detail"]["action_task_collapse_count"] == 0

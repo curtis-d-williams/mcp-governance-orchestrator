@@ -1,0 +1,32 @@
+{
+  "artifacts": {
+    "explain_artifact": "planner_priority_breakdown.json"
+  },
+  "execution": {
+    "executed": true,
+    "status": "ok"
+  },
+  "inputs": {
+    "explain": true,
+    "exploration_offset": 0,
+    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+    "max_actions": null,
+    "policy": null,
+    "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+    "top_k": 3
+  },
+  "planner_version": "0.36",
+  "selected_actions": [
+    "build_portfolio_dashboard",
+    "failure_recovery_example"
+  ],
+  "selection_count": 2,
+  "selection_detail": {
+    "action_task_collapse_count": 1,
+    "ranked_action_window": [
+      "regenerate_missing_artifact",
+      "recover_failed_workflow",
+      "refresh_repo_health"
+    ]
+  }
+}

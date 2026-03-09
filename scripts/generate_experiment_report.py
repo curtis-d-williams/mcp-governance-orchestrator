@@ -17,10 +17,18 @@ Usage:
         [--output-md experiment_report.md]
 
 v0.39: initial implementation. stdlib only.
+v0.40: add total_action_task_collapse_count to action_selection aggregation.
+v0.41: add selected_action_count, unique_selected_task_count, task_diversity_ratio
+       to action_selection (additive — no existing keys removed or renamed).
+v0.42: add collision_ratio = total_action_task_collapse_count / total_window_size
+       to action_selection (additive).
+v0.43: add task_entropy and action_entropy (Shannon entropy in bits) to
+       action_selection (additive — no existing keys removed or renamed).
 """
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -28,7 +36,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-REPORT_VERSION = "0.39"
+REPORT_VERSION = "0.43"
 
 _DEFAULTS = {
     "output_json": "experiment_report.json",
@@ -39,6 +47,29 @@ _DEFAULTS = {
 def _load_json(path):
     """Load and return a JSON file as a dict."""
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _entropy(counts):
+    """Compute Shannon entropy in bits from a label-frequency dict.
+
+    Args:
+        counts: dict mapping str labels to non-negative integer counts.
+
+    Returns:
+        Entropy in bits (float), rounded to 6 decimal places.
+        Returns 0.0 when counts is empty or all counts are zero.
+
+    Keys are iterated in sorted order for deterministic float accumulation.
+    """
+    total = sum(counts.values())
+    if total == 0:
+        return 0.0
+    h = 0.0
+    for key in sorted(counts):
+        p = counts[key] / total
+        if p > 0:
+            h -= p * math.log2(p)
+    return round(h, 6)
 
 
 def _compute_stability(evaluation_summary):
@@ -54,9 +85,11 @@ def _compute_action_consistency(evaluation_summary):
     """Compute action selection consistency metrics from an evaluation_summary dict.
 
     Returns a dict with:
-      unique_action_sets  - number of distinct selected_actions tuples observed
-      most_common_actions - list of actions from the most frequent selection;
-                            tie-broken by ascending lexicographic order of the tuple.
+      unique_action_sets             - number of distinct selected_actions tuples observed
+      most_common_actions            - list of actions from the most frequent selection;
+                                       tie-broken by ascending lexicographic order of the tuple.
+      total_action_task_collapse_count - sum of action_task_collapse_count across all runs
+                                       that carry selection_detail.  0 when no runs have it.
     """
     runs = evaluation_summary.get("runs", [])
     action_tuples = [tuple(r.get("selected_actions", [])) for r in runs]
@@ -67,9 +100,56 @@ def _compute_action_consistency(evaluation_summary):
     # Deterministic ordering: highest count first, then lexicographically smallest tuple.
     candidates = sorted(counts.keys(), key=lambda t: (-counts[t], t))
     most_common = list(candidates[0]) if candidates else []
+    total_collapse = sum(
+        r.get("selection_detail", {}).get("action_task_collapse_count", 0)
+        for r in runs
+    )
+    # v0.41: selected_action_count, unique_selected_task_count, task_diversity_ratio
+    selected_action_count = sum(r.get("selection_count", 0) for r in runs)
+    unique_task_names = set(
+        task
+        for r in runs
+        for task in r.get("selected_actions", [])
+    )
+    unique_selected_task_count = len(unique_task_names)
+    diversity_values = []
+    for r in runs:
+        sel = r.get("selection_count", 0)
+        collapse = r.get("selection_detail", {}).get("action_task_collapse_count", 0)
+        window = sel + collapse
+        diversity_values.append(sel / window if window > 0 else 0.0)
+    task_diversity_ratio = (
+        round(sum(diversity_values) / len(diversity_values), 6)
+        if diversity_values else 0.0
+    )
+    # v0.42: collision_ratio = total collapse / total window size across all runs
+    total_window = sum(
+        len(r.get("selection_detail", {}).get("ranked_action_window", []))
+        for r in runs
+    )
+    collision_ratio = round(total_collapse / total_window, 6) if total_window > 0 else 0.0
+    # v0.43: task_entropy — Shannon entropy over selected task distribution
+    task_counts: dict = {}
+    for r in runs:
+        for task in r.get("selected_actions", []):
+            task_counts[task] = task_counts.get(task, 0) + 1
+    task_entropy = _entropy(task_counts)
+    # v0.43: action_entropy — Shannon entropy over ranked window action distribution
+    action_counts: dict = {}
+    for r in runs:
+        for action in r.get("selection_detail", {}).get("ranked_action_window", []):
+            action_counts[action] = action_counts.get(action, 0) + 1
+    action_entropy = _entropy(action_counts)
     return {
-        "unique_action_sets": unique_count,
+        "action_entropy": action_entropy,
+        "collision_ratio": collision_ratio,
         "most_common_actions": most_common,
+        "selected_action_count": selected_action_count,
+        "task_diversity_ratio": task_diversity_ratio,
+        "task_entropy": task_entropy,
+        "total_action_task_collapse_count": total_collapse,
+        "unique_action_sets": unique_count,
+        "unique_selected_task_count": unique_selected_task_count,
     }
 
 
@@ -152,6 +232,13 @@ def render_markdown(report):
         lines.append(f"- Most common actions: {', '.join(most_common)}")
     else:
         lines.append("- Most common actions: (none)")
+    lines.append(f"- Total action-task collapse count: {ac['total_action_task_collapse_count']}")
+    lines.append(f"- Selected action count: {ac['selected_action_count']}")
+    lines.append(f"- Unique selected task count: {ac['unique_selected_task_count']}")
+    lines.append(f"- Task diversity ratio: {ac['task_diversity_ratio']}")
+    lines.append(f"- Collision ratio: {ac['collision_ratio']}")
+    lines.append(f"- Task entropy: {ac['task_entropy']}")
+    lines.append(f"- Action entropy: {ac['action_entropy']}")
     lines.append("")
 
     if "policy_sweep" in report:

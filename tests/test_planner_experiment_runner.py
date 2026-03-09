@@ -383,9 +383,9 @@ class TestMainCliValidation:
 # ---------------------------------------------------------------------------
 
 class TestPlannerModuleUnmodified:
-    def test_planner_version_still_0_35(self):
+    def test_planner_version_is_0_36(self):
         from scripts.claude_dynamic_planner_loop import PLANNER_VERSION
-        assert PLANNER_VERSION == "0.35"
+        assert PLANNER_VERSION == "0.36"
 
     def test_write_run_envelope_still_callable(self):
         from scripts.claude_dynamic_planner_loop import write_run_envelope

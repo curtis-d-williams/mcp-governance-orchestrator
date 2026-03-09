@@ -14,7 +14,7 @@ if [[ -f experiment_results.json ]]; then
   if [[ -f policy_sweep_results.json ]]; then
     python3 scripts/generate_experiment_report.py \
       --experiment-results experiment_results.json \
-      --policy-sweep-results policy_sweep_results.json
+      --policy-sweep policy_sweep_results.json
   else
     python3 scripts/generate_experiment_report.py \
       --experiment-results experiment_results.json

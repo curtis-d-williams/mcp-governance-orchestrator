@@ -1,0 +1,22 @@
+{
+  "runs": 3,
+  "planner": {
+    "portfolio_state": "experiments/portfolio_state_degraded_v2.json",
+    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+    "policy": null,
+    "top_k": 3,
+    "exploration_offset": 0,
+    "explain": false
+  },
+  "output": {
+    "experiment_results": "experiments/mapping_regime_balanced_results.json",
+    "envelope_prefix": "mapping_regime_balanced_envelope"
+  },
+  "mapping_override": {
+    "regenerate_missing_artifact": "build_portfolio_dashboard",
+    "refresh_repo_health": "repo_insights_example",
+    "rerun_failed_task": "failure_recovery_example",
+    "analyze_repo_insights": "repo_insights_example",
+    "recover_failed_workflow": "failure_recovery_example"
+  }
+}

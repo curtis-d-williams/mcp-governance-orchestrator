@@ -1,0 +1,40 @@
+{
+  "action_types": [
+    {
+      "action_type": "regenerate_missing_artifact",
+      "times_executed": 8,
+      "effectiveness_score": 0.90,
+      "recommended_priority_adjustment": 0.12,
+      "classification": "high",
+      "effect_deltas": {
+        "artifact_completeness": 0.80,
+        "recent_failures": 0.10,
+        "stale_runs": 0.05
+      }
+    },
+    {
+      "action_type": "refresh_repo_health",
+      "times_executed": 2,
+      "effectiveness_score": 0.55,
+      "recommended_priority_adjustment": 0.04,
+      "classification": "medium",
+      "effect_deltas": {
+        "artifact_completeness": 0.05,
+        "recent_failures": 0.15,
+        "stale_runs": 0.85
+      }
+    },
+    {
+      "action_type": "rerun_failed_task",
+      "times_executed": 1,
+      "effectiveness_score": 0.45,
+      "recommended_priority_adjustment": 0.02,
+      "classification": "medium",
+      "effect_deltas": {
+        "artifact_completeness": 0.00,
+        "recent_failures": 0.90,
+        "stale_runs": 0.05
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "artifacts": {
+    "explain_artifact": null
+  },
+  "execution": {
+    "executed": true,
+    "status": "ok"
+  },
+  "inputs": {
+    "explain": false,
+    "exploration_offset": 0,
+    "ledger": null,
+    "max_actions": null,
+    "policy": "sweep_failure_reduction_policy.json",
+    "portfolio_state": null,
+    "top_k": 3
+  },
+  "planner_version": "0.35",
+  "selected_actions": [
+    "build_portfolio_dashboard",
+    "intelligence_layer_example",
+    "repo_insights_example"
+  ],
+  "selection_count": 3
+}

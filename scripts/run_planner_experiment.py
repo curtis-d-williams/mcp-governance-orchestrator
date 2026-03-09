@@ -76,6 +76,7 @@ def _apply_config(args, config):
     _fill(args, "explain",            planner.get("explain"))
     _fill(args, "output",             output.get("experiment_results"))
     _fill(args, "envelope_prefix",    output.get("envelope_prefix"))
+    _fill(args, "mapping_override",   config.get("mapping_override"))
 
     # Apply hard defaults for any field still None.
     for attr, default in _DEFAULTS.items():
@@ -116,6 +117,9 @@ def _build_planner_argv(args, envelope_path):
         argv += ["--max-actions", str(args.max_actions)]
     if args.explain:
         argv.append("--explain")
+    mapping_override = getattr(args, "mapping_override", None)
+    if mapping_override:
+        argv += ["--mapping-override-json", json.dumps(mapping_override)]
     return argv
 
 
@@ -172,7 +176,7 @@ def run_experiment(args, planner_main=None):
 _ARGS_ATTRS = (
     "runs", "portfolio_state", "ledger", "policy", "top_k",
     "exploration_offset", "max_actions", "explain", "output",
-    "envelope_prefix",
+    "envelope_prefix", "mapping_override",
 )
 
 

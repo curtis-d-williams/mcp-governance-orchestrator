@@ -109,7 +109,7 @@ class TestDefaultBehaviorUnchanged:
              mock.patch.object(_mod, "run_tasks") as mock_run:
             _mod.main(["--portfolio-state", str(state)])
         tasks = mock_run.call_args[0][0]
-        assert tasks == ["repo_insights_example"]
+        assert tasks == ["build_portfolio_dashboard"]
 
     def test_no_flag_no_executed_actions_file_written(self, tmp_path):
         state = tmp_path / "state.json"
@@ -254,15 +254,13 @@ class TestExecutedActionsOutput:
         assert result[0]["action_type"] == "refresh_repo_health"
 
     def test_preserves_first_occurrence_order(self):
+        # Both action types map to build_portfolio_dashboard; dedup keeps only the first.
         actions = [
-            _action("regenerate_missing_artifact"),  # → build_portfolio_dashboard
-            _action("refresh_repo_health"),           # → repo_insights_example
+            _action("regenerate_missing_artifact"),  # → build_portfolio_dashboard (1st)
+            _action("refresh_repo_health"),           # → build_portfolio_dashboard (dup, excluded)
         ]
         result = _selected_mapped_actions(actions, top_k=2)
-        assert [r["action_type"] for r in result] == [
-            "regenerate_missing_artifact",
-            "refresh_repo_health",
-        ]
+        assert [r["action_type"] for r in result] == ["regenerate_missing_artifact"]
 
     def test_missing_action_type_key_excluded(self):
         actions = [{"priority": 0.9}]  # no action_type key

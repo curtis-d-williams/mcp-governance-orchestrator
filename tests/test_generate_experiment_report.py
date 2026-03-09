@@ -195,6 +195,59 @@ class TestActionConsistency:
         r2 = _mod.build_report(_EXPERIMENT_RESULTS_IDENTICAL)
         assert r1["action_selection"] == r2["action_selection"]
 
+    def test_total_collapse_count_present(self):
+        report = _mod.build_report(_EXPERIMENT_RESULTS_IDENTICAL)
+        assert "total_action_task_collapse_count" in report["action_selection"]
+
+    def test_total_collapse_count_zero_when_no_selection_detail(self):
+        """Existing fixtures without selection_detail → collapse count defaults to 0."""
+        report = _mod.build_report(_EXPERIMENT_RESULTS_IDENTICAL)
+        assert report["action_selection"]["total_action_task_collapse_count"] == 0
+
+    def test_total_collapse_count_sums_across_runs(self):
+        """Runs with selection_detail.action_task_collapse_count are summed."""
+        ev = {
+            "envelope_count": 3,
+            "identical": True,
+            "ordering_differences": False,
+            "runs": [
+                {"index": 0, "selected_actions": ["repo_insights_example"], "selection_count": 1,
+                 "inputs": {}, "planner_version": "0.36",
+                 "selection_detail": {"ranked_action_window": ["analyze_repo_insights", "refresh_repo_health"],
+                                      "action_task_collapse_count": 1}},
+                {"index": 1, "selected_actions": ["repo_insights_example"], "selection_count": 1,
+                 "inputs": {}, "planner_version": "0.36",
+                 "selection_detail": {"ranked_action_window": ["analyze_repo_insights", "refresh_repo_health"],
+                                      "action_task_collapse_count": 1}},
+                {"index": 2, "selected_actions": ["repo_insights_example"], "selection_count": 1,
+                 "inputs": {}, "planner_version": "0.36",
+                 "selection_detail": {"ranked_action_window": ["analyze_repo_insights"],
+                                      "action_task_collapse_count": 0}},
+            ],
+        }
+        data = {"run_count": 3, "envelope_paths": [], "evaluation_summary": ev}
+        report = _mod.build_report(data)
+        assert report["action_selection"]["total_action_task_collapse_count"] == 2
+
+    def test_total_collapse_count_mixed_with_and_without_detail(self):
+        """Runs missing selection_detail contribute 0 to the total."""
+        ev = {
+            "envelope_count": 2,
+            "identical": True,
+            "ordering_differences": False,
+            "runs": [
+                {"index": 0, "selected_actions": ["repo_insights_example"], "selection_count": 1,
+                 "inputs": {}, "planner_version": "0.36",
+                 "selection_detail": {"ranked_action_window": ["analyze_repo_insights"],
+                                      "action_task_collapse_count": 2}},
+                {"index": 1, "selected_actions": ["repo_insights_example"], "selection_count": 1,
+                 "inputs": {}, "planner_version": "0.35"},
+            ],
+        }
+        data = {"run_count": 2, "envelope_paths": [], "evaluation_summary": ev}
+        report = _mod.build_report(data)
+        assert report["action_selection"]["total_action_task_collapse_count"] == 2
+
 
 # ---------------------------------------------------------------------------
 # 4. Policy sweep summary
@@ -258,6 +311,11 @@ class TestRenderMarkdown:
         report = _mod.build_report(_EXPERIMENT_RESULTS_IDENTICAL)
         md = _mod.render_markdown(report)
         assert "repo_insights_example" in md
+
+    def test_markdown_contains_collapse_count(self):
+        report = _mod.build_report(_EXPERIMENT_RESULTS_IDENTICAL)
+        md = _mod.render_markdown(report)
+        assert "Total action-task collapse count:" in md
 
     def test_markdown_no_sweep_section_without_sweep(self):
         report = _mod.build_report(_EXPERIMENT_RESULTS_IDENTICAL)
@@ -529,13 +587,33 @@ class TestExistingTestsUnchanged:
         from scripts.evaluate_planner_runs import evaluate_envelopes
         assert callable(evaluate_envelopes)
 
-    def test_planner_version_unchanged(self):
+    def test_planner_version_is_0_36(self):
         from scripts.claude_dynamic_planner_loop import PLANNER_VERSION
-        assert PLANNER_VERSION == "0.35"
+        assert PLANNER_VERSION == "0.36"
 
     def test_run_policy_sweep_importable(self):
         from scripts.run_planner_experiment import run_policy_sweep
         assert callable(run_policy_sweep)
 
-    def test_report_version_is_0_39(self):
-        assert _mod.REPORT_VERSION == "0.39"
+    def test_report_version_is_0_43(self):
+        assert _mod.REPORT_VERSION == "0.43"
+
+
+# ---------------------------------------------------------------------------
+# 12. run_experiment.sh flag consistency regression guard
+# ---------------------------------------------------------------------------
+
+class TestRunExperimentShFlagConsistency:
+    """run_experiment.sh must pass --policy-sweep (not --policy-sweep-results) to
+    generate_experiment_report.py. This is a regression guard for the flag mismatch bug.
+    """
+
+    def test_run_experiment_sh_uses_policy_sweep_flag(self):
+        script = Path(__file__).resolve().parents[1] / "scripts" / "run_experiment.sh"
+        content = script.read_text(encoding="utf-8")
+        assert "--policy-sweep " in content, (
+            "run_experiment.sh must pass --policy-sweep to generate_experiment_report.py"
+        )
+        assert "--policy-sweep-results" not in content, (
+            "run_experiment.sh must not use stale --policy-sweep-results flag"
+        )

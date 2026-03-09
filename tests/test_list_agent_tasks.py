@@ -18,6 +18,14 @@ def test_list_agent_tasks_output():
 
     assert payload == [
         {
+            "task": "artifact_audit_example",
+            "description": "Audit artifact presence in the repo",
+            "scope": "local_repo",
+            "outputs": [],
+            "deterministic": True,
+            "portfolio_safe": True,
+        },
+        {
             "task": "build_portfolio_dashboard",
             "description": "Generate Tier-3 portfolio dashboard artifacts",
             "scope": "local_repo",
@@ -27,5 +35,29 @@ def test_list_agent_tasks_output():
             ],
             "deterministic": True,
             "portfolio_safe": True,
-        }
+        },
+        {
+            "task": "failure_recovery_example",
+            "description": "Collect failure recovery indicators from the repo",
+            "scope": "local_repo",
+            "outputs": [],
+            "deterministic": True,
+            "portfolio_safe": True,
+        },
+        {
+            "task": "planner_determinism_example",
+            "description": "Verify planner determinism indicators in the repo",
+            "scope": "local_repo",
+            "outputs": [],
+            "deterministic": True,
+            "portfolio_safe": True,
+        },
+        {
+            "task": "repo_insights_example",
+            "description": "Collect basic repo file-count insights",
+            "scope": "local_repo",
+            "outputs": [],
+            "deterministic": True,
+            "portfolio_safe": True,
+        },
     ]
