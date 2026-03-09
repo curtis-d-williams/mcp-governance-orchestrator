@@ -1,6 +1,4 @@
 task,repo_id,ok
 build_portfolio_dashboard,mcp-governance-orchestrator,true
-artifact_audit_example,mcp-governance-orchestrator,true
 repo_insights_example,mcp-governance-orchestrator,true
-planner_determinism_example,mcp-governance-orchestrator,true
-failure_recovery_example,mcp-governance-orchestrator,true
+intelligence_layer_example,mcp-governance-orchestrator,false
