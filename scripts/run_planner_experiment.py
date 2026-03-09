@@ -27,6 +27,7 @@ stdlib only (except shared project imports).
 """
 
 import argparse
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -43,6 +44,7 @@ _DEFAULTS = {
     "top_k": 3,
     "exploration_offset": 0,
     "explain": False,
+    "force": False,
     "output": "experiment_results.json",
     "envelope_prefix": "planner_run_envelope",
 }
@@ -123,18 +125,130 @@ def _build_planner_argv(args, envelope_path):
     return argv
 
 
-def run_experiment(args, planner_main=None):
+# ---------------------------------------------------------------------------
+# v0.39: Pre-flight risk guardrail
+# ---------------------------------------------------------------------------
+
+# Cached evaluator module — loaded once on first use.
+_evaluator_mod = None
+
+
+def _load_evaluator_mod():
+    """Load evaluate_planner_config as a module (importlib; cached)."""
+    global _evaluator_mod
+    if _evaluator_mod is None:
+        _script = _REPO_ROOT / "scripts" / "evaluate_planner_config.py"
+        spec = importlib.util.spec_from_file_location("evaluate_planner_config", _script)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _evaluator_mod = mod
+    return _evaluator_mod
+
+
+def _run_preflight_check(args):
+    """Compute a risk evaluation for the configured planner run.
+
+    Imports build_evaluation and the underlying risk helpers from
+    evaluate_planner_config (no subprocess; no JSON I/O).
+
+    Returns the evaluation dict, or None when portfolio_state is not set
+    (fallback mode — no risk assessment possible).
+    """
+    if getattr(args, "portfolio_state", None) is None:
+        return None
+
+    from scripts.planner_scoring import (
+        load_effectiveness_ledger,
+        load_planner_policy,
+        load_portfolio_signals,
+    )
+    from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
+
+    ev_mod = _load_evaluator_mod()
+
+    ledger = load_effectiveness_ledger(getattr(args, "ledger", None))
+    signals = load_portfolio_signals(args.portfolio_state)
+    policy = load_planner_policy(getattr(args, "policy", None))
+    mapping_override = getattr(args, "mapping_override", None)
+    active_mapping = resolve_action_to_task_mapping(ACTION_TO_TASK, mapping_override)
+
+    top_k = getattr(args, "top_k", 3) or 3
+    exploration_offset = getattr(args, "exploration_offset", 0) or 0
+
+    raw_actions = ev_mod._fetch_actions(args.portfolio_state, getattr(args, "ledger", None))
+    metrics = ev_mod._compute_risk(
+        raw_actions, top_k, ledger, signals, policy, active_mapping, exploration_offset,
+    )
+    return ev_mod.build_evaluation(metrics, top_k)
+
+
+def _print_preflight_result(evaluation, force, top_k):
+    """Print a human-readable pre-flight summary to stderr.
+
+    Returns True when execution should proceed, False when it should abort.
+    Never raises.
+    """
+    risk = evaluation.get("risk_level", "low_risk")
+    collision_ratio = evaluation.get("collision_ratio", 0.0)
+    unique_tasks = evaluation.get("unique_tasks", 0)
+
+    if risk == "low_risk":
+        return True
+
+    level = risk.replace("_risk", "").upper()
+    print(f"Planner configuration risk: {level}", file=sys.stderr)
+    print(
+        f"  collision_ratio: {collision_ratio:.2f}  "
+        f"unique_tasks: {unique_tasks} / {top_k}",
+        file=sys.stderr,
+    )
+    for reason in evaluation.get("reasons", []):
+        print(f"  Reason: {reason}", file=sys.stderr)
+
+    if risk == "moderate_risk":
+        print("  WARNING: continuing with experiment run.", file=sys.stderr)
+        return True
+
+    # high_risk
+    if force:
+        print(
+            "  WARNING: high risk override — --force is set, continuing.",
+            file=sys.stderr,
+        )
+        return True
+
+    print("  Use --force to run anyway.", file=sys.stderr)
+    return False
+
+
+def run_experiment(args, planner_main=None, risk_check_fn=None):
     """Execute the planner args.runs times and return aggregated results.
 
     Args:
-        args:         Parsed CLI namespace (or any object with the same attrs).
-        planner_main: Optional callable used instead of the real planner main.
-                      Accepts a list of argv strings.  Defaults to
-                      scripts.claude_dynamic_planner_loop.main when None.
+        args:          Parsed CLI namespace (or any object with the same attrs).
+        planner_main:  Optional callable used instead of the real planner main.
+                       Accepts a list of argv strings.  Defaults to
+                       scripts.claude_dynamic_planner_loop.main when None.
+        risk_check_fn: Optional callable(args) → evaluation dict | None.
+                       Defaults to _run_preflight_check.  Inject for testing.
 
     Returns:
         A dict with keys: run_count, envelope_paths, evaluation_summary.
+
+    Raises:
+        SystemExit(1) when the pre-flight check returns high_risk and
+        args.force is not set.
     """
+    # --- Pre-flight risk guardrail (v0.39) ---
+    if risk_check_fn is None:
+        risk_check_fn = _run_preflight_check
+    evaluation = risk_check_fn(args)
+    if evaluation is not None:
+        top_k = getattr(args, "top_k", 3) or 3
+        force = getattr(args, "force", False)
+        if not _print_preflight_result(evaluation, force, top_k):
+            raise SystemExit(1)
+
     if planner_main is None:
         from scripts.claude_dynamic_planner_loop import main as planner_main  # noqa: PLC0415
 
@@ -175,7 +289,7 @@ def run_experiment(args, planner_main=None):
 # regardless of whether the object uses instance or class-level defaults.
 _ARGS_ATTRS = (
     "runs", "portfolio_state", "ledger", "policy", "top_k",
-    "exploration_offset", "max_actions", "explain", "output",
+    "exploration_offset", "max_actions", "explain", "force", "output",
     "envelope_prefix", "mapping_override",
 )
 
@@ -217,7 +331,7 @@ def _copy_args(args):
     return obj
 
 
-def run_policy_sweep(sweep_entries, base_args, planner_main=None):
+def run_policy_sweep(sweep_entries, base_args, planner_main=None, risk_check_fn=None):
     """Execute the configured experiment for each policy sweep entry.
 
     For each entry in *sweep_entries*:
@@ -256,7 +370,8 @@ def run_policy_sweep(sweep_entries, base_args, planner_main=None):
         sweep_args.output = str(output_dir / _sweep_result_filename(name))
         sweep_args.envelope_prefix = _sweep_envelope_prefix(name)
 
-        result = run_experiment(sweep_args, planner_main=planner_main)
+        result = run_experiment(sweep_args, planner_main=planner_main,
+                                risk_check_fn=risk_check_fn)
 
         entries.append({
             "name": name,
@@ -308,6 +423,8 @@ def main(argv=None):
                         help="Destination for experiment_results.json (default: experiment_results.json).")
     parser.add_argument("--envelope-prefix", default=None, metavar="STR",
                         help="Prefix for envelope filenames (default: planner_run_envelope).")
+    parser.add_argument("--force", action="store_true", default=False,
+                        help="Run even when the pre-flight risk check returns high_risk.")
     args = parser.parse_args(argv)
 
     config = {}
