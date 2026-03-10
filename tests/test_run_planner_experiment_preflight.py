@@ -405,3 +405,127 @@ class TestBackwardCompatibility:
         run_experiment(args, planner_main=_noop_planner, risk_check_fn=counting_check)
         # Pre-flight is called exactly once per run_experiment invocation
         assert len(check_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# 9. _run_preflight_check honours structured (by_action_id) mapping overrides
+# ---------------------------------------------------------------------------
+
+class TestPreflightStructuredOverride:
+    """Integration: _run_preflight_check must pass mapping_override to _compute_risk."""
+
+    def _dup_actions(self):
+        return [
+            {"action_type": "rerun_failed_task",
+             "action_id": "rerun_failed_task_repo-A",
+             "repo_id": "repo-A", "priority": 0.9},
+            {"action_type": "regenerate_missing_artifact",
+             "action_id": "regenerate_missing_artifact_repo-A",
+             "repo_id": "repo-A", "priority": 0.8},
+            {"action_type": "regenerate_missing_artifact",
+             "action_id": "regenerate_missing_artifact_repo-B",
+             "repo_id": "repo-B", "priority": 0.7},
+        ]
+
+    def test_preflight_structured_override_eliminates_collision(self, tmp_path):
+        """_run_preflight_check with structured override must show zero collision."""
+        import json
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        # Without override: high_risk due to collision.
+        ev_mod = _mod._load_evaluator_mod()
+        with _mod_patch(ev_mod, "_fetch_actions", self._dup_actions()):
+            args_no_override = _make_args(
+                portfolio_state=str(ps), top_k=3, mapping_override=None
+            )
+            base_ev = _run_preflight_check(args_no_override)
+
+        assert base_ev is not None
+        assert base_ev["collapse_count"] >= 1
+
+        # With structured override: by_action_id resolves distinct tasks per instance.
+        structured_override = {
+            "by_action_id": {
+                "regenerate_missing_artifact_repo-A": "artifact_audit_example",
+                "regenerate_missing_artifact_repo-B": "failure_recovery_example",
+            },
+            "by_action_type": {
+                "rerun_failed_task": "build_portfolio_dashboard",
+            },
+        }
+        with _mod_patch(ev_mod, "_fetch_actions", self._dup_actions()):
+            args_override = _make_args(
+                portfolio_state=str(ps), top_k=3, mapping_override=structured_override
+            )
+            repaired_ev = _run_preflight_check(args_override)
+
+        assert repaired_ev is not None
+        assert repaired_ev["collapse_count"] == 0, (
+            f"Expected 0 collapse with structured override; got {repaired_ev['collapse_count']}, "
+            f"mapped_tasks={repaired_ev['mapped_tasks']}"
+        )
+        assert repaired_ev["unique_tasks"] == 3
+        assert repaired_ev["risk_level"] == "low_risk"
+
+    def test_preflight_structured_override_mapped_tasks_correct(self, tmp_path):
+        """by_action_id tasks must appear in mapped_tasks from preflight."""
+        import json
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        structured_override = {
+            "by_action_id": {
+                "regenerate_missing_artifact_repo-A": "artifact_audit_example",
+                "regenerate_missing_artifact_repo-B": "failure_recovery_example",
+            },
+            "by_action_type": {
+                "rerun_failed_task": "build_portfolio_dashboard",
+            },
+        }
+        ev_mod = _mod._load_evaluator_mod()
+        with _mod_patch(ev_mod, "_fetch_actions", self._dup_actions()):
+            args = _make_args(
+                portfolio_state=str(ps), top_k=3, mapping_override=structured_override
+            )
+            ev = _run_preflight_check(args)
+
+        assert ev is not None
+        mapped = ev["mapped_tasks"]
+        assert "artifact_audit_example" in mapped, f"Expected artifact_audit_example in {mapped}"
+        assert "failure_recovery_example" in mapped, f"Expected failure_recovery_example in {mapped}"
+        assert "build_portfolio_dashboard" in mapped, f"Expected build_portfolio_dashboard in {mapped}"
+
+    def test_preflight_flat_override_still_works(self, tmp_path):
+        """Flat override must still work in _run_preflight_check (backward compat)."""
+        import json
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        flat_override = {
+            "regenerate_missing_artifact": "artifact_audit_example",
+            "rerun_failed_task": "failure_recovery_example",
+        }
+        actions = [
+            {"action_type": "rerun_failed_task", "action_id": "a1",
+             "repo_id": "r1", "priority": 0.9},
+            {"action_type": "regenerate_missing_artifact", "action_id": "a2",
+             "repo_id": "r2", "priority": 0.8},
+        ]
+        ev_mod = _mod._load_evaluator_mod()
+        with _mod_patch(ev_mod, "_fetch_actions", actions):
+            args = _make_args(
+                portfolio_state=str(ps), top_k=2, mapping_override=flat_override
+            )
+            ev = _run_preflight_check(args)
+
+        assert ev is not None
+        assert ev["collapse_count"] == 0
+        assert "artifact_audit_example" in ev["mapped_tasks"]
+        assert "failure_recovery_example" in ev["mapped_tasks"]
+
+
+def _mod_patch(target_mod, attr, return_value):
+    """Context manager: patch target_mod.<attr> to return return_value."""
+    from unittest.mock import patch
+    return patch.object(target_mod, attr, return_value=return_value)

@@ -179,6 +179,7 @@ def _run_preflight_check(args):
     raw_actions = ev_mod._fetch_actions(args.portfolio_state, getattr(args, "ledger", None))
     metrics = ev_mod._compute_risk(
         raw_actions, top_k, ledger, signals, policy, active_mapping, exploration_offset,
+        mapping_override=mapping_override,
     )
     return ev_mod.build_evaluation(metrics, top_k)
 

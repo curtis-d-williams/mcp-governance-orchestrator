@@ -37,7 +37,11 @@ from scripts.planner_scoring import (
     load_planner_policy,
     load_portfolio_signals,
 )
-from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
+from scripts.claude_dynamic_planner_loop import (
+    ACTION_TO_TASK,
+    resolve_action_to_task_mapping,
+    resolve_task_for_action,
+)
 
 OUTPUT_FILE = Path("planner_risk_summary.json")
 
@@ -106,7 +110,7 @@ def _fetch_actions(portfolio_state_path, ledger_path=None):
 # ---------------------------------------------------------------------------
 
 def _compute_risk(actions, top_k, ledger, signals, policy, active_mapping,
-                  exploration_offset=0):
+                  exploration_offset=0, mapping_override=None):
     """Compute collision-risk metrics from pre-loaded, pre-fetched data.
 
     This is the pure, deterministic core — no I/O, no subprocess.
@@ -117,12 +121,17 @@ def _compute_risk(actions, top_k, ledger, signals, policy, active_mapping,
         ledger:            {action_type: row_dict} effectiveness ledger.
         signals:           {signal_name: float} portfolio signal averages.
         policy:            {signal_name: weight} planner policy weights.
-        active_mapping:    {action_type: task_name} active action→task mapping.
+        active_mapping:    {action_type: task_name} active action→task mapping
+                           (flat; used as default for instance-aware resolution).
         exploration_offset: Start index into the ranked list (default: 0).
+        mapping_override:  Raw override dict (flat or structured), or None.
+                           When set, resolve_task_for_action is used per action
+                           for instance-aware resolution.
 
     Returns:
-        dict with keys: ranked_action_window, mapped_tasks, unique_tasks,
-        collapse_count, collision_ratio, task_entropy, action_entropy.
+        dict with keys: ranked_action_window, ranked_action_window_detail,
+        mapped_tasks, unique_tasks, collapse_count, collision_ratio,
+        task_entropy, action_entropy.
     """
     # Rank actions using the planner's exact scoring formula.
     ranked = _apply_learning_adjustments(actions, ledger, signals, policy)
@@ -132,13 +141,26 @@ def _compute_risk(actions, top_k, ledger, signals, policy, active_mapping,
     end = start + top_k
     window = ranked[start:end]
 
-    ranked_action_window = [a.get("action_type", "") for a in window]
+    # ranked_action_window_detail: instance-level info for each window action.
+    ranked_action_window_detail = [
+        {
+            "action_id": a.get("action_id", ""),
+            "action_type": a.get("action_type", ""),
+            "repo_id": a.get("repo_id", ""),
+        }
+        for a in window
+    ]
+    ranked_action_window = [d["action_type"] for d in ranked_action_window_detail]
 
     # Map each action to its task; track first-seen tasks.
+    # Use instance-aware resolution when mapping_override is provided.
     mapped_tasks = []
     seen_tasks = set()
-    for at in ranked_action_window:
-        task = active_mapping.get(at)
+    for action_dict, detail in zip(window, ranked_action_window_detail):
+        if mapping_override is not None:
+            task = resolve_task_for_action(detail, mapping_override, active_mapping)
+        else:
+            task = active_mapping.get(detail["action_type"])
         mapped_tasks.append(task)
         if task is not None and task not in seen_tasks:
             seen_tasks.add(task)
@@ -168,6 +190,7 @@ def _compute_risk(actions, top_k, ledger, signals, policy, active_mapping,
 
     return {
         "ranked_action_window": ranked_action_window,
+        "ranked_action_window_detail": ranked_action_window_detail,
         "mapped_tasks": mapped_tasks,
         "unique_tasks": unique_tasks,
         "collapse_count": collapse_count,
@@ -217,6 +240,7 @@ def analyze_collision_risk(policy_path, top_k, portfolio_state_path, ledger_path
 
     risk = _compute_risk(
         raw_actions, top_k, ledger, signals, policy, active_mapping, exploration_offset,
+        mapping_override=mapping_override,
     )
 
     summary = {

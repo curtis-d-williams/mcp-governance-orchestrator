@@ -65,7 +65,8 @@ _fetch_actions = _analyzer_mod._fetch_actions
 # Repair proposal builder — pure, deterministic, no I/O
 # ---------------------------------------------------------------------------
 
-def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping):
+def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping,
+                    window_detail=None):
     """Build a diversified mapping override for colliding actions.
 
     Heuristic (deterministic):
@@ -84,14 +85,30 @@ def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping):
          override without depending on the default mapping for any window action.
          Actions with no current task mapping are omitted from the override.
 
+    When window_detail is provided (list of {action_id, action_type, repo_id}
+    dicts), the proposed_mapping_override uses a structured schema:
+      {
+        "by_action_id": {action_id: task},   # for duplicate action_types
+        "by_action_type": {action_type: task} # for unique action_types
+      }
+    This prevents duplicate action_type overrides from overwriting each other.
+
+    When window_detail is None, falls back to the flat {action_type: task} schema
+    for backward compatibility with existing callers and tests.
+
     Args:
         ranked_action_window: list[str] — action_types in window order.
         current_mapped_tasks: list[str|None] — parallel task mapping list.
         active_mapping:       dict[str, str] — the active action→task mapping.
+        window_detail:        optional list[dict] — per-action {action_id,
+                              action_type, repo_id}; enables structured output.
 
     Returns:
-        (proposed_override: dict[str, str], reasons: list[str])
-        proposed_override is empty when no repair is needed or possible.
+        (proposed_override: dict, reasons: list[str])
+        proposed_override is empty ({}) when no repair is needed or possible.
+        When window_detail is absent, proposed_override is flat {action_type: task}.
+        When window_detail is present, proposed_override is structured
+        {"by_action_id": {...}, "by_action_type": {...}} (keys omitted if empty).
     """
     if not ranked_action_window:
         return {}, ["action window is empty — no repair can be proposed"]
@@ -109,20 +126,85 @@ def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping):
     # Build the repair proposal.
     candidate_pool = sorted(ALL_TASKS)  # deterministic ordering
     assigned_in_window: set = set()
-    override: dict = {}
     reasons: list = []
 
-    for action_type, current_task in zip(ranked_action_window, current_mapped_tasks):
-        if current_task not in colliding_tasks:
-            # Not colliding — preserve mapping in full override; mark task assigned.
-            if current_task is not None:
+    # --- Detect duplicate action_types (needed for both paths when window_detail given) ---
+    type_counts: dict = {}
+    if window_detail is not None:
+        for d in window_detail:
+            at = d["action_type"]
+            type_counts[at] = type_counts.get(at, 0) + 1
+
+    # Use flat dict algorithm when window_detail is absent OR when no action_type
+    # appears more than once (structured format only needed for actual dups).
+    has_dup_types = any(c > 1 for c in type_counts.values())
+
+    if window_detail is None or not has_dup_types:
+        # --- Original flat dict algorithm (backward compat) ---
+        override: dict = {}
+        for action_type, current_task in zip(ranked_action_window, current_mapped_tasks):
+            if current_task not in colliding_tasks:
+                # Not colliding — preserve mapping in full override; mark task assigned.
+                if current_task is not None:
+                    override[action_type] = current_task
+                    assigned_in_window.add(current_task)
+                continue
+
+            if current_task not in assigned_in_window:
+                # First occurrence of a colliding task — preserve; mark assigned.
                 override[action_type] = current_task
+                assigned_in_window.add(current_task)
+                continue
+
+            # Collision detected — find the first available alternative.
+            replacement = None
+            for candidate in candidate_pool:
+                if candidate not in assigned_in_window and candidate != current_task:
+                    replacement = candidate
+                    break
+
+            if replacement is not None:
+                override[action_type] = replacement
+                assigned_in_window.add(replacement)
+                reasons.append(
+                    f"{action_type!r} remapped from {current_task!r} to {replacement!r} "
+                    "to reduce task-collapse collision"
+                )
+            else:
+                reasons.append(
+                    f"{action_type!r} collides on {current_task!r} but no alternative "
+                    "task is available — left unchanged"
+                )
+
+        return override, reasons
+
+    # --- Instance-aware algorithm: window_detail provided AND has duplicate types ---
+
+    by_action_id: dict = {}
+    by_action_type: dict = {}
+
+    for detail, current_task in zip(window_detail, current_mapped_tasks):
+        action_id = detail["action_id"]
+        action_type = detail["action_type"]
+        # Use action_id key when the type appears more than once (prevents overwrite).
+        use_id_key = type_counts.get(action_type, 1) > 1
+
+        def _store(key_id, key_type, task):
+            if use_id_key:
+                by_action_id[key_id] = task
+            else:
+                by_action_type[key_type] = task
+
+        if current_task not in colliding_tasks:
+            # Not colliding — preserve mapping; mark task assigned.
+            if current_task is not None:
+                _store(action_id, action_type, current_task)
                 assigned_in_window.add(current_task)
             continue
 
         if current_task not in assigned_in_window:
-            # First occurrence of a colliding task — preserve mapping; mark assigned.
-            override[action_type] = current_task
+            # First occurrence of a colliding task — preserve; mark assigned.
+            _store(action_id, action_type, current_task)
             assigned_in_window.add(current_task)
             continue
 
@@ -134,19 +216,25 @@ def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping):
                 break
 
         if replacement is not None:
-            override[action_type] = replacement
+            _store(action_id, action_type, replacement)
             assigned_in_window.add(replacement)
             reasons.append(
-                f"{action_type!r} remapped from {current_task!r} to {replacement!r} "
-                "to reduce task-collapse collision"
+                f"{action_type!r} (id={action_id!r}) remapped from {current_task!r} "
+                f"to {replacement!r} to reduce task-collapse collision"
             )
         else:
             reasons.append(
-                f"{action_type!r} collides on {current_task!r} but no alternative "
-                "task is available — left unchanged"
+                f"{action_type!r} (id={action_id!r}) collides on {current_task!r} "
+                "but no alternative task is available — left unchanged"
             )
 
-    return override, reasons
+    structured: dict = {}
+    if by_action_id:
+        structured["by_action_id"] = by_action_id
+    if by_action_type:
+        structured["by_action_type"] = by_action_type
+
+    return structured, reasons
 
 
 # ---------------------------------------------------------------------------
@@ -180,16 +268,19 @@ def propose_mapping_repair(policy_path, portfolio_state_path, ledger_path,
     )
 
     ranked_action_window = risk["ranked_action_window"]
+    ranked_action_window_detail = risk.get("ranked_action_window_detail")
     current_mapped_tasks = risk["mapped_tasks"]
 
     proposed_override, reasons = _propose_repair(
         ranked_action_window, current_mapped_tasks, active_mapping,
+        window_detail=ranked_action_window_detail,
     )
 
     repair_needed = bool(proposed_override)
 
     proposal = {
         "ranked_action_window": ranked_action_window,
+        "ranked_action_window_detail": ranked_action_window_detail,
         "current_mapped_tasks": current_mapped_tasks,
         "proposed_mapping_override": proposed_override,
         "repair_needed": repair_needed,
