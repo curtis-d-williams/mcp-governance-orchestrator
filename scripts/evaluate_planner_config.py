@@ -252,6 +252,7 @@ def evaluate_planner_config(policy_path, top_k, portfolio_state_path, ledger_pat
 
     metrics = _compute_risk(
         raw_actions, top_k, ledger, signals, policy, active_mapping, exploration_offset,
+        mapping_override=mapping_override,
     )
 
     evaluation = build_evaluation(metrics, top_k)

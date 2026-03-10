@@ -87,7 +87,10 @@ def resolve_action_to_task_mapping(default_mapping, mapping_override=None):
     """Return the active action→task mapping for a planner run.
 
     When mapping_override is None or empty, returns default_mapping unchanged.
-    When mapping_override is a non-empty dict, returns it (caller-supplied mapping).
+    When mapping_override is a flat dict, returns it (complete replacement).
+    When mapping_override is a structured dict with "by_action_id"/"by_action_type"
+    keys, returns a flat mapping: default_mapping merged with by_action_type entries.
+    (Instance-level by_action_id resolution requires resolve_task_for_action.)
     This function is pure and deterministic.
 
     Args:
@@ -95,11 +98,53 @@ def resolve_action_to_task_mapping(default_mapping, mapping_override=None):
         mapping_override: Optional dict from an experiment config.
 
     Returns:
-        A dict mapping action_type strings to task name strings.
+        A flat dict mapping action_type strings to task name strings.
     """
-    if mapping_override:
-        return dict(mapping_override)
-    return default_mapping
+    if not mapping_override:
+        return default_mapping
+    if "by_action_id" in mapping_override or "by_action_type" in mapping_override:
+        flat = dict(default_mapping)
+        flat.update(mapping_override.get("by_action_type", {}))
+        return flat
+    return dict(mapping_override)
+
+
+def resolve_task_for_action(action, mapping_override, default_mapping):
+    """Resolve the task name for a single action dict, instance-aware.
+
+    Resolution precedence:
+    1. mapping_override["by_action_id"][action_id]  (structured override)
+    2. mapping_override["by_action_type"][action_type]  (structured override)
+    3. mapping_override[action_type]  (flat override, backward compat)
+    4. default_mapping[action_type]  (structured overrides only; not flat)
+
+    For flat overrides (no "by_action_id"/"by_action_type" keys) the override
+    completely replaces the default mapping — unmapped actions return None.
+    This function is pure and deterministic.
+
+    Args:
+        action:          Single action dict with "action_id" and "action_type".
+        mapping_override: Raw override dict (flat or structured), or None.
+        default_mapping: Flat {action_type: task} dict used as fallback.
+
+    Returns:
+        Task name string, or None when the action is unmapped.
+    """
+    action_type = action.get("action_type", "")
+    if not mapping_override:
+        return default_mapping.get(action_type)
+    if "by_action_id" in mapping_override or "by_action_type" in mapping_override:
+        # Structured override — fall through to default_mapping when unmatched.
+        action_id = action.get("action_id", "")
+        by_id = mapping_override.get("by_action_id", {})
+        by_type = mapping_override.get("by_action_type", {})
+        if action_id and action_id in by_id:
+            return by_id[action_id]
+        if action_type in by_type:
+            return by_type[action_type]
+        return default_mapping.get(action_type)
+    # Flat override — replaces default mapping entirely (no fallthrough).
+    return mapping_override.get(action_type)
 
 
 def log(message):
@@ -210,24 +255,31 @@ def _fetch_action_queue(portfolio_state_path, ledger_path=None):
         return []
 
 
-def _map_actions_to_tasks(actions, top_k=1, action_to_task=None):
+def _map_actions_to_tasks(actions, top_k=1, action_to_task=None, mapping_override=None):
     """Map the first top_k actions to task names via the active mapping.
 
     Skips unmapped action types and de-duplicates while preserving first-
     occurrence order. Returns [] when no actions map to known tasks.
 
+    When mapping_override is provided, uses resolve_task_for_action for
+    instance-aware resolution (supports by_action_id in structured overrides).
+
     Args:
-        actions:        List of action dicts (each with an action_type key).
-        top_k:          Maximum number of actions to consider.
-        action_to_task: Active mapping dict. Defaults to ACTION_TO_TASK when None.
+        actions:         List of action dicts (each with an action_type key).
+        top_k:           Maximum number of actions to consider.
+        action_to_task:  Active flat mapping dict. Defaults to ACTION_TO_TASK.
+        mapping_override: Raw override dict (flat or structured), or None.
+                          When set, resolve_task_for_action is used per action.
     """
     if action_to_task is None:
         action_to_task = ACTION_TO_TASK
     seen = set()
     tasks = []
     for action in actions[:top_k]:
-        at = action.get("action_type", "")
-        task = action_to_task.get(at)
+        if mapping_override is not None:
+            task = resolve_task_for_action(action, mapping_override, action_to_task)
+        else:
+            task = action_to_task.get(action.get("action_type", ""))
         if task is None:
             continue
         if task not in seen:
@@ -236,24 +288,31 @@ def _map_actions_to_tasks(actions, top_k=1, action_to_task=None):
     return tasks
 
 
-def _selected_mapped_actions(actions, top_k=1, action_to_task=None):
+def _selected_mapped_actions(actions, top_k=1, action_to_task=None, mapping_override=None):
     """Return action dicts from actions[:top_k] whose action_type maps to a task.
 
     Mirrors _map_actions_to_tasks deduplication: skips subsequent actions that
     resolve to an already-selected task name. Preserves first-occurrence order.
 
+    When mapping_override is provided, uses resolve_task_for_action for
+    instance-aware resolution (supports by_action_id in structured overrides).
+
     Args:
-        actions:        List of action dicts (each with an action_type key).
-        top_k:          Maximum number of actions to consider.
-        action_to_task: Active mapping dict. Defaults to ACTION_TO_TASK when None.
+        actions:         List of action dicts (each with an action_type key).
+        top_k:           Maximum number of actions to consider.
+        action_to_task:  Active flat mapping dict. Defaults to ACTION_TO_TASK.
+        mapping_override: Raw override dict (flat or structured), or None.
+                          When set, resolve_task_for_action is used per action.
     """
     if action_to_task is None:
         action_to_task = ACTION_TO_TASK
     seen_tasks = set()
     result = []
     for action in actions[:top_k]:
-        at = action.get("action_type", "")
-        task = action_to_task.get(at)
+        if mapping_override is not None:
+            task = resolve_task_for_action(action, mapping_override, action_to_task)
+        else:
+            task = action_to_task.get(action.get("action_type", ""))
         if task is None:
             continue
         if task not in seen_tasks:
@@ -334,8 +393,12 @@ def select_actions(args, raw_actions, ledger, signals, policy, mapping_override=
     start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
     end = start + args.top_k
     window = actions[start:end]
-    tasks_to_run = _map_actions_to_tasks(window, args.top_k, action_to_task=active_mapping)
-    selected_action_dicts = _selected_mapped_actions(window, args.top_k, action_to_task=active_mapping) if tasks_to_run else []
+    tasks_to_run = _map_actions_to_tasks(
+        window, args.top_k, action_to_task=active_mapping, mapping_override=mapping_override
+    )
+    selected_action_dicts = _selected_mapped_actions(
+        window, args.top_k, action_to_task=active_mapping, mapping_override=mapping_override
+    ) if tasks_to_run else []
     return tasks_to_run, selected_action_dicts, actions
 
 

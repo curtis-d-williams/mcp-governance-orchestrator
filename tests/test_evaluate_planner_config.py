@@ -745,3 +745,151 @@ class TestEntropyGapHighRiskRule:
         assert m["unique_tasks"] == 1
         level, _, _ = _classify_risk(m, top_k=3)
         assert level == "high_risk"
+
+
+# ---------------------------------------------------------------------------
+# 8. evaluate_planner_config honors structured (by_action_id) overrides
+# ---------------------------------------------------------------------------
+
+class TestStructuredOverrideIntegration:
+    """Integration: structured override must reach _compute_risk, not be dropped."""
+
+    def _dup_actions(self):
+        """Two same-type actions with different action_ids; all collapse without override."""
+        return [
+            {"action_type": "rerun_failed_task",
+             "action_id": "rerun_failed_task_repo-A",
+             "repo_id": "repo-A", "priority": 0.9},
+            {"action_type": "regenerate_missing_artifact",
+             "action_id": "regenerate_missing_artifact_repo-A",
+             "repo_id": "repo-A", "priority": 0.8},
+            {"action_type": "regenerate_missing_artifact",
+             "action_id": "regenerate_missing_artifact_repo-B",
+             "repo_id": "repo-B", "priority": 0.7},
+        ]
+
+    def test_structured_override_reduces_collapse_in_evaluate(self, tmp_path):
+        """evaluate_planner_config must honour by_action_id overrides."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        # Without override: two regenerate_missing_artifact collapse to same task.
+        with patch.object(_mod, "_fetch_actions", return_value=self._dup_actions()):
+            base = evaluate_planner_config(
+                policy_path=None, top_k=3,
+                portfolio_state_path=str(ps), ledger_path=None,
+                output_path=str(tmp_path / "base.json"),
+            )
+        assert base["collapse_count"] >= 1, "Baseline should have collision"
+
+        # With structured override: two distinct action_ids → distinct tasks.
+        override_file = tmp_path / "override.json"
+        override_file.write_text(json.dumps({
+            "by_action_id": {
+                "regenerate_missing_artifact_repo-A": "artifact_audit_example",
+                "regenerate_missing_artifact_repo-B": "failure_recovery_example",
+            },
+            "by_action_type": {
+                "rerun_failed_task": "build_portfolio_dashboard",
+            },
+        }), encoding="utf-8")
+
+        with patch.object(_mod, "_fetch_actions", return_value=self._dup_actions()):
+            repaired = evaluate_planner_config(
+                policy_path=None, top_k=3,
+                portfolio_state_path=str(ps), ledger_path=None,
+                mapping_override_path=str(override_file),
+                output_path=str(tmp_path / "repaired.json"),
+            )
+
+        assert repaired["collapse_count"] == 0, (
+            f"Structured override must eliminate collision; got collapse_count={repaired['collapse_count']}, "
+            f"mapped_tasks={repaired['mapped_tasks']}"
+        )
+        assert repaired["unique_tasks"] == 3
+        assert repaired["collision_ratio"] == 0.0
+        assert repaired["risk_level"] == "low_risk"
+
+    def test_by_action_id_tasks_appear_in_mapped_tasks(self, tmp_path):
+        """The specific tasks from by_action_id must show in mapped_tasks."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        override_file = tmp_path / "override.json"
+        override_file.write_text(json.dumps({
+            "by_action_id": {
+                "regenerate_missing_artifact_repo-A": "artifact_audit_example",
+                "regenerate_missing_artifact_repo-B": "failure_recovery_example",
+            },
+            "by_action_type": {
+                "rerun_failed_task": "build_portfolio_dashboard",
+            },
+        }), encoding="utf-8")
+
+        with patch.object(_mod, "_fetch_actions", return_value=self._dup_actions()):
+            result = evaluate_planner_config(
+                policy_path=None, top_k=3,
+                portfolio_state_path=str(ps), ledger_path=None,
+                mapping_override_path=str(override_file),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        mapped = result["mapped_tasks"]
+        assert "artifact_audit_example" in mapped, f"Expected artifact_audit_example in {mapped}"
+        assert "failure_recovery_example" in mapped, f"Expected failure_recovery_example in {mapped}"
+        assert "build_portfolio_dashboard" in mapped, f"Expected build_portfolio_dashboard in {mapped}"
+
+    def test_structured_override_without_by_action_id_still_works(self, tmp_path):
+        """A structured override with only by_action_type must also work correctly."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        # Override maps all colliding action_types to distinct tasks via by_action_type.
+        override_file = tmp_path / "override.json"
+        override_file.write_text(json.dumps({
+            "by_action_type": {
+                "regenerate_missing_artifact": "artifact_audit_example",
+                "rerun_failed_task": "failure_recovery_example",
+            },
+        }), encoding="utf-8")
+
+        # Action window: all distinct action_types.
+        actions = [
+            {"action_type": "rerun_failed_task", "action_id": "a1",
+             "repo_id": "r1", "priority": 0.9},
+            {"action_type": "regenerate_missing_artifact", "action_id": "a2",
+             "repo_id": "r2", "priority": 0.8},
+        ]
+        with patch.object(_mod, "_fetch_actions", return_value=actions):
+            result = evaluate_planner_config(
+                policy_path=None, top_k=2,
+                portfolio_state_path=str(ps), ledger_path=None,
+                mapping_override_path=str(override_file),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["collapse_count"] == 0
+        assert "artifact_audit_example" in result["mapped_tasks"]
+        assert "failure_recovery_example" in result["mapped_tasks"]
+
+    def test_flat_override_still_honored(self, tmp_path):
+        """Flat override (backward compat) must still be honored in evaluate."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        actions = _make_actions(_HIGH_SPECS)  # all collapse to build_portfolio_dashboard
+
+        override_file = tmp_path / "override.json"
+        override_file.write_text(json.dumps({
+            "refresh_repo_health": "repo_insights_example",
+            "regenerate_missing_artifact": "artifact_audit_example",
+            "rerun_failed_task": "failure_recovery_example",
+        }), encoding="utf-8")
+
+        with patch.object(_mod, "_fetch_actions", return_value=actions):
+            result = evaluate_planner_config(
+                policy_path=None, top_k=3,
+                portfolio_state_path=str(ps), ledger_path=None,
+                mapping_override_path=str(override_file),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["collapse_count"] == 0
+        assert result["risk_level"] == "low_risk"

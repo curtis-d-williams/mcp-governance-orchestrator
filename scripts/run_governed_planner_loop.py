@@ -168,12 +168,15 @@ def _build_abort_artifact(args, attempts, last_evaluation):
     repair_proposal = None
     if last_evaluation is not None:
         window = last_evaluation.get("ranked_action_window", [])
+        window_detail = last_evaluation.get("ranked_action_window_detail")
         mapped = last_evaluation.get("mapped_tasks", [])
         from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
         active_mapping = resolve_action_to_task_mapping(
             ACTION_TO_TASK, getattr(args, "mapping_override", None)
         )
-        proposed_override, repair_reasons = _propose_repair(window, mapped, active_mapping)
+        proposed_override, repair_reasons = _propose_repair(
+            window, mapped, active_mapping, window_detail=window_detail
+        )
         if proposed_override:
             repair_proposal = {
                 "ranked_action_window": window,
