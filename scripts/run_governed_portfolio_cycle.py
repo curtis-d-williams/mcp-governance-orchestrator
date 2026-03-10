@@ -102,6 +102,7 @@ def _artifact_paths(work_dir):
         "aggregate": str(wd / "tier3_multi_run_aggregate.json"),
         "portfolio_state": str(wd / "portfolio_state.json"),
         "governed_result": str(wd / "governed_result.json"),
+        "execution_result": str(wd / "execution_result.json"),
     }
 
 
@@ -166,6 +167,22 @@ def _run_governed_loop(artifacts, args):
         cmd.append("--explain")
     if args.force:
         cmd.append("--force")
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def _run_execute_governed_actions(artifacts, manifest):
+    """Phase D: execute the tasks selected by the governed planner loop.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    script = str(_REPO_ROOT / "scripts" / "execute_governed_actions.py")
+    cmd = [
+        "python3", script,
+        "--governed-result", artifacts["governed_result"],
+        "--manifest", str(manifest),
+        "--output", artifacts["execution_result"],
+    ]
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
@@ -239,6 +256,7 @@ def run_cycle(args):
         "portfolio_task_summary": None,
         "portfolio_state": None,
         "governed_result": None,
+        "execution_result": None,
     }
 
     # --- Phase A: portfolio tasks ---
@@ -292,12 +310,32 @@ def run_cycle(args):
         return 1
 
     governed_result = _try_read_json(artifacts["governed_result"])
+
+    # --- Phase D: governed execution ---
+    try:
+        _run_execute_governed_actions(artifacts, manifest)
+    except subprocess.CalledProcessError:
+        execution_result = _try_read_json(artifacts["execution_result"])
+        cycle = {
+            **base_artifact,
+            "status": "aborted",
+            "phase": "governed_execution",
+            "portfolio_task_summary": portfolio_task_summary,
+            "portfolio_state": portfolio_state,
+            "governed_result": governed_result,
+            "execution_result": execution_result,
+        }
+        _write_json(args.output, cycle)
+        return 1
+
+    execution_result = _try_read_json(artifacts["execution_result"])
     cycle = {
         **base_artifact,
         "status": "ok",
         "portfolio_task_summary": portfolio_task_summary,
         "portfolio_state": portfolio_state,
         "governed_result": governed_result,
+        "execution_result": execution_result,
     }
     _write_json(args.output, cycle)
     return 0

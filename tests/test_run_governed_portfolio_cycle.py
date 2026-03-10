@@ -61,6 +61,16 @@ _GOVERNED_RESULT_DATA = {
     "result": {"run_count": 1},
 }
 
+_EXECUTION_RESULT_DATA = {
+    "status": "ok",
+    "selected_tasks": ["build_portfolio_dashboard"],
+    "resolved_via": "selected_actions",
+    "returncode": 0,
+    "parsed_output": None,
+    "stdout": "",
+    "stderr": "",
+}
+
 
 def _make_manifest(tmp_path, data=None):
     p = tmp_path / "manifest.json"
@@ -98,10 +108,16 @@ def _ok_proc(stdout=""):
     return proc
 
 
-def _side_effect_writing_state(artifacts, portfolio_state_data=None, governed_result_data=None):
+def _side_effect_writing_state(
+    artifacts,
+    portfolio_state_data=None,
+    governed_result_data=None,
+    execution_result_data=None,
+):
     """Return a side_effect function that writes JSON files on the appropriate subprocess call."""
     pstate = portfolio_state_data or _PORTFOLIO_STATE_DATA
     gresult = governed_result_data or _GOVERNED_RESULT_DATA
+    eresult = execution_result_data or _EXECUTION_RESULT_DATA
 
     def _fn(cmd, **kwargs):
         cmd_str = " ".join(cmd)
@@ -117,6 +133,12 @@ def _side_effect_writing_state(artifacts, portfolio_state_data=None, governed_re
             out_path = Path(cmd[out_idx + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(gresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "execute_governed_actions" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(eresult) + "\n", encoding="utf-8")
             return _ok_proc()
         # portfolio task phase
         return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
@@ -632,3 +654,212 @@ class TestWorkDirNaming:
         assert ap["report"].startswith(str(wd))
         assert ap["portfolio_state"].startswith(str(wd))
         assert ap["governed_result"].startswith(str(wd))
+        assert ap["execution_result"].startswith(str(wd))
+
+
+# ---------------------------------------------------------------------------
+# G. Governed execution phase
+# ---------------------------------------------------------------------------
+
+class TestGovernedExecution:
+    """Tests for Phase D: governed execution."""
+
+    def test_success_cycle_includes_execution_result(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "execution_result" in data
+        assert data["execution_result"] == _EXECUTION_RESULT_DATA
+
+    def test_execution_result_path_in_artifacts(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        wd = _work_dir(str(output))
+        ap = _artifact_paths(wd)
+        assert "execution_result" in ap
+
+    def test_executor_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        artifacts = _artifact_paths(wd)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        exec_result = {"status": "aborted", "reason": "no_selected_tasks"}
+        Path(artifacts["execution_result"]).parent.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(exec_result) + "\n", encoding="utf-8"
+                )
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="no tasks"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_executor_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        artifacts = _artifact_paths(wd)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        exec_result = {"status": "aborted", "reason": "no_selected_tasks"}
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(exec_result) + "\n", encoding="utf-8"
+                )
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="no tasks"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_executor_failure_phase_governed_execution(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="no tasks"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "governed_execution"
+
+    def test_executor_failure_preserves_prior_phase_data(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="no tasks"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["portfolio_state"] == _PORTFOLIO_STATE_DATA
+        assert data["governed_result"] == _GOVERNED_RESULT_DATA
+
+    def test_executor_receives_governed_result_and_manifest(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        captured_exec_cmd = []
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                captured_exec_cmd.extend(cmd)
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert "execute_governed_actions.py" in captured_exec_cmd[1]
+        assert "--governed-result" in captured_exec_cmd
+        assert "--manifest" in captured_exec_cmd
+        assert "--output" in captured_exec_cmd
