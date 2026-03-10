@@ -93,6 +93,15 @@ _ACTION_EFFECTIVENESS_DATA = {
     }
 }
 
+_CYCLE_HISTORY_DATA = {
+    "cycles": [{
+        "ledger_source": "work_dir",
+        "selected_tasks": ["build_portfolio_dashboard"],
+        "status": "ok",
+        "timestamp": "2026-01-01T00:00:00Z",
+    }]
+}
+
 
 def _make_manifest(tmp_path, data=None):
     p = tmp_path / "manifest.json"
@@ -137,6 +146,7 @@ def _side_effect_writing_state(
     execution_result_data=None,
     execution_history_data=None,
     action_effectiveness_data=None,
+    cycle_history_data=None,
 ):
     """Return a side_effect function that writes JSON files on the appropriate subprocess call."""
     pstate = portfolio_state_data or _PORTFOLIO_STATE_DATA
@@ -144,6 +154,7 @@ def _side_effect_writing_state(
     eresult = execution_result_data or _EXECUTION_RESULT_DATA
     hresult = execution_history_data or _EXECUTION_HISTORY_DATA
     aresult = action_effectiveness_data or _ACTION_EFFECTIVENESS_DATA
+    cresult = cycle_history_data or _CYCLE_HISTORY_DATA
 
     def _fn(cmd, **kwargs):
         cmd_str = " ".join(cmd)
@@ -177,6 +188,12 @@ def _side_effect_writing_state(
             out_path = Path(cmd[out_idx + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(aresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "update_cycle_history" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(cresult) + "\n", encoding="utf-8")
             return _ok_proc()
         # portfolio task phase
         return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
@@ -1593,3 +1610,153 @@ class TestPlannerLedgerResolution:
         # The mock _side_effect_writing_state writes the ledger during Phase F,
         # but Phase C already ran — so --ledger must not appear in Phase C cmd.
         assert "--ledger" not in captured_governed_cmd
+
+
+# ---------------------------------------------------------------------------
+# K. Cycle history phase (Phase I)
+# ---------------------------------------------------------------------------
+
+class TestCycleHistory:
+    """Tests for Phase I: cycle history index update."""
+
+    def test_success_cycle_includes_cycle_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "cycle_history" in data
+        assert data["cycle_history"] == _CYCLE_HISTORY_DATA
+
+    def test_cycle_history_path_in_artifacts(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        wd = _work_dir(str(output))
+        ap = _artifact_paths(wd)
+        assert "cycle_history" in ap
+
+    def test_cycle_history_artifact_path_within_work_dir(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        wd = _work_dir(str(output))
+        ap = _artifact_paths(wd)
+        assert ap["cycle_history"].startswith(str(wd))
+
+    def test_phase_i_receives_cycle_artifact_and_output(self, tmp_path):
+        args = _make_args(tmp_path)
+        captured_cmd = []
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "update_cycle_history" in cmd_str:
+                captured_cmd.extend(cmd)
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert "update_cycle_history.py" in captured_cmd[1]
+        assert "--cycle-artifact" in captured_cmd
+        assert "--output" in captured_cmd
+
+    def test_phase_i_receives_output_file_as_cycle_artifact(self, tmp_path):
+        """Phase I must read the staged cycle artifact at args.output."""
+        args = _make_args(tmp_path)
+        captured_cycle_artifact = []
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "update_cycle_history" in cmd_str:
+                idx = cmd.index("--cycle-artifact")
+                captured_cycle_artifact.append(cmd[idx + 1])
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert len(captured_cycle_artifact) == 1
+        assert captured_cycle_artifact[0] == args.output
+
+    def test_phase_i_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            if "update_cycle_history" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_phase_i_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            if "update_cycle_history" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_phase_i_failure_phase_cycle_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            if "update_cycle_history" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "cycle_history"
+
+    def test_phase_i_failure_preserves_prior_phase_data(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            if "update_cycle_history" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["governed_result"] == _GOVERNED_RESULT_DATA
+        assert data["execution_history"] == _EXECUTION_HISTORY_DATA
+        assert data["action_effectiveness_ledger"] == _ACTION_EFFECTIVENESS_DATA
+
+    def test_success_output_has_trailing_newline(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        assert Path(args.output).read_text(encoding="utf-8").endswith("\n")

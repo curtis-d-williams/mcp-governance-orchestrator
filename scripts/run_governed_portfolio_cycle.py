@@ -105,6 +105,7 @@ def _artifact_paths(work_dir):
         "execution_result": str(wd / "execution_result.json"),
         "execution_history": str(wd / "execution_history.json"),
         "action_effectiveness_ledger": str(wd / "action_effectiveness_ledger.json"),
+        "cycle_history": str(wd / "cycle_history.json"),
     }
 
 
@@ -189,6 +190,21 @@ def _run_governed_loop(artifacts, args, ledger=None):
         cmd.append("--explain")
     if args.force:
         cmd.append("--force")
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def _run_update_cycle_history(artifacts, cycle_artifact_path):
+    """Phase I: append a normalized cycle record to cycle_history.json.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    script = str(_REPO_ROOT / "scripts" / "update_cycle_history.py")
+    cmd = [
+        "python3", script,
+        "--cycle-artifact", cycle_artifact_path,
+        "--output", artifacts["cycle_history"],
+    ]
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
@@ -311,6 +327,7 @@ def run_cycle(args):
         "execution_result": None,
         "execution_history": None,
         "action_effectiveness_ledger": None,
+        "cycle_history": None,
         "planner_inputs": None,
     }
 
@@ -430,6 +447,8 @@ def run_cycle(args):
     action_effectiveness_ledger = _try_read_json(
         artifacts["action_effectiveness_ledger"]
     )
+
+    # Assemble tentative ok cycle artifact (staging write for Phase I to read).
     cycle = {
         **base_artifact,
         "status": "ok",
@@ -439,7 +458,20 @@ def run_cycle(args):
         "execution_result": execution_result,
         "execution_history": execution_history,
         "action_effectiveness_ledger": action_effectiveness_ledger,
+        "cycle_history": None,
     }
+    _write_json(args.output, cycle)
+
+    # --- Phase I: cycle history index ---
+    try:
+        _run_update_cycle_history(artifacts, args.output)
+    except subprocess.CalledProcessError:
+        cycle = {**cycle, "status": "aborted", "phase": "cycle_history"}
+        _write_json(args.output, cycle)
+        return 1
+
+    cycle_history = _try_read_json(artifacts["cycle_history"])
+    cycle["cycle_history"] = cycle_history
     _write_json(args.output, cycle)
     return 0
 
