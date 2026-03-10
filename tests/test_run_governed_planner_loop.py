@@ -9,6 +9,8 @@ Covers:
 5. all high_risk with --force executes the final attempt.
 6. Output structure includes required keys (selected_offset, attempts, result).
 7. _build_offset_sequence deduplication and ordering.
+8. Empty-window high_risk short-circuits immediately (no further offset retries).
+7. _build_offset_sequence deduplication and ordering.
 """
 
 import importlib.util
@@ -33,6 +35,7 @@ _spec.loader.exec_module(_mod)
 
 run_governed_loop = _mod.run_governed_loop
 _build_offset_sequence = _mod._build_offset_sequence
+_is_empty_window_high_risk = _mod._is_empty_window_high_risk
 
 
 # ---------------------------------------------------------------------------
@@ -482,3 +485,160 @@ class TestBuildOffsetSequence:
         seq = _build_offset_sequence(0)
         # 0 is already in defaults, so length = 5
         assert len(seq) == 5
+
+
+# ---------------------------------------------------------------------------
+# 8. Empty-window high_risk short-circuits immediately
+# ---------------------------------------------------------------------------
+
+def _empty_window_preflight(args):
+    """Preflight stub that always returns empty-window high_risk."""
+    return {
+        "risk_level": "high_risk",
+        "collision_ratio": 0.0,
+        "unique_tasks": 0,
+        "reasons": [
+            "action window is empty: the planner produced no actions for the given inputs"
+        ],
+        "recommendations": ["inspect portfolio state"],
+    }
+
+
+def _collision_high_risk_preflight(risk_levels):
+    """Preflight stub returning collision-based high_risk, then optionally better."""
+    calls = iter(risk_levels)
+
+    def _fn(args):
+        level = next(calls)
+        return {
+            "risk_level": level,
+            "collision_ratio": 0.67 if level == "high_risk" else 0.0,
+            "unique_tasks": 1 if level == "high_risk" else 3,
+            "reasons": ["collision_ratio is 0.670000 (>=0.5): ..."] if level == "high_risk" else [],
+            "recommendations": [],
+        }
+
+    return _fn
+
+
+class TestEmptyWindowShortCircuit:
+    def test_empty_window_aborts_after_single_attempt(self, tmp_path):
+        """Empty-window high_risk must not try further offsets — exits after 1 attempt."""
+        args = _make_args(tmp_path, force=False, exploration_offset=0)
+        calls = []
+
+        def tracking_preflight(a):
+            calls.append(a.exploration_offset)
+            return _empty_window_preflight(a)
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=tracking_preflight)
+
+        assert exc_info.value.code == 1
+        assert len(calls) == 1  # short-circuited after first attempt
+
+    def test_empty_window_abort_records_attempt(self, tmp_path, capsys):
+        """Attempts list contains the single failing attempt even on abort."""
+        args = _make_args(tmp_path, force=False)
+
+        # Capture attempts via a side-channel before the exception propagates.
+        recorded = []
+
+        def tracking_preflight(a):
+            ev = _empty_window_preflight(a)
+            recorded.append(ev)
+            return ev
+
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=tracking_preflight)
+
+        assert len(recorded) == 1
+        assert recorded[0]["risk_level"] == "high_risk"
+
+    def test_empty_window_force_executes_immediately(self, tmp_path):
+        """With --force, empty-window high_risk executes after 1 attempt (no retries)."""
+        args = _make_args(tmp_path, force=True, exploration_offset=0)
+        calls = []
+
+        def tracking_preflight(a):
+            calls.append(a.exploration_offset)
+            return _empty_window_preflight(a)
+
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=tracking_preflight)
+
+        assert len(calls) == 1  # executed immediately, no retries
+        assert result.get("forced") is True
+        assert "result" in result
+
+    def test_empty_window_force_selected_offset_matches_attempt(self, tmp_path):
+        """With --force, selected_offset is the first (and only) attempted offset."""
+        args = _make_args(tmp_path, force=True, exploration_offset=2)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_empty_window_preflight)
+        assert result["selected_offset"] == result["attempts"][0]["offset"]
+
+    def test_non_empty_high_risk_still_retries(self, tmp_path):
+        """Collision-based high_risk must still retry across multiple offsets."""
+        args = _make_args(tmp_path, force=False, exploration_offset=0)
+        calls = []
+
+        def tracking_preflight(a):
+            calls.append(a.exploration_offset)
+            return _collision_high_risk_preflight(["high_risk", "low_risk"])(a)
+
+        # Reset the generator each time via a fresh closure.
+        risk_iter = iter(["high_risk", "low_risk"])
+
+        def fresh_preflight(a):
+            calls.append(a.exploration_offset)
+            level = next(risk_iter)
+            return {
+                "risk_level": level,
+                "collision_ratio": 0.67 if level == "high_risk" else 0.0,
+                "unique_tasks": 1 if level == "high_risk" else 3,
+                "reasons": ["collision_ratio is 0.670000 (>=0.5): ..."] if level == "high_risk" else [],
+                "recommendations": [],
+            }
+
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=fresh_preflight)
+
+        assert len(calls) == 2  # retried — did not short-circuit
+        assert result["attempts"][0]["risk_level"] == "high_risk"
+        assert result["attempts"][1]["risk_level"] == "low_risk"
+
+
+class TestIsEmptyWindowHighRisk:
+    """Unit tests for the _is_empty_window_high_risk helper."""
+
+    def test_returns_true_for_empty_window_reason(self):
+        ev = {
+            "risk_level": "high_risk",
+            "reasons": ["action window is empty: the planner produced no actions for the given inputs"],
+        }
+        assert _is_empty_window_high_risk(ev) is True
+
+    def test_returns_true_for_no_actions_reason(self):
+        ev = {"risk_level": "high_risk", "reasons": ["no actions available"]}
+        assert _is_empty_window_high_risk(ev) is True
+
+    def test_returns_false_for_collision_reason(self):
+        ev = {
+            "risk_level": "high_risk",
+            "reasons": ["collision_ratio is 0.670000 (>=0.5): more than half the window..."],
+        }
+        assert _is_empty_window_high_risk(ev) is False
+
+    def test_returns_false_for_low_risk(self):
+        ev = {"risk_level": "low_risk", "reasons": ["action window is empty"]}
+        assert _is_empty_window_high_risk(ev) is False
+
+    def test_returns_false_for_none(self):
+        assert _is_empty_window_high_risk(None) is False
+
+    def test_returns_false_for_empty_reasons(self):
+        ev = {"risk_level": "high_risk", "reasons": []}
+        assert _is_empty_window_high_risk(ev) is False

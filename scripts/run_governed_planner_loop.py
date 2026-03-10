@@ -78,6 +78,36 @@ def _build_offset_sequence(starting_offset):
 
 
 # ---------------------------------------------------------------------------
+# Empty-window detection helper
+# ---------------------------------------------------------------------------
+
+def _is_empty_window_high_risk(evaluation):
+    """Return True when *evaluation* is high_risk caused by an empty action window.
+
+    Retrying with a different exploration_offset cannot fix an empty window
+    (no eligible actions exist regardless of offset), so the loop short-circuits.
+
+    Detection: risk_level == "high_risk" AND at least one reason contains
+    "empty" or "no actions".  This matches the reason text produced by
+    _classify_risk in evaluate_planner_config.py.
+
+    Args:
+        evaluation: dict returned by preflight_fn, or None.
+
+    Returns:
+        bool
+    """
+    if not evaluation:
+        return False
+    if evaluation.get("risk_level") != "high_risk":
+        return False
+    return any(
+        "empty" in r.lower() or "no actions" in r.lower()
+        for r in evaluation.get("reasons", [])
+    )
+
+
+# ---------------------------------------------------------------------------
 # Core loop (injectable for testing)
 # ---------------------------------------------------------------------------
 
@@ -92,10 +122,12 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
 
     Returns:
         A dict with keys: selected_offset, attempts, result.
-        When --force overrides a final high_risk attempt, "forced": True is added.
+        When --force overrides a high_risk attempt, "forced": True is added.
 
     Raises:
-        SystemExit(1) when all attempts are high_risk and --force is not set.
+        SystemExit(1) when a high_risk result cannot be resolved and --force
+        is not set.  This includes both the empty-window short-circuit and the
+        case where all offsets are exhausted.
     """
     if preflight_fn is None:
         preflight_fn = _run_preflight_check
@@ -136,7 +168,30 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
             _write_artifact(args, artifact)
             return artifact
 
-        # high_risk — continue to next offset
+        # high_risk — check for empty-window short-circuit before retrying
+        if _is_empty_window_high_risk(evaluation):
+            if force:
+                result = run_experiment(
+                    attempt_args,
+                    planner_main=planner_main,
+                    risk_check_fn=lambda _a: None,
+                )
+                artifact = {
+                    "selected_offset": offset,
+                    "attempts": attempts,
+                    "result": result,
+                    "forced": True,
+                }
+                _write_artifact(args, artifact)
+                return artifact
+            print(
+                "Governed planner loop: empty action window — no eligible actions exist. "
+                "Use --force to run anyway.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+        # collision/diversity high_risk — continue to next offset
 
     # All attempts were high_risk.
     final_offset = offsets[-1]
