@@ -305,13 +305,64 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
         _write_artifact(args, artifact)
         return artifact
 
-    # Abort.
+    # --- Auto-repair attempt (one shot, before final abort) ---
+    # Build the abort artifact first — it already calls _propose_repair internally.
+    # Empty-window failures are short-circuited above and never reach here.
+    _abort_artifact = _build_abort_artifact(args, attempts, last_evaluation)
+    _proposal_data = _abort_artifact.get("repair_proposal")
+    _proposed_override = (
+        _proposal_data.get("proposed_mapping_override") if _proposal_data else None
+    )
+
+    if _proposed_override:
+        repaired_args = _copy_args(args)
+        repaired_args.exploration_offset = final_offset
+        repaired_args.mapping_override = _proposed_override
+
+        repaired_eval = preflight_fn(repaired_args)
+        repaired_risk = (
+            repaired_eval.get("risk_level", "low_risk") if repaired_eval else "low_risk"
+        )
+
+        if repaired_risk in ("low_risk", "moderate_risk"):
+            result = run_experiment(
+                repaired_args,
+                planner_main=planner_main,
+                risk_check_fn=lambda _a: None,
+            )
+            artifact = {
+                "auto_repair_applied": True,
+                "auto_repair_attempted": True,
+                "attempts": attempts,
+                "governance": _build_governance(args, result),
+                "repair_proposal": _proposed_override,
+                "repaired_from_offset": final_offset,
+                "result": result,
+                "selected_offset": final_offset,
+            }
+            _write_artifact(args, artifact)
+            return artifact
+
+        # Repaired preflight is still high_risk — fail-closed.
+        _abort_artifact["auto_repair_attempted"] = True
+        _abort_artifact["auto_repair_applied"] = False
+        _abort_artifact["repaired_from_offset"] = final_offset
+        print(
+            f"Governed planner loop: all {len(offsets)} offset(s) returned high_risk. "
+            "Auto-repair attempted but repaired configuration is still high_risk. "
+            "Use --force to run anyway.",
+            file=sys.stderr,
+        )
+        _write_artifact(args, _abort_artifact)
+        raise SystemExit(1)
+
+    # Abort (no repair proposal — window is unrepairable).
     print(
         f"Governed planner loop: all {len(offsets)} offset(s) returned high_risk. "
         "Use --force to run anyway.",
         file=sys.stderr,
     )
-    _write_artifact(args, _build_abort_artifact(args, attempts, last_evaluation))
+    _write_artifact(args, _abort_artifact)
     raise SystemExit(1)
 
 
