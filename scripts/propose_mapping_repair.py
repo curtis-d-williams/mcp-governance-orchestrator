@@ -79,7 +79,10 @@ def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping):
             - has not yet been assigned in this window's override, and
             - is not the task we are replacing (to force meaningful change).
          c. If no alternative is available, leave the action unmapped (None).
-      4. Only actions whose mapping is *changed* appear in the override dict.
+      4. When a repair is needed, the override covers ALL actions in the window
+         (including unchanged ones) so it can be applied as a complete effective
+         override without depending on the default mapping for any window action.
+         Actions with no current task mapping are omitted from the override.
 
     Args:
         ranked_action_window: list[str] — action_types in window order.
@@ -111,13 +114,15 @@ def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping):
 
     for action_type, current_task in zip(ranked_action_window, current_mapped_tasks):
         if current_task not in colliding_tasks:
-            # Not colliding — keep as-is; mark the task as assigned.
+            # Not colliding — preserve mapping in full override; mark task assigned.
             if current_task is not None:
+                override[action_type] = current_task
                 assigned_in_window.add(current_task)
             continue
 
         if current_task not in assigned_in_window:
-            # First occurrence of a colliding task — keep the mapping, mark it.
+            # First occurrence of a colliding task — preserve mapping; mark assigned.
+            override[action_type] = current_task
             assigned_in_window.add(current_task)
             continue
 
