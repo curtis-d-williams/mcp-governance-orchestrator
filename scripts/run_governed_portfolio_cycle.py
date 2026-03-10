@@ -47,6 +47,38 @@ def _write_json(path, data):
 
 
 # ---------------------------------------------------------------------------
+# Manifest validation helper
+# ---------------------------------------------------------------------------
+
+def _validate_manifest_repos(manifest_data):
+    """Return a list of invalid repo entries from *manifest_data*.
+
+    A repo is invalid when:
+    - it is missing an "id" key, OR
+    - it is missing a "path" key, OR
+    - its "path" does not exist on disk.
+
+    Args:
+        manifest_data: parsed manifest dict (caller ensures "repos" is a list).
+
+    Returns:
+        list of dicts, each with keys "id", "path", and "reason".
+        Empty list means all repos are valid.
+    """
+    invalid = []
+    for repo in manifest_data.get("repos", []):
+        repo_id = repo.get("id", "")
+        repo_path = repo.get("path", "")
+        if not repo_id:
+            invalid.append({"id": repo_id, "path": repo_path, "reason": "missing id"})
+        elif not repo_path:
+            invalid.append({"id": repo_id, "path": repo_path, "reason": "missing path"})
+        elif not Path(repo_path).exists():
+            invalid.append({"id": repo_id, "path": repo_path, "reason": "path does not exist"})
+    return invalid
+
+
+# ---------------------------------------------------------------------------
 # Artifact path helpers
 # ---------------------------------------------------------------------------
 
@@ -184,6 +216,16 @@ def run_cycle(args):
 
     if not isinstance(manifest_data.get("repos"), list):
         sys.stderr.write("error: manifest must contain 'repos' as a list\n")
+        return 1
+
+    invalid_repos = _validate_manifest_repos(manifest_data)
+    if invalid_repos:
+        _write_json(args.output, {
+            "status": "aborted",
+            "phase": "manifest_validation",
+            "manifest": str(manifest),
+            "invalid_repos": invalid_repos,
+        })
         return 1
 
     wd = _work_dir(args.output)

@@ -34,6 +34,7 @@ _spec.loader.exec_module(_mod)
 run_cycle = _mod.run_cycle
 _work_dir = _mod._work_dir
 _artifact_paths = _mod._artifact_paths
+_validate_manifest_repos = _mod._validate_manifest_repos
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +64,11 @@ _GOVERNED_RESULT_DATA = {
 
 def _make_manifest(tmp_path, data=None):
     p = tmp_path / "manifest.json"
-    p.write_text(json.dumps(data or _MANIFEST_DATA), encoding="utf-8")
+    if data is None:
+        # Use tmp_path as the repo path so it exists on disk and passes
+        # manifest repo-path validation.
+        data = {"repos": [{"id": "repo-a", "path": str(tmp_path)}]}
+    p.write_text(json.dumps(data), encoding="utf-8")
     return p
 
 
@@ -478,6 +483,130 @@ class TestEarlyPhaseFailure:
             rc = run_cycle(args)
         assert rc == 1
         mock_sub.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# F. Manifest repo path validation
+# ---------------------------------------------------------------------------
+
+class TestValidateManifestRepos:
+    """Unit tests for the _validate_manifest_repos helper."""
+
+    def test_valid_repos_returns_empty_list(self, tmp_path):
+        real_path = str(tmp_path)
+        data = {"repos": [{"id": "repo-a", "path": real_path}]}
+        assert _validate_manifest_repos(data) == []
+
+    def test_missing_path_key_flagged(self, tmp_path):
+        data = {"repos": [{"id": "repo-a"}]}
+        invalid = _validate_manifest_repos(data)
+        assert len(invalid) == 1
+        assert invalid[0]["id"] == "repo-a"
+        assert "missing path" in invalid[0]["reason"]
+
+    def test_missing_id_key_flagged(self, tmp_path):
+        data = {"repos": [{"path": str(tmp_path)}]}
+        invalid = _validate_manifest_repos(data)
+        assert len(invalid) == 1
+        assert "missing id" in invalid[0]["reason"]
+
+    def test_nonexistent_path_flagged(self, tmp_path):
+        data = {"repos": [{"id": "repo-a", "path": str(tmp_path / "no-such-dir")}]}
+        invalid = _validate_manifest_repos(data)
+        assert len(invalid) == 1
+        assert "does not exist" in invalid[0]["reason"]
+
+    def test_multiple_repos_partial_invalid(self, tmp_path):
+        data = {"repos": [
+            {"id": "good", "path": str(tmp_path)},
+            {"id": "bad", "path": str(tmp_path / "missing")},
+        ]}
+        invalid = _validate_manifest_repos(data)
+        assert len(invalid) == 1
+        assert invalid[0]["id"] == "bad"
+
+    def test_empty_repos_list_returns_empty(self):
+        assert _validate_manifest_repos({"repos": []}) == []
+
+
+class TestManifestValidationInCycle:
+    """Integration tests: invalid repo path aborts cycle before any subprocess."""
+
+    def test_invalid_repo_path_returns_one(self, tmp_path):
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": str(tmp_path / "nonexistent")}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run") as mock_sub:
+            rc = run_cycle(args)
+        assert rc == 1
+        mock_sub.assert_not_called()
+
+    def test_invalid_repo_path_writes_artifact(self, tmp_path):
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": str(tmp_path / "nonexistent")}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run"):
+            run_cycle(args)
+        assert Path(args.output).exists()
+
+    def test_invalid_repo_path_artifact_status_aborted(self, tmp_path):
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": str(tmp_path / "nonexistent")}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run"):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_invalid_repo_path_artifact_phase_manifest_validation(self, tmp_path):
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": str(tmp_path / "nonexistent")}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run"):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "manifest_validation"
+
+    def test_invalid_repo_path_artifact_contains_invalid_repos(self, tmp_path):
+        bad_path = str(tmp_path / "nonexistent")
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": bad_path}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run"):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert isinstance(data["invalid_repos"], list)
+        assert len(data["invalid_repos"]) == 1
+        assert data["invalid_repos"][0]["id"] == "repo-a"
+
+    def test_valid_repo_path_proceeds_to_subprocess(self, tmp_path):
+        """A manifest with a real existing path must not abort at validation."""
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": str(tmp_path)}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )) as mock_sub:
+            rc = run_cycle(args)
+        assert rc == 0
+        assert mock_sub.called
+
+    def test_artifact_manifest_path_recorded(self, tmp_path):
+        manifest = _make_manifest(tmp_path, data={
+            "repos": [{"id": "repo-a", "path": str(tmp_path / "nonexistent")}]
+        })
+        args = _make_args(tmp_path, manifest=manifest)
+        with patch("subprocess.run"):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["manifest"] == str(manifest)
 
 
 # ---------------------------------------------------------------------------
