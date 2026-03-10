@@ -108,6 +108,35 @@ def _is_empty_window_high_risk(evaluation):
 
 
 # ---------------------------------------------------------------------------
+# Governance metadata helper
+# ---------------------------------------------------------------------------
+
+_GOVERNED_LOOP_VERSION = "0.57.0-alpha"
+
+
+def _build_governance(args, result):
+    """Build the governance metadata block for the artifact.
+
+    Args:
+        args:   Namespace-like object with CLI attributes.
+        result: run_experiment result dict (may be None if not yet executed).
+
+    Returns:
+        dict with keys: planner_version, mapping_override, governed_loop_version.
+    """
+    planner_version = None
+    if result is not None:
+        runs = result.get("evaluation_summary", {}).get("runs", [])
+        if runs:
+            planner_version = runs[0].get("planner_version")
+    return {
+        "governed_loop_version": _GOVERNED_LOOP_VERSION,
+        "mapping_override": getattr(args, "mapping_override_path", None),
+        "planner_version": planner_version,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Core loop (injectable for testing)
 # ---------------------------------------------------------------------------
 
@@ -161,6 +190,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
                 risk_check_fn=lambda _a: None,  # preflight already done
             )
             artifact = {
+                "governance": _build_governance(args, result),
                 "selected_offset": offset,
                 "attempts": attempts,
                 "result": result,
@@ -177,6 +207,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
                     risk_check_fn=lambda _a: None,
                 )
                 artifact = {
+                    "governance": _build_governance(args, result),
                     "selected_offset": offset,
                     "attempts": attempts,
                     "result": result,
@@ -205,6 +236,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
             risk_check_fn=lambda _a: None,
         )
         artifact = {
+            "governance": _build_governance(args, result),
             "selected_offset": final_offset,
             "attempts": attempts,
             "result": result,
@@ -273,9 +305,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.mapping_override is not None:
+        args.mapping_override_path = args.mapping_override
         args.mapping_override = json.loads(
-            Path(args.mapping_override).read_text(encoding="utf-8")
+            Path(args.mapping_override_path).read_text(encoding="utf-8")
         )
+    else:
+        args.mapping_override_path = None
 
     run_governed_loop(args)
 

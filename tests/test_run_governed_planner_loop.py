@@ -645,6 +645,85 @@ class TestIsEmptyWindowHighRisk:
 
 
 # ---------------------------------------------------------------------------
+# 11. Governance metadata in artifact
+# ---------------------------------------------------------------------------
+
+class TestGovernanceMetadata:
+    def test_artifact_contains_governance_key(self, tmp_path):
+        """Every successful artifact must include a top-level 'governance' key."""
+        args = _make_args(tmp_path)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("low_risk"))
+        assert "governance" in result
+
+    def test_governance_contains_planner_version(self, tmp_path):
+        """governance.planner_version must be populated from the run result."""
+        args = _make_args(tmp_path)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("low_risk"))
+        assert result["governance"]["planner_version"] == "0.36"
+
+    def test_governance_mapping_override_is_none_when_absent(self, tmp_path):
+        """governance.mapping_override is None when no override was provided."""
+        args = _make_args(tmp_path)  # mapping_override_path not set
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("low_risk"))
+        assert result["governance"]["mapping_override"] is None
+
+    def test_governance_mapping_override_recorded_when_cli_flag_used(self, tmp_path):
+        """governance.mapping_override records the file path when override is given."""
+        override_data = {"action_a": "task_x"}
+        override_file = tmp_path / "override.json"
+        override_file.write_text(json.dumps(override_data) + "\n", encoding="utf-8")
+        output = tmp_path / "governed_result.json"
+
+        captured_governance = []
+
+        def capturing_loop(args, **kwargs):
+            # Run real loop, capture result, then return it.
+            r = run_governed_loop(args, planner_main=_noop_planner,
+                                  preflight_fn=_preflight_always("low_risk"))
+            captured_governance.append(r.get("governance"))
+            return r
+
+        original = _mod.run_governed_loop
+        _mod.run_governed_loop = capturing_loop
+        try:
+            _mod.main([
+                "--mapping-override", str(override_file),
+                "--output", str(output),
+            ])
+        finally:
+            _mod.run_governed_loop = original
+
+        assert len(captured_governance) == 1
+        assert captured_governance[0]["mapping_override"] == str(override_file)
+
+    def test_governance_contains_governed_loop_version(self, tmp_path):
+        """governance.governed_loop_version is present and non-empty."""
+        args = _make_args(tmp_path)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("low_risk"))
+        assert result["governance"].get("governed_loop_version")
+
+    def test_governance_present_in_forced_run(self, tmp_path):
+        """governance block is included when --force overrides high_risk."""
+        args = _make_args(tmp_path, force=True)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("high_risk"))
+        assert "governance" in result
+        assert result["governance"]["planner_version"] == "0.36"
+
+    def test_existing_fields_unchanged(self, tmp_path):
+        """Adding governance must not remove selected_offset, attempts, or result."""
+        args = _make_args(tmp_path)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("low_risk"))
+        for key in ("selected_offset", "attempts", "result"):
+            assert key in result
+
+
+# ---------------------------------------------------------------------------
 # 9. Mapping override threading
 # ---------------------------------------------------------------------------
 
