@@ -462,3 +462,153 @@ class TestRealFixtures:
             )
 
         assert _run() == _run()
+
+
+# ---------------------------------------------------------------------------
+# 8. Failure-mode guardrail — empty / missing action queue
+# ---------------------------------------------------------------------------
+
+class TestEmptyActionQueueGuardrail:
+    """run_diversity_sweep() must exit nonzero instead of emitting all-zero rows
+    when the action queue is empty (file missing or no eligible actions)."""
+
+    def test_missing_portfolio_state_raises_system_exit(self, tmp_path):
+        """File does not exist → SystemExit(1)."""
+        nonexistent = str(tmp_path / "does_not_exist.json")
+        with pytest.raises(SystemExit) as exc_info:
+            run_diversity_sweep(
+                policy_path=None,
+                portfolio_state_path=nonexistent,
+                ledger_path=None,
+                max_k=3,
+            )
+        assert exc_info.value.code == 1
+
+    def test_missing_file_prints_error_to_stderr(self, tmp_path, capsys):
+        """File does not exist → error message on stderr mentioning the path."""
+        nonexistent = str(tmp_path / "no_such_file.json")
+        with pytest.raises(SystemExit):
+            run_diversity_sweep(
+                policy_path=None,
+                portfolio_state_path=nonexistent,
+                ledger_path=None,
+                max_k=3,
+            )
+        err = capsys.readouterr().err
+        assert "not found" in err
+        assert "no_such_file.json" in err
+
+    def test_missing_file_no_stdout_output(self, tmp_path, capsys):
+        """File does not exist → no JSON (or any other) output on stdout."""
+        nonexistent = str(tmp_path / "no_such_file.json")
+        with pytest.raises(SystemExit):
+            run_diversity_sweep(
+                policy_path=None,
+                portfolio_state_path=nonexistent,
+                ledger_path=None,
+                max_k=3,
+            )
+        assert capsys.readouterr().out == ""
+
+    def test_empty_queue_raises_system_exit(self, tmp_path):
+        """Valid file, _fetch_actions returns [] → SystemExit(1)."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        with patch.object(_mod, "_fetch_actions", return_value=[]):
+            with pytest.raises(SystemExit) as exc_info:
+                run_diversity_sweep(
+                    policy_path=None,
+                    portfolio_state_path=str(ps),
+                    ledger_path=None,
+                    max_k=3,
+                )
+        assert exc_info.value.code == 1
+
+    def test_empty_queue_prints_error_to_stderr(self, tmp_path, capsys):
+        """Valid file, empty queue → error message on stderr."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        with patch.object(_mod, "_fetch_actions", return_value=[]):
+            with pytest.raises(SystemExit):
+                run_diversity_sweep(
+                    policy_path=None,
+                    portfolio_state_path=str(ps),
+                    ledger_path=None,
+                    max_k=3,
+                )
+        err = capsys.readouterr().err
+        assert len(err) > 0
+
+    def test_empty_queue_no_stdout_output(self, tmp_path, capsys):
+        """Valid file, empty queue → no JSON on stdout."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        with patch.object(_mod, "_fetch_actions", return_value=[]):
+            with pytest.raises(SystemExit):
+                run_diversity_sweep(
+                    policy_path=None,
+                    portfolio_state_path=str(ps),
+                    ledger_path=None,
+                    max_k=3,
+                )
+        assert capsys.readouterr().out == ""
+
+    def test_empty_queue_no_output_file_written(self, tmp_path):
+        """Valid file, empty queue → output file must not be created."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        out = tmp_path / "sweep.json"
+        with patch.object(_mod, "_fetch_actions", return_value=[]):
+            with pytest.raises(SystemExit):
+                run_diversity_sweep(
+                    policy_path=None,
+                    portfolio_state_path=str(ps),
+                    ledger_path=None,
+                    max_k=3,
+                    output_path=str(out),
+                )
+        assert not out.exists()
+
+    def test_nonempty_queue_not_affected(self, tmp_path):
+        """Non-empty queue → no SystemExit, normal sweep returned."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        actions = _make_actions(_FIVE_SPECS[:2])
+        with patch.object(_mod, "_fetch_actions", return_value=actions):
+            result = run_diversity_sweep(
+                policy_path=None,
+                portfolio_state_path=str(ps),
+                ledger_path=None,
+                max_k=2,
+                output_path=str(tmp_path / "out.json"),
+            )
+        assert len(result) == 2
+        assert result[0]["top_k"] == 1
+
+    def test_missing_file_error_message_mentions_portfolio_state(self, tmp_path, capsys):
+        """Stderr for missing-file case includes the word 'portfolio-state'."""
+        nonexistent = str(tmp_path / "ghost.json")
+        with pytest.raises(SystemExit):
+            run_diversity_sweep(
+                policy_path=None,
+                portfolio_state_path=nonexistent,
+                ledger_path=None,
+                max_k=2,
+            )
+        err = capsys.readouterr().err
+        assert "portfolio" in err.lower()
+
+    def test_empty_queue_error_mentions_eligible_actions(self, tmp_path, capsys):
+        """Stderr for empty-queue case mentions eligible actions or similar guidance."""
+        ps = tmp_path / "ps.json"
+        ps.write_text(json.dumps({"repos": []}), encoding="utf-8")
+        with patch.object(_mod, "_fetch_actions", return_value=[]):
+            with pytest.raises(SystemExit):
+                run_diversity_sweep(
+                    policy_path=None,
+                    portfolio_state_path=str(ps),
+                    ledger_path=None,
+                    max_k=3,
+                )
+        err = capsys.readouterr().err
+        assert "action" in err.lower()

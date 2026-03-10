@@ -147,6 +147,20 @@ def run_diversity_sweep(policy_path, portfolio_state_path, ledger_path, max_k=8,
     # Fetch actions once; reuse across all top_k values.
     raw_actions = _fetch_actions(portfolio_state_path, ledger_path)
 
+    if not raw_actions:
+        if not Path(portfolio_state_path).exists():
+            print(
+                f"Error: portfolio-state file not found: {portfolio_state_path}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Error: action queue is empty for '{portfolio_state_path}' — no actions to sweep. "
+                "Verify the portfolio state contains eligible actions.",
+                file=sys.stderr,
+            )
+        sys.exit(1)
+
     sweep = compute_diversity_sweep(
         raw_actions, max_k, ledger, signals, policy, active_mapping, exploration_offset,
     )
