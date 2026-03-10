@@ -333,13 +333,14 @@ class TestAllHighRiskAborts:
                               preflight_fn=_preflight_always("high_risk"))
         assert len(capsys.readouterr().err) > 0
 
-    def test_abort_no_output_file_written(self, tmp_path):
+    def test_abort_writes_artifact_file(self, tmp_path):
+        """Abort now writes an artifact before raising — the file must exist."""
         output = tmp_path / "governed_result.json"
         args = _make_args(tmp_path, force=False, output=str(output))
         with pytest.raises(SystemExit):
             run_governed_loop(args, planner_main=_noop_planner,
                               preflight_fn=_preflight_always("high_risk"))
-        assert not output.exists()
+        assert output.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -872,3 +873,118 @@ class TestMappingOverrideJsonLoading:
             _mod.run_governed_loop = original
 
         assert captured_args[0].mapping_override is None
+
+
+# ---------------------------------------------------------------------------
+# 12. Abort artifact written on persistent high_risk
+# ---------------------------------------------------------------------------
+
+def _collision_preflight_with_window():
+    """Persistent collision-based high_risk preflight that includes window/mapping data."""
+    def _fn(args):
+        return {
+            "risk_level": "high_risk",
+            "collision_ratio": 0.67,
+            "unique_tasks": 1,
+            "reasons": ["collision_ratio is 0.670000 (>=0.5): ..."],
+            "recommendations": [],
+            # ranked_action_window / mapped_tasks used by _build_abort_artifact
+            "ranked_action_window": [
+                "refresh_repo_health",
+                "regenerate_missing_artifact",
+                "rerun_failed_task",
+            ],
+            "mapped_tasks": [
+                "build_portfolio_dashboard",
+                "build_portfolio_dashboard",
+                "build_portfolio_dashboard",
+            ],
+        }
+    return _fn
+
+
+def _unrepairable_preflight():
+    """Persistent high_risk preflight with no window data (unrepairable)."""
+    def _fn(args):
+        return {
+            "risk_level": "high_risk",
+            "collision_ratio": 0.67,
+            "unique_tasks": 1,
+            "reasons": ["collision_ratio is 0.670000 (>=0.5): ..."],
+            "recommendations": [],
+            "ranked_action_window": [],
+            "mapped_tasks": [],
+        }
+    return _fn
+
+
+class TestAbortArtifact:
+    def test_persistent_high_risk_writes_artifact(self, tmp_path):
+        """Abort path must write the artifact file before raising SystemExit."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=_collision_preflight_with_window())
+        assert output.exists()
+
+    def test_abort_artifact_contains_abort_reason(self, tmp_path):
+        """abort_reason must be 'high_risk_persistent' in the written artifact."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=_collision_preflight_with_window())
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert data["abort_reason"] == "high_risk_persistent"
+
+    def test_repairable_abort_includes_non_empty_repair_proposal(self, tmp_path):
+        """When the window has collisions, repair_proposal must be non-empty."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=_collision_preflight_with_window())
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert data["repair_proposal"] is not None
+        assert data["repair_proposal"]["proposed_mapping_override"] != {}
+
+    def test_unrepairable_abort_has_null_repair_proposal(self, tmp_path):
+        """When the window is empty, repair_proposal must be None/null."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=_unrepairable_preflight())
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert data["repair_proposal"] is None
+
+    def test_abort_artifact_contains_attempts(self, tmp_path):
+        """Abort artifact must record the attempts list."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=_collision_preflight_with_window())
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert isinstance(data["attempts"], list)
+        assert len(data["attempts"]) > 0
+
+    def test_abort_artifact_contains_governance(self, tmp_path):
+        """Abort artifact must include the governance block."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=_collision_preflight_with_window())
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert "governance" in data
+
+    def test_successful_run_artifact_unchanged(self, tmp_path):
+        """Successful execution artifact must still contain selected_offset and result."""
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(args, planner_main=_noop_planner,
+                                   preflight_fn=_preflight_always("low_risk"))
+        for key in ("selected_offset", "attempts", "result", "governance"):
+            assert key in result
+        assert "abort_reason" not in result

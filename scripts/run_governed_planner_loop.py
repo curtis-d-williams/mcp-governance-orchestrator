@@ -48,6 +48,17 @@ run_experiment = _exp_mod.run_experiment
 _run_preflight_check = _exp_mod._run_preflight_check
 _copy_args = _exp_mod._copy_args
 
+# ---------------------------------------------------------------------------
+# Load propose_mapping_repair via importlib (no subprocess)
+# ---------------------------------------------------------------------------
+
+_REPAIR_SCRIPT = Path(__file__).resolve().parent / "propose_mapping_repair.py"
+_repair_spec = importlib.util.spec_from_file_location("propose_mapping_repair", _REPAIR_SCRIPT)
+_repair_mod = importlib.util.module_from_spec(_repair_spec)
+_repair_spec.loader.exec_module(_repair_mod)
+
+_propose_repair = _repair_mod._propose_repair
+
 
 # ---------------------------------------------------------------------------
 # Offset sequence builder
@@ -111,7 +122,7 @@ def _is_empty_window_high_risk(evaluation):
 # Governance metadata helper
 # ---------------------------------------------------------------------------
 
-_GOVERNED_LOOP_VERSION = "0.57.0-alpha"
+_GOVERNED_LOOP_VERSION = "0.58.0-alpha"
 
 
 def _build_governance(args, result):
@@ -134,6 +145,51 @@ def _build_governance(args, result):
         "mapping_override": getattr(args, "mapping_override_path", None),
         "planner_version": planner_version,
     }
+
+
+# ---------------------------------------------------------------------------
+# Abort artifact builder
+# ---------------------------------------------------------------------------
+
+def _build_abort_artifact(args, attempts, last_evaluation):
+    """Build the artifact written before a persistent high_risk abort.
+
+    Calls _propose_repair using data already in *last_evaluation* (no extra I/O).
+    repair_proposal is included when the proposal is non-empty; set to None otherwise.
+
+    Args:
+        args:            Namespace-like object with CLI attributes.
+        attempts:        list of attempt dicts recorded so far.
+        last_evaluation: evaluation dict from the final preflight call, or None.
+
+    Returns:
+        dict suitable for _write_artifact.
+    """
+    repair_proposal = None
+    if last_evaluation is not None:
+        window = last_evaluation.get("ranked_action_window", [])
+        mapped = last_evaluation.get("mapped_tasks", [])
+        from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
+        active_mapping = resolve_action_to_task_mapping(
+            ACTION_TO_TASK, getattr(args, "mapping_override", None)
+        )
+        proposed_override, repair_reasons = _propose_repair(window, mapped, active_mapping)
+        if proposed_override:
+            repair_proposal = {
+                "ranked_action_window": window,
+                "current_mapped_tasks": mapped,
+                "proposed_mapping_override": proposed_override,
+                "repair_needed": True,
+                "reasons": repair_reasons,
+            }
+
+    artifact = {
+        "abort_reason": "high_risk_persistent",
+        "attempts": attempts,
+        "governance": _build_governance(args, None),
+        "repair_proposal": repair_proposal,
+    }
+    return artifact
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +276,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
                 "Use --force to run anyway.",
                 file=sys.stderr,
             )
+            _write_artifact(args, _build_abort_artifact(args, attempts, evaluation))
             raise SystemExit(1)
 
         # collision/diversity high_risk — continue to next offset
@@ -251,6 +308,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
         "Use --force to run anyway.",
         file=sys.stderr,
     )
+    _write_artifact(args, _build_abort_artifact(args, attempts, last_evaluation))
     raise SystemExit(1)
 
 
