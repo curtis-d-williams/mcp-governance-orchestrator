@@ -267,13 +267,10 @@ def main(argv=None):
                         help="Output path for governed loop artifact (default: governed_result.json).")
     parser.add_argument("--envelope-prefix", default="planner_run_envelope", metavar="STR",
                         help="Prefix for envelope filenames (default: planner_run_envelope).")
+    parser.add_argument("--mapping-override", default=None, metavar="FILE",
+                        help="Path to JSON file overriding the action→task mapping (optional).")
 
     args = parser.parse_args(argv)
-    # Normalize hyphenated dest names to underscored attrs.
-    if not hasattr(args, "portfolio_state"):
-        args.portfolio_state = args.portfolio_state  # argparse handles this
-    if not hasattr(args, "mapping_override"):
-        args.mapping_override = None
 
     run_governed_loop(args)
 

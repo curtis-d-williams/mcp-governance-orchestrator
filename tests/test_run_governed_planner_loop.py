@@ -10,7 +10,7 @@ Covers:
 6. Output structure includes required keys (selected_offset, attempts, result).
 7. _build_offset_sequence deduplication and ordering.
 8. Empty-window high_risk short-circuits immediately (no further offset retries).
-7. _build_offset_sequence deduplication and ordering.
+9. Mapping override threaded through preflight and execution.
 """
 
 import importlib.util
@@ -642,3 +642,67 @@ class TestIsEmptyWindowHighRisk:
     def test_returns_false_for_empty_reasons(self):
         ev = {"risk_level": "high_risk", "reasons": []}
         assert _is_empty_window_high_risk(ev) is False
+
+
+# ---------------------------------------------------------------------------
+# 9. Mapping override threading
+# ---------------------------------------------------------------------------
+
+class TestMappingOverride:
+    def test_cli_accepts_mapping_override_flag(self, tmp_path):
+        """main() must parse --mapping-override without error."""
+        override_file = tmp_path / "override.json"
+        override_file.write_text("{}", encoding="utf-8")
+        output = tmp_path / "governed_result.json"
+        # If the flag is unrecognised, parse_args raises SystemExit(2).
+        # We stop before run_governed_loop does real work by injecting stubs.
+        captured_args = []
+
+        def capturing_loop(args, **kwargs):
+            captured_args.append(args)
+            return {"selected_offset": 0, "attempts": [], "result": {}}
+
+        original = _mod.run_governed_loop
+        _mod.run_governed_loop = capturing_loop
+        try:
+            _mod.main([
+                "--mapping-override", str(override_file),
+                "--output", str(output),
+            ])
+        finally:
+            _mod.run_governed_loop = original
+
+        assert len(captured_args) == 1
+        assert captured_args[0].mapping_override == str(override_file)
+
+    def test_governed_loop_passes_mapping_override_to_preflight(self, tmp_path):
+        """mapping_override on args is forwarded to each preflight call."""
+        sentinel = {"action_a": "task_x"}
+        args = _make_args(tmp_path, mapping_override=sentinel)
+
+        seen_overrides = []
+
+        def recording_preflight(a):
+            seen_overrides.append(getattr(a, "mapping_override", "MISSING"))
+            return {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 2}
+
+        run_governed_loop(args, planner_main=_noop_planner,
+                          preflight_fn=recording_preflight)
+
+        assert len(seen_overrides) == 1
+        assert seen_overrides[0] == sentinel
+
+    def test_no_mapping_override_is_none_by_default(self, tmp_path):
+        """When mapping_override is absent, preflight receives None."""
+        args = _make_args(tmp_path)  # mapping_override defaults to None
+
+        seen_overrides = []
+
+        def recording_preflight(a):
+            seen_overrides.append(getattr(a, "mapping_override", "MISSING"))
+            return {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 2}
+
+        run_governed_loop(args, planner_main=_noop_planner,
+                          preflight_fn=recording_preflight)
+
+        assert seen_overrides[0] is None
