@@ -42,6 +42,15 @@ TASK_REGISTRY = {
         "deterministic": True,
         "portfolio_safe": True,
     },
+    "health_probe_example": {
+        "module": "agent_tasks.health_probe_example",
+        "description": "Emit known degraded health signals for example pipeline validation",
+        "scope": "local_repo",
+        "inputs": [],
+        "outputs": [],
+        "deterministic": True,
+        "portfolio_safe": True,
+    },
     "planner_determinism_example": {
         "module": "agent_tasks.planner_determinism_example",
         "description": "Verify planner determinism indicators in the repo",

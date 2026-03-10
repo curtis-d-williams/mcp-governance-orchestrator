@@ -37,3 +37,11 @@ portfolio_state.json
 tier3_execution.log
 
 tier3_portfolio_dashboard_summary.png
+
+# Generated example manifests (contain machine-specific absolute paths)
+manifests/portfolio_manifest_example.json
+
+# Cycle runtime artifacts
+governed_portfolio_cycle.json
+governed_portfolio_cycle_artifacts/
+governed_result.json

@@ -45,6 +45,14 @@ def test_list_agent_tasks_output():
             "portfolio_safe": True,
         },
         {
+            "task": "health_probe_example",
+            "description": "Emit known degraded health signals for example pipeline validation",
+            "scope": "local_repo",
+            "outputs": [],
+            "deterministic": True,
+            "portfolio_safe": True,
+        },
+        {
             "task": "planner_determinism_example",
             "description": "Verify planner determinism indicators in the repo",
             "scope": "local_repo",
