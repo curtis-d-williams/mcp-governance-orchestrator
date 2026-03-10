@@ -294,7 +294,9 @@ class TestPlannerArgvConstruction:
         state.write_text("{}", encoding="utf-8")
         output = tmp_path / "results.json"
         args = _make_args(runs=1, output=str(output), portfolio_state=str(state))
-        _mod.run_experiment(args, planner_main=capture_argv)
+        # Skip preflight: this test is about argv construction, not risk evaluation.
+        _mod.run_experiment(args, planner_main=capture_argv,
+                            risk_check_fn=lambda _a: None)
         assert "--portfolio-state" in received[0]
 
     def test_portfolio_state_absent_when_none(self, tmp_path):

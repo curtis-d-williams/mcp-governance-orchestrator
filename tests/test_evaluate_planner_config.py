@@ -245,7 +245,7 @@ class TestRiskCases:
         ev = build_evaluation(m, top_k=2)
         assert ev["risk_level"] == "low_risk"
 
-    def test_empty_window_low_risk(self):
+    def test_empty_window_is_high_risk(self):
         m = _compute_risk(
             actions=[],
             top_k=3,
@@ -255,8 +255,34 @@ class TestRiskCases:
             active_mapping=dict(ACTION_TO_TASK),
         )
         ev = build_evaluation(m, top_k=3)
-        assert ev["risk_level"] == "low_risk"
+        assert ev["risk_level"] == "high_risk"
         assert ev["collapse_count"] == 0
+
+    def test_empty_window_reason_mentions_empty_or_no_actions(self):
+        m = _compute_risk(
+            actions=[], top_k=3, ledger={}, signals={}, policy={},
+            active_mapping=dict(ACTION_TO_TASK),
+        )
+        ev = build_evaluation(m, top_k=3)
+        combined = " ".join(ev["reasons"]).lower()
+        assert "empty" in combined or "no actions" in combined
+
+    def test_empty_window_recommendations_non_empty(self):
+        m = _compute_risk(
+            actions=[], top_k=3, ledger={}, signals={}, policy={},
+            active_mapping=dict(ACTION_TO_TASK),
+        )
+        ev = build_evaluation(m, top_k=3)
+        assert len(ev["recommendations"]) > 0
+
+    def test_empty_window_does_not_recommend_safe_to_use(self):
+        m = _compute_risk(
+            actions=[], top_k=3, ledger={}, signals={}, policy={},
+            active_mapping=dict(ACTION_TO_TASK),
+        )
+        ev = build_evaluation(m, top_k=3)
+        combined = " ".join(ev["recommendations"]).lower()
+        assert "safe to use as-is" not in combined
 
 
 # ---------------------------------------------------------------------------

@@ -67,7 +67,8 @@ def _classify_risk(metrics, top_k):
     Deterministic rubric (evaluated in priority order):
 
     high_risk:
-        - collision_ratio >= 0.5
+        - ranked_action_window is empty (planner produced no actions)
+        - OR collision_ratio >= 0.5
         - OR unique_tasks <= 1 with top_k >= 3
         - OR entropy_gap >= 1.0
 
@@ -98,12 +99,17 @@ def _classify_risk(metrics, top_k):
     reasons: list = []
     recommendations: list = []
 
-    # --- Empty window: nothing to evaluate ---
+    # --- Empty window: planner produced no actions — high risk ---
     if window_size == 0:
         return (
-            "low_risk",
-            ["action window is empty: no actions available to evaluate"],
-            ["safe to use as-is"],
+            "high_risk",
+            ["action window is empty: the planner produced no actions for the given inputs"],
+            [
+                "inspect portfolio state to ensure eligible actions exist",
+                "verify the action-to-task mapping covers the expected action types",
+                "check the effectiveness ledger and planner policy for overly restrictive filters",
+                "review planner inputs (top_k, exploration_offset, ledger, portfolio_state)",
+            ],
         )
 
     # --- High-risk conditions ---
@@ -170,16 +176,13 @@ def _classify_risk(metrics, top_k):
         return "moderate_risk", reasons, recommendations
 
     # --- Low risk ---
-    if window_size > 0:
+    reasons.append(
+        "collision_ratio is 0.0: all window actions map to distinct tasks"
+    )
+    if abs(action_entropy - task_entropy) <= 0.001:
         reasons.append(
-            "collision_ratio is 0.0: all window actions map to distinct tasks"
+            "task entropy closely tracks action entropy: ranked window preserves task diversity well"
         )
-        if abs(action_entropy - task_entropy) <= 0.001:
-            reasons.append(
-                "task entropy closely tracks action entropy: ranked window preserves task diversity well"
-            )
-    else:
-        reasons.append("action window is empty: no actions available to evaluate")
 
     recommendations.append("safe to use as-is")
     return "low_risk", reasons, recommendations
