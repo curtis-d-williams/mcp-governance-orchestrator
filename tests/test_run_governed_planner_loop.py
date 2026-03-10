@@ -988,3 +988,179 @@ class TestAbortArtifact:
         for key in ("selected_offset", "attempts", "result", "governance"):
             assert key in result
         assert "abort_reason" not in result
+
+
+# ---------------------------------------------------------------------------
+# 13. Auto-repair attempt after all offsets exhausted
+# ---------------------------------------------------------------------------
+
+def _repairable_high_risk_preflight():
+    """Persistent high_risk with collision window data — a repair proposal can be generated.
+
+    Always returns high_risk regardless of mapping_override, so the repaired
+    preflight call also fails (used to test the fail-closed path).
+    """
+    def _fn(args):
+        return {
+            "risk_level": "high_risk",
+            "collision_ratio": 0.67,
+            "unique_tasks": 1,
+            "reasons": ["collision_ratio is 0.670000 (>=0.5): ..."],
+            "recommendations": [],
+            "ranked_action_window": [
+                "refresh_repo_health",
+                "regenerate_missing_artifact",
+                "rerun_failed_task",
+            ],
+            "mapped_tasks": [
+                "build_portfolio_dashboard",
+                "build_portfolio_dashboard",
+                "build_portfolio_dashboard",
+            ],
+        }
+    return _fn
+
+
+def _auto_repair_success_preflight():
+    """Returns high_risk for normal calls; low_risk when mapping_override is present (repair call)."""
+    def _fn(args):
+        override = getattr(args, "mapping_override", None)
+        if override:
+            return {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 3}
+        return {
+            "risk_level": "high_risk",
+            "collision_ratio": 0.67,
+            "unique_tasks": 1,
+            "reasons": ["collision_ratio is 0.670000 (>=0.5): ..."],
+            "recommendations": [],
+            "ranked_action_window": [
+                "refresh_repo_health",
+                "regenerate_missing_artifact",
+                "rerun_failed_task",
+            ],
+            "mapped_tasks": [
+                "build_portfolio_dashboard",
+                "build_portfolio_dashboard",
+                "build_portfolio_dashboard",
+            ],
+        }
+    return _fn
+
+
+class TestAutoRepair:
+    def test_repair_success_does_not_raise(self, tmp_path):
+        """When all offsets high_risk but repaired preflight passes, must not abort."""
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(
+            args, planner_main=_noop_planner,
+            preflight_fn=_auto_repair_success_preflight(),
+        )
+        assert result is not None
+
+    def test_repair_success_auto_repair_applied_true(self, tmp_path):
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(
+            args, planner_main=_noop_planner,
+            preflight_fn=_auto_repair_success_preflight(),
+        )
+        assert result.get("auto_repair_applied") is True
+
+    def test_repair_success_auto_repair_attempted_true(self, tmp_path):
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(
+            args, planner_main=_noop_planner,
+            preflight_fn=_auto_repair_success_preflight(),
+        )
+        assert result.get("auto_repair_attempted") is True
+
+    def test_repair_success_has_repaired_from_offset(self, tmp_path):
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(
+            args, planner_main=_noop_planner,
+            preflight_fn=_auto_repair_success_preflight(),
+        )
+        assert "repaired_from_offset" in result
+        assert isinstance(result["repaired_from_offset"], int)
+
+    def test_repair_success_has_repair_proposal(self, tmp_path):
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(
+            args, planner_main=_noop_planner,
+            preflight_fn=_auto_repair_success_preflight(),
+        )
+        assert result.get("repair_proposal") is not None
+
+    def test_repair_success_has_result(self, tmp_path):
+        args = _make_args(tmp_path, force=False)
+        result = run_governed_loop(
+            args, planner_main=_noop_planner,
+            preflight_fn=_auto_repair_success_preflight(),
+        )
+        assert "result" in result
+
+    def test_repair_still_high_risk_aborts(self, tmp_path):
+        """When repaired preflight is still high_risk, loop must abort (fail-closed)."""
+        args = _make_args(tmp_path, force=False)
+        with pytest.raises(SystemExit) as exc_info:
+            run_governed_loop(
+                args, planner_main=_noop_planner,
+                preflight_fn=_repairable_high_risk_preflight(),
+            )
+        assert exc_info.value.code == 1
+
+    def test_repair_still_high_risk_artifact_has_attempted_true(self, tmp_path):
+        """Abort artifact must include auto_repair_attempted=True when repair was tried."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(
+                args, planner_main=_noop_planner,
+                preflight_fn=_repairable_high_risk_preflight(),
+            )
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert data.get("auto_repair_attempted") is True
+
+    def test_repair_still_high_risk_artifact_has_applied_false(self, tmp_path):
+        """Abort artifact must include auto_repair_applied=False when repair failed."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(
+                args, planner_main=_noop_planner,
+                preflight_fn=_repairable_high_risk_preflight(),
+            )
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert data.get("auto_repair_applied") is False
+
+    def test_no_repair_proposal_aborts_without_repair_metadata(self, tmp_path):
+        """When no repair proposal, loop aborts as before — no auto_repair_ keys in artifact."""
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+        with pytest.raises(SystemExit):
+            run_governed_loop(
+                args, planner_main=_noop_planner,
+                preflight_fn=_unrepairable_preflight(),
+            )
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert "auto_repair_attempted" not in data
+        assert "auto_repair_applied" not in data
+
+    def test_empty_window_does_not_trigger_auto_repair(self, tmp_path):
+        """Empty-window high_risk short-circuits before the auto-repair path is reached."""
+        calls = []
+        output = tmp_path / "governed_result.json"
+        args = _make_args(tmp_path, force=False, output=str(output))
+
+        def tracking_preflight(a):
+            calls.append(getattr(a, "mapping_override", None))
+            return _empty_window_preflight(a)
+
+        with pytest.raises(SystemExit):
+            run_governed_loop(args, planner_main=_noop_planner,
+                              preflight_fn=tracking_preflight)
+
+        # Auto-repair sets mapping_override on repaired_args; it must never be called.
+        assert all(o is None for o in calls), "Auto-repair must not be triggered for empty-window"
+        data = json.loads(output.read_text(encoding="utf-8"))
+        assert "auto_repair_attempted" not in data
+        assert "auto_repair_applied" not in data
