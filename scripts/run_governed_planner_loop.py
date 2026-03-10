@@ -122,7 +122,7 @@ def _is_empty_window_high_risk(evaluation):
 # Governance metadata helper
 # ---------------------------------------------------------------------------
 
-_GOVERNED_LOOP_VERSION = "0.58.0-alpha"
+_GOVERNED_LOOP_VERSION = "0.60.0-alpha"
 
 
 def _build_governance(args, result):
