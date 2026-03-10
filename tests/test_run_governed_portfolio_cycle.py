@@ -1377,3 +1377,219 @@ class TestActionEffectiveness:
         data = json.loads(Path(args.output).read_text())
         assert data["governed_result"] == _GOVERNED_RESULT_DATA
         assert data["execution_history"] == _EXECUTION_HISTORY_DATA
+
+
+# ---------------------------------------------------------------------------
+# J. Planner ledger resolution (Phase G)
+# ---------------------------------------------------------------------------
+
+class TestPlannerLedgerResolution:
+    """Tests for Phase G: ledger source resolution and planner_inputs wiring."""
+
+    # --- helper: also import _resolve_planner_ledger from the module ---
+    _resolve = staticmethod(_mod._resolve_planner_ledger)
+
+    # ---- unit tests for _resolve_planner_ledger ----
+
+    def test_explicit_ledger_takes_precedence(self, tmp_path):
+        """Explicit --ledger wins even when work-dir ledger also exists."""
+        explicit = tmp_path / "explicit_ledger.json"
+        explicit.write_text("{}", encoding="utf-8")
+        work_dir_ledger = tmp_path / "action_effectiveness_ledger.json"
+        work_dir_ledger.write_text("{}", encoding="utf-8")
+
+        args = _make_args(tmp_path, ledger=str(explicit))
+        artifacts = _artifact_paths(_work_dir(args.output))
+        # plant the work-dir file at the artifact path
+        Path(artifacts["action_effectiveness_ledger"]).parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        Path(artifacts["action_effectiveness_ledger"]).write_text(
+            "{}", encoding="utf-8"
+        )
+
+        source, path = self._resolve(args, artifacts)
+        assert source == "explicit"
+        assert path == str(explicit)
+
+    def test_work_dir_ledger_auto_used_when_explicit_absent(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        Path(artifacts["action_effectiveness_ledger"]).parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        Path(artifacts["action_effectiveness_ledger"]).write_text(
+            "{}", encoding="utf-8"
+        )
+
+        source, path = self._resolve(args, artifacts)
+        assert source == "work_dir"
+        assert path == artifacts["action_effectiveness_ledger"]
+
+    def test_no_ledger_when_neither_exists(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        # work-dir ledger must NOT exist
+        assert not Path(artifacts["action_effectiveness_ledger"]).exists()
+
+        source, path = self._resolve(args, artifacts)
+        assert source == "none"
+        assert path is None
+
+    # ---- integration: planner_inputs in cycle artifact ----
+
+    def test_success_artifact_includes_planner_inputs(self, tmp_path):
+        args = _make_args(tmp_path)
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "planner_inputs" in data
+        assert "ledger_source" in data["planner_inputs"]
+        assert "ledger_path" in data["planner_inputs"]
+
+    def test_planner_inputs_none_ledger_when_not_set(self, tmp_path):
+        args = _make_args(tmp_path)
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["planner_inputs"]["ledger_source"] == "none"
+        assert data["planner_inputs"]["ledger_path"] is None
+
+    def test_planner_inputs_explicit_when_ledger_set(self, tmp_path):
+        ledger_file = tmp_path / "my_ledger.json"
+        ledger_file.write_text("{}", encoding="utf-8")
+        args = _make_args(tmp_path, ledger=str(ledger_file))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["planner_inputs"]["ledger_source"] == "explicit"
+        assert data["planner_inputs"]["ledger_path"] == str(ledger_file)
+
+    def test_planner_inputs_work_dir_when_prior_ledger_exists(self, tmp_path):
+        """Pre-existing work-dir ledger from a previous cycle is auto-consumed."""
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        artifacts = _artifact_paths(wd)
+        wd.mkdir(parents=True, exist_ok=True)
+        # Plant a ledger as if left by a prior cycle run.
+        Path(artifacts["action_effectiveness_ledger"]).write_text(
+            json.dumps({"actions": {}}) + "\n", encoding="utf-8"
+        )
+
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["planner_inputs"]["ledger_source"] == "work_dir"
+        assert data["planner_inputs"]["ledger_path"] == artifacts["action_effectiveness_ledger"]
+
+    # ---- integration: Phase C subprocess receives correct --ledger ----
+
+    def test_phase_c_receives_no_ledger_when_none_set(self, tmp_path):
+        args = _make_args(tmp_path)
+        captured = []
+
+        def _fn(cmd, **kwargs):
+            if "run_governed_planner_loop" in " ".join(cmd):
+                captured.extend(cmd)
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        assert "--ledger" not in captured
+
+    def test_phase_c_receives_explicit_ledger(self, tmp_path):
+        ledger_file = tmp_path / "explicit.json"
+        ledger_file.write_text("{}", encoding="utf-8")
+        args = _make_args(tmp_path, ledger=str(ledger_file))
+        captured = []
+
+        def _fn(cmd, **kwargs):
+            if "run_governed_planner_loop" in " ".join(cmd):
+                captured.extend(cmd)
+            return _side_effect_writing_state(
+                _artifact_paths(_work_dir(args.output))
+            )(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        assert "--ledger" in captured
+        idx = captured.index("--ledger")
+        assert captured[idx + 1] == str(ledger_file)
+
+    def test_phase_c_receives_work_dir_ledger(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        artifacts = _artifact_paths(wd)
+        wd.mkdir(parents=True, exist_ok=True)
+        Path(artifacts["action_effectiveness_ledger"]).write_text(
+            json.dumps({"actions": {}}) + "\n", encoding="utf-8"
+        )
+        captured = []
+
+        def _fn(cmd, **kwargs):
+            if "run_governed_planner_loop" in " ".join(cmd):
+                captured.extend(cmd)
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        assert "--ledger" in captured
+        idx = captured.index("--ledger")
+        assert captured[idx + 1] == artifacts["action_effectiveness_ledger"]
+
+    def test_explicit_overrides_work_dir_in_phase_c(self, tmp_path):
+        explicit_file = tmp_path / "explicit.json"
+        explicit_file.write_text("{}", encoding="utf-8")
+        args = _make_args(tmp_path, ledger=str(explicit_file))
+        wd = _work_dir(args.output)
+        artifacts = _artifact_paths(wd)
+        wd.mkdir(parents=True, exist_ok=True)
+        # Plant a work-dir ledger that must NOT win.
+        Path(artifacts["action_effectiveness_ledger"]).write_text(
+            json.dumps({"actions": {}}) + "\n", encoding="utf-8"
+        )
+        captured = []
+
+        def _fn(cmd, **kwargs):
+            if "run_governed_planner_loop" in " ".join(cmd):
+                captured.extend(cmd)
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        assert "--ledger" in captured
+        idx = captured.index("--ledger")
+        assert captured[idx + 1] == str(explicit_file)
+
+    def test_phase_f_ledger_not_consumed_in_same_cycle(self, tmp_path):
+        """Ledger written by Phase F must not feed back into Phase C of the same run."""
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        artifacts = _artifact_paths(wd)
+        # Do NOT pre-plant a ledger; Phase F will write one during the run.
+        # At Phase C resolution time, action_effectiveness_ledger must not exist.
+        captured_governed_cmd = []
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "run_governed_planner_loop" in cmd_str:
+                captured_governed_cmd.extend(cmd)
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        # The mock _side_effect_writing_state writes the ledger during Phase F,
+        # but Phase C already ran — so --ledger must not appear in Phase C cmd.
+        assert "--ledger" not in captured_governed_cmd

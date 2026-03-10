@@ -145,7 +145,27 @@ def _run_build_portfolio_state(artifacts):
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
-def _run_governed_loop(artifacts, args):
+def _resolve_planner_ledger(args, artifacts):
+    """Determine which ledger file to pass to the governed planner loop.
+
+    Precedence:
+      1. Explicit --ledger CLI argument.
+      2. Pre-existing work-dir action_effectiveness_ledger.json.
+      3. No ledger.
+
+    Returns:
+        (source, path) where source is "explicit" | "work_dir" | "none"
+        and path is a str path or None.
+    """
+    if args.ledger is not None:
+        return "explicit", args.ledger
+    work_dir_ledger = artifacts["action_effectiveness_ledger"]
+    if Path(work_dir_ledger).exists():
+        return "work_dir", work_dir_ledger
+    return "none", None
+
+
+def _run_governed_loop(artifacts, args, ledger=None):
     """Phase C: run the governed planner loop.
 
     Returns the subprocess.CompletedProcess result.
@@ -159,8 +179,8 @@ def _run_governed_loop(artifacts, args):
         "--top-k", str(args.top_k),
         "--exploration-offset", str(args.exploration_offset),
     ]
-    if args.ledger is not None:
-        cmd += ["--ledger", args.ledger]
+    if ledger is not None:
+        cmd += ["--ledger", ledger]
     if args.policy is not None:
         cmd += ["--policy", args.policy]
     if args.max_actions is not None:
@@ -291,6 +311,7 @@ def run_cycle(args):
         "execution_result": None,
         "execution_history": None,
         "action_effectiveness_ledger": None,
+        "planner_inputs": None,
     }
 
     # --- Phase A: portfolio tasks ---
@@ -326,10 +347,17 @@ def run_cycle(args):
 
     portfolio_state = _try_read_json(artifacts["portfolio_state"])
 
+    # Resolve which ledger the planner will consume (before Phase C writes its own).
+    ledger_source, ledger_path = _resolve_planner_ledger(args, artifacts)
+    base_artifact["planner_inputs"] = {
+        "ledger_path": ledger_path,
+        "ledger_source": ledger_source,
+    }
+
     # --- Phase C: governed planner loop ---
     governed_result = None
     try:
-        _run_governed_loop(artifacts, args)
+        _run_governed_loop(artifacts, args, ledger=ledger_path)
     except subprocess.CalledProcessError:
         governed_result = _try_read_json(artifacts["governed_result"])
         cycle = {
