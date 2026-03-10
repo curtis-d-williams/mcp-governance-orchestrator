@@ -10,6 +10,7 @@ D. Early phase failure — portfolio_state phase fails, artifact written with ph
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -71,6 +72,16 @@ _EXECUTION_RESULT_DATA = {
     "stderr": "",
 }
 
+_EXECUTION_HISTORY_DATA = {
+    "records": [{
+        "parsed_output": None,
+        "resolved_via": "selected_actions",
+        "returncode": 0,
+        "selected_tasks": ["build_portfolio_dashboard"],
+        "status": "ok",
+    }],
+}
+
 
 def _make_manifest(tmp_path, data=None):
     p = tmp_path / "manifest.json"
@@ -113,11 +124,13 @@ def _side_effect_writing_state(
     portfolio_state_data=None,
     governed_result_data=None,
     execution_result_data=None,
+    execution_history_data=None,
 ):
     """Return a side_effect function that writes JSON files on the appropriate subprocess call."""
     pstate = portfolio_state_data or _PORTFOLIO_STATE_DATA
     gresult = governed_result_data or _GOVERNED_RESULT_DATA
     eresult = execution_result_data or _EXECUTION_RESULT_DATA
+    hresult = execution_history_data or _EXECUTION_HISTORY_DATA
 
     def _fn(cmd, **kwargs):
         cmd_str = " ".join(cmd)
@@ -139,6 +152,12 @@ def _side_effect_writing_state(
             out_path = Path(cmd[out_idx + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(eresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "update_execution_history" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(hresult) + "\n", encoding="utf-8")
             return _ok_proc()
         # portfolio task phase
         return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
@@ -632,7 +651,106 @@ class TestManifestValidationInCycle:
 
 
 # ---------------------------------------------------------------------------
-# E. Work directory naming
+# E. Manifest path resolution (relative → absolute)
+# ---------------------------------------------------------------------------
+
+class TestManifestPathResolution:
+    """Regression tests: relative --manifest paths must survive Phase A's cwd=work_dir."""
+
+    def _relative_manifest(self, tmp_path):
+        """Return (manifest_path, relative_str) where relative_str is relative to cwd."""
+        manifest = _make_manifest(tmp_path)
+        rel = os.path.relpath(str(manifest))
+        return manifest, rel
+
+    def test_relative_manifest_cycle_returns_zero(self, tmp_path):
+        manifest, rel = self._relative_manifest(tmp_path)
+        args = _make_args(tmp_path, manifest=rel)
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )):
+            rc = run_cycle(args)
+        assert rc == 0
+
+    def test_relative_manifest_artifact_stores_absolute_path(self, tmp_path):
+        manifest, rel = self._relative_manifest(tmp_path)
+        args = _make_args(tmp_path, manifest=rel)
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        # The stored path must be the resolved absolute path, not the relative input.
+        assert data["manifest"] == str(manifest.resolve())
+        assert os.path.isabs(data["manifest"])
+
+    def test_relative_manifest_phase_a_receives_absolute_path(self, tmp_path):
+        manifest, rel = self._relative_manifest(tmp_path)
+        args = _make_args(tmp_path, manifest=rel)
+        captured = []
+
+        def _fn(cmd, **kwargs):
+            captured.append(list(cmd))
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_HISTORY_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        # Phase A is always calls[0]; its last positional arg is the manifest.
+        phase_a_cmd = captured[0]
+        assert "run_portfolio_task.py" in phase_a_cmd[1]
+        manifest_arg = phase_a_cmd[-1]
+        assert os.path.isabs(manifest_arg), (
+            f"Phase A received a relative manifest path: {manifest_arg!r}"
+        )
+        assert manifest_arg == str(manifest.resolve())
+
+    def test_absolute_manifest_path_unchanged(self, tmp_path):
+        """Absolute paths are unaffected — .resolve() is idempotent on absolute paths."""
+        manifest = _make_manifest(tmp_path)  # already absolute
+        args = _make_args(tmp_path, manifest=str(manifest))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(
+                       _artifact_paths(_work_dir(args.output))
+                   )):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["manifest"] == str(manifest)
+
+
+# ---------------------------------------------------------------------------
+# F. Work directory naming
 # ---------------------------------------------------------------------------
 
 class TestWorkDirNaming:
@@ -863,3 +981,226 @@ class TestGovernedExecution:
         assert "--governed-result" in captured_exec_cmd
         assert "--manifest" in captured_exec_cmd
         assert "--output" in captured_exec_cmd
+
+
+# ---------------------------------------------------------------------------
+# H. Execution history phase (Phase E)
+# ---------------------------------------------------------------------------
+
+class TestExecutionHistory:
+    """Tests for Phase E: execution history capture."""
+
+    def test_success_cycle_includes_execution_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "execution_history" in data
+        assert data["execution_history"] == _EXECUTION_HISTORY_DATA
+
+    def test_execution_history_path_in_artifacts(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        wd = _work_dir(str(output))
+        ap = _artifact_paths(wd)
+        assert "execution_history" in ap
+
+    def test_history_updater_receives_execution_result_and_output(self, tmp_path):
+        args = _make_args(tmp_path)
+        captured_hist_cmd = []
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                captured_hist_cmd.extend(cmd)
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_HISTORY_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert "update_execution_history.py" in captured_hist_cmd[1]
+        assert "--execution-result" in captured_hist_cmd
+        assert "--output" in captured_hist_cmd
+
+    def test_history_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_history_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_history_failure_phase_execution_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "execution_history"
+
+    def test_history_failure_execution_history_none_in_artifact(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = _work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="write error"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["execution_history"] is None

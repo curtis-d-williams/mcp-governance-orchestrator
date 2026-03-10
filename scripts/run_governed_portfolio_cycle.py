@@ -103,6 +103,7 @@ def _artifact_paths(work_dir):
         "portfolio_state": str(wd / "portfolio_state.json"),
         "governed_result": str(wd / "governed_result.json"),
         "execution_result": str(wd / "execution_result.json"),
+        "execution_history": str(wd / "execution_history.json"),
     }
 
 
@@ -170,6 +171,21 @@ def _run_governed_loop(artifacts, args):
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
+def _run_update_execution_history(artifacts):
+    """Phase E: append a normalized execution record to execution_history.json.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    script = str(_REPO_ROOT / "scripts" / "update_execution_history.py")
+    cmd = [
+        "python3", script,
+        "--execution-result", artifacts["execution_result"],
+        "--output", artifacts["execution_history"],
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
 def _run_execute_governed_actions(artifacts, manifest):
     """Phase D: execute the tasks selected by the governed planner loop.
 
@@ -222,7 +238,7 @@ def run_cycle(args):
     Returns:
         0 on success, 1 on any failure.
     """
-    manifest = Path(args.manifest)
+    manifest = Path(args.manifest).resolve()
 
     # Validate manifest.
     try:
@@ -257,6 +273,7 @@ def run_cycle(args):
         "portfolio_state": None,
         "governed_result": None,
         "execution_result": None,
+        "execution_history": None,
     }
 
     # --- Phase A: portfolio tasks ---
@@ -329,6 +346,24 @@ def run_cycle(args):
         return 1
 
     execution_result = _try_read_json(artifacts["execution_result"])
+
+    # --- Phase E: execution history ---
+    try:
+        _run_update_execution_history(artifacts)
+    except subprocess.CalledProcessError:
+        cycle = {
+            **base_artifact,
+            "status": "aborted",
+            "phase": "execution_history",
+            "portfolio_task_summary": portfolio_task_summary,
+            "portfolio_state": portfolio_state,
+            "governed_result": governed_result,
+            "execution_result": execution_result,
+        }
+        _write_json(args.output, cycle)
+        return 1
+
+    execution_history = _try_read_json(artifacts["execution_history"])
     cycle = {
         **base_artifact,
         "status": "ok",
@@ -336,6 +371,7 @@ def run_cycle(args):
         "portfolio_state": portfolio_state,
         "governed_result": governed_result,
         "execution_result": execution_result,
+        "execution_history": execution_history,
     }
     _write_json(args.output, cycle)
     return 0
