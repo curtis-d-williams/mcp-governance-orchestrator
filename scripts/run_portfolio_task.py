@@ -152,9 +152,9 @@ if __name__ == "__main__":
             "Usage: python3 scripts/run_portfolio_task.py <task1> [task2 ...] <manifest.json>"
         )
 
-    if len(sys.argv) == 3:
-        # Single-task mode: backward-compatible behavior.
-        run_portfolio_task(sys.argv[1], sys.argv[2])
-    else:
-        # Multi-task mode: loop over all tasks, write CSV + aggregate.
-        _run_multi_task(sys.argv[1:-1], sys.argv[-1])
+    # Route both single-task and multi-task through _run_multi_task so the
+    # downstream artifact files (tier3_portfolio_report.csv,
+    # tier3_multi_run_aggregate.json, tier3_run_envelope.json) are always
+    # written.  stdout content is unchanged: _run_multi_task re-emits the
+    # same JSON that run_portfolio_task prints.
+    _run_multi_task(sys.argv[1:-1], sys.argv[-1])
