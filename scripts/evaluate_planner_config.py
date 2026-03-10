@@ -69,6 +69,7 @@ def _classify_risk(metrics, top_k):
     high_risk:
         - collision_ratio >= 0.5
         - OR unique_tasks <= 1 with top_k >= 3
+        - OR entropy_gap >= 1.0
 
     moderate_risk (when not high_risk):
         - collision_ratio > 0
@@ -120,6 +121,12 @@ def _classify_risk(metrics, top_k):
         reasons.append(
             f"unique_tasks={unique_tasks} with top_k={top_k}: the window selects at most "
             "one distinct task despite a large window — mapping collapse is near-total"
+        )
+
+    if entropy_gap >= 1.0:
+        high = True
+        reasons.append(
+            f"entropy_gap is {entropy_gap:.6f} bits (>=1.0): action diversity greatly exceeds task diversity, indicating severe task compression"
         )
 
     if high:

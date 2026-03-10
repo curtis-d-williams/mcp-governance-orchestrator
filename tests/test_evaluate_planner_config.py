@@ -553,3 +553,169 @@ class TestRealFixtures:
             _compute_risk(actions, 3, ledger, signals, {}, dict(ACTION_TO_TASK)), top_k=3
         )
         assert ev1 == ev2
+
+
+# ---------------------------------------------------------------------------
+# 9. entropy_gap >= 1.0 high-risk rule
+# ---------------------------------------------------------------------------
+
+def _metrics_from_raw(ranked_action_window, mapped_tasks):
+    """Build a minimal metrics dict directly from window/mapping lists.
+
+    Computes unique_tasks, collapse_count, collision_ratio, and entropy fields
+    so that _classify_risk can be called without invoking _compute_risk.
+    """
+    from math import log2
+
+    def _entropy(counts):
+        total = sum(counts)
+        if total == 0 or len(counts) <= 1:
+            return 0.0
+        result = 0.0
+        for c in sorted(counts):
+            if c > 0:
+                p = c / total
+                result -= p * log2(p)
+        return round(result, 6)
+
+    seen_tasks = {}
+    for task in mapped_tasks:
+        if task is not None:
+            seen_tasks[task] = seen_tasks.get(task, 0) + 1
+    action_counts = [1] * len(ranked_action_window)
+    task_counts = list(seen_tasks.values())
+
+    unique_tasks = len(seen_tasks)
+    window_size = len(ranked_action_window)
+    collapse_count = window_size - unique_tasks
+    collision_ratio = round(collapse_count / window_size, 6) if window_size > 0 else 0.0
+    task_entropy = _entropy(task_counts)
+    action_entropy = _entropy(action_counts)
+
+    return {
+        "ranked_action_window": ranked_action_window,
+        "mapped_tasks": mapped_tasks,
+        "unique_tasks": unique_tasks,
+        "collapse_count": collapse_count,
+        "collision_ratio": collision_ratio,
+        "task_entropy": task_entropy,
+        "action_entropy": action_entropy,
+    }
+
+
+def _build_high_entropy_gap_metrics(gap_value):
+    """Return a metrics dict whose entropy_gap equals gap_value.
+
+    We craft action_entropy and task_entropy directly so the gap is precise.
+    We use a window with no collisions (collision_ratio=0, unique_tasks=window_size)
+    so the only high-risk trigger is the entropy_gap rule.
+    """
+    # 8 actions, each mapping to a unique task → collision_ratio=0, unique_tasks=8
+    # action_entropy = log2(8) = 3.0 bits (uniform over 8)
+    # We want task_entropy = 3.0 - gap_value
+    # We achieve that by building a custom metrics dict with the desired entropies.
+    actions = [f"a{i}" for i in range(8)]
+    tasks   = [f"t{i}" for i in range(8)]
+    m = _metrics_from_raw(actions, tasks)
+    # Override entropies to achieve the desired gap exactly.
+    m = dict(m)
+    m["action_entropy"] = round(3.0, 6)
+    m["task_entropy"]   = round(3.0 - gap_value, 6)
+    return m
+
+
+class TestEntropyGapHighRiskRule:
+    """entropy_gap >= 1.0 must trigger high_risk regardless of collision_ratio."""
+
+    # --- Positive cases: entropy_gap >= 1.0 → high_risk ---
+
+    def test_entropy_gap_exactly_1_is_high_risk(self):
+        m = _build_high_entropy_gap_metrics(1.0)
+        level, reasons, _ = _classify_risk(m, top_k=3)
+        assert level == "high_risk"
+
+    def test_entropy_gap_above_1_is_high_risk(self):
+        m = _build_high_entropy_gap_metrics(1.5)
+        level, reasons, _ = _classify_risk(m, top_k=3)
+        assert level == "high_risk"
+
+    def test_entropy_gap_large_value_is_high_risk(self):
+        m = _build_high_entropy_gap_metrics(2.9)
+        level, reasons, _ = _classify_risk(m, top_k=3)
+        assert level == "high_risk"
+
+    def test_entropy_gap_high_risk_reason_mentions_entropy_gap(self):
+        m = _build_high_entropy_gap_metrics(1.0)
+        _, reasons, _ = _classify_risk(m, top_k=3)
+        assert any("entropy_gap" in r for r in reasons)
+
+    def test_entropy_gap_high_risk_reason_mentions_threshold(self):
+        m = _build_high_entropy_gap_metrics(1.0)
+        _, reasons, _ = _classify_risk(m, top_k=3)
+        assert any("1.0" in r for r in reasons)
+
+    def test_entropy_gap_high_risk_reason_mentions_compression(self):
+        m = _build_high_entropy_gap_metrics(1.2)
+        _, reasons, _ = _classify_risk(m, top_k=3)
+        assert any("compression" in r.lower() for r in reasons)
+
+    def test_entropy_gap_high_risk_recommendations_non_empty(self):
+        m = _build_high_entropy_gap_metrics(1.0)
+        _, _, recs = _classify_risk(m, top_k=3)
+        assert len(recs) > 0
+
+    # --- Boundary / negative cases: entropy_gap < 1.0 does not trigger rule ---
+
+    def test_entropy_gap_just_below_1_not_triggered(self):
+        """gap=0.999999 must NOT trigger the entropy_gap high-risk rule."""
+        m = _build_high_entropy_gap_metrics(0.999999)
+        # collision_ratio=0 and unique_tasks=8, so if entropy_gap rule fires it's wrong.
+        level, reasons, _ = _classify_risk(m, top_k=3)
+        # Should not be high_risk from the entropy_gap rule alone.
+        # (It might be moderate_risk due to the entropy divergence threshold.)
+        assert "entropy_gap is" not in " ".join(reasons) or level != "high_risk"
+        # Stricter: no reason should mention >=1.0
+        assert not any(">=1.0" in r for r in reasons)
+
+    def test_entropy_gap_zero_not_triggered(self):
+        """gap=0.0 must not trigger high_risk."""
+        m = _build_high_entropy_gap_metrics(0.0)
+        level, _, _ = _classify_risk(m, top_k=3)
+        assert level != "high_risk"
+
+    def test_entropy_gap_moderate_threshold_not_triggered(self):
+        """gap=0.4 (above moderate threshold 0.3 but below 1.0) → not high_risk."""
+        m = _build_high_entropy_gap_metrics(0.4)
+        level, _, _ = _classify_risk(m, top_k=3)
+        assert level != "high_risk"
+
+    # --- Rule is independent of top_k ---
+
+    def test_entropy_gap_1_high_risk_with_small_top_k(self):
+        """entropy_gap >= 1.0 triggers high_risk even with top_k=1."""
+        m = _build_high_entropy_gap_metrics(1.0)
+        level, _, _ = _classify_risk(m, top_k=1)
+        assert level == "high_risk"
+
+    def test_entropy_gap_1_high_risk_with_large_top_k(self):
+        """entropy_gap >= 1.0 triggers high_risk with top_k=10."""
+        m = _build_high_entropy_gap_metrics(1.0)
+        level, _, _ = _classify_risk(m, top_k=10)
+        assert level == "high_risk"
+
+    # --- Existing high-risk rules unaffected ---
+
+    def test_collision_ratio_rule_still_fires(self):
+        """collision_ratio >= 0.5 still triggers high_risk."""
+        m = _metrics(_HIGH_SPECS, top_k=3)
+        level, _, _ = _classify_risk(m, top_k=3)
+        assert level == "high_risk"
+
+    def test_unique_tasks_rule_still_fires(self):
+        """unique_tasks <= 1 with top_k >= 3 still triggers high_risk."""
+        # All 3 actions map to the same task → unique_tasks=1
+        mapping = {at: "single_task" for at, _ in _HIGH_SPECS}
+        m = _metrics(_HIGH_SPECS, top_k=3, mapping=mapping)
+        assert m["unique_tasks"] == 1
+        level, _, _ = _classify_risk(m, top_k=3)
+        assert level == "high_risk"
