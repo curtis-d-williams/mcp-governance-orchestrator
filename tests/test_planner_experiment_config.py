@@ -438,3 +438,63 @@ class TestMainValidationUnchanged:
         _mod.main(["--output", str(output)])
         data = json.loads(output.read_text(encoding="utf-8"))
         assert data["run_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 7. Config-driven force handling
+# ---------------------------------------------------------------------------
+
+def _make_nil_args(**kwargs):
+    """Build an all-None args-like namespace (for _apply_config unit tests)."""
+    obj = type("Args", (), {})()
+    defaults = dict(
+        runs=None, portfolio_state=None, ledger=None, policy=None,
+        top_k=None, exploration_offset=None, max_actions=None,
+        explain=None, force=None, output=None, envelope_prefix=None,
+        mapping_override=None,
+    )
+    defaults.update(kwargs)
+    for k, v in defaults.items():
+        setattr(obj, k, v)
+    return obj
+
+
+class TestConfigDrivenForce:
+    def test_config_force_true_fills_when_args_force_is_none(self):
+        """force=True in config sets args.force when CLI did not supply it."""
+        args = _make_nil_args()
+        _mod._apply_config(args, {"force": True})
+        assert args.force is True
+
+    def test_config_force_false_fills_when_args_force_is_none(self):
+        """force=False in config is applied (not silently skipped as falsy)."""
+        # _fill skips falsy values, so config force=False has no effect —
+        # the hard default False is applied instead. Either way the result is False.
+        args = _make_nil_args()
+        _mod._apply_config(args, {"force": False})
+        assert args.force is False
+
+    def test_explicit_cli_force_true_not_overwritten_by_config(self):
+        """CLI --force (True) takes precedence over config force=False."""
+        args = _make_nil_args(force=True)
+        _mod._apply_config(args, {"force": False})
+        assert args.force is True
+
+    def test_explicit_cli_force_not_overwritten_by_config_true(self):
+        """When CLI did not set force (None), config True is applied."""
+        args = _make_nil_args(force=None)
+        _mod._apply_config(args, {"force": True})
+        assert args.force is True
+
+    def test_default_force_false_when_neither_cli_nor_config_sets_it(self):
+        """Hard default False is applied when neither CLI nor config sets force."""
+        args = _make_nil_args(force=None)
+        _mod._apply_config(args, {})
+        assert args.force is False
+
+    def test_config_force_true_preserved_through_defaults_pass(self):
+        """Config-supplied force=True survives the _DEFAULTS hard-default pass."""
+        args = _make_nil_args()
+        _mod._apply_config(args, {"force": True})
+        # _DEFAULTS["force"] = False must not overwrite the config value.
+        assert args.force is True

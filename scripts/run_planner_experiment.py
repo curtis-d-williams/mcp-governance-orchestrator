@@ -79,6 +79,7 @@ def _apply_config(args, config):
     _fill(args, "output",             output.get("experiment_results"))
     _fill(args, "envelope_prefix",    output.get("envelope_prefix"))
     _fill(args, "mapping_override",   config.get("mapping_override"))
+    _fill(args, "force",              config.get("force"))
 
     # Apply hard defaults for any field still None.
     for attr, default in _DEFAULTS.items():
@@ -423,7 +424,7 @@ def main(argv=None):
                         help="Destination for experiment_results.json (default: experiment_results.json).")
     parser.add_argument("--envelope-prefix", default=None, metavar="STR",
                         help="Prefix for envelope filenames (default: planner_run_envelope).")
-    parser.add_argument("--force", action="store_true", default=False,
+    parser.add_argument("--force", action="store_true", default=None,
                         help="Run even when the pre-flight risk check returns high_risk.")
     args = parser.parse_args(argv)
 
