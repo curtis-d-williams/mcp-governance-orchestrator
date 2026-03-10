@@ -104,6 +104,7 @@ def _artifact_paths(work_dir):
         "governed_result": str(wd / "governed_result.json"),
         "execution_result": str(wd / "execution_result.json"),
         "execution_history": str(wd / "execution_history.json"),
+        "action_effectiveness_ledger": str(wd / "action_effectiveness_ledger.json"),
     }
 
 
@@ -168,6 +169,21 @@ def _run_governed_loop(artifacts, args):
         cmd.append("--explain")
     if args.force:
         cmd.append("--force")
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def _run_update_action_effectiveness_from_history(artifacts):
+    """Phase F: aggregate action effectiveness from execution_history.json.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    script = str(_REPO_ROOT / "scripts" / "update_action_effectiveness_from_history.py")
+    cmd = [
+        "python3", script,
+        "--execution-history", artifacts["execution_history"],
+        "--output", artifacts["action_effectiveness_ledger"],
+    ]
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
@@ -274,6 +290,7 @@ def run_cycle(args):
         "governed_result": None,
         "execution_result": None,
         "execution_history": None,
+        "action_effectiveness_ledger": None,
     }
 
     # --- Phase A: portfolio tasks ---
@@ -364,6 +381,27 @@ def run_cycle(args):
         return 1
 
     execution_history = _try_read_json(artifacts["execution_history"])
+
+    # --- Phase F: action effectiveness ---
+    try:
+        _run_update_action_effectiveness_from_history(artifacts)
+    except subprocess.CalledProcessError:
+        cycle = {
+            **base_artifact,
+            "status": "aborted",
+            "phase": "action_effectiveness",
+            "portfolio_task_summary": portfolio_task_summary,
+            "portfolio_state": portfolio_state,
+            "governed_result": governed_result,
+            "execution_result": execution_result,
+            "execution_history": execution_history,
+        }
+        _write_json(args.output, cycle)
+        return 1
+
+    action_effectiveness_ledger = _try_read_json(
+        artifacts["action_effectiveness_ledger"]
+    )
     cycle = {
         **base_artifact,
         "status": "ok",
@@ -372,6 +410,7 @@ def run_cycle(args):
         "governed_result": governed_result,
         "execution_result": execution_result,
         "execution_history": execution_history,
+        "action_effectiveness_ledger": action_effectiveness_ledger,
     }
     _write_json(args.output, cycle)
     return 0

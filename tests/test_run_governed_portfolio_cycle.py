@@ -82,6 +82,17 @@ _EXECUTION_HISTORY_DATA = {
     }],
 }
 
+_ACTION_EFFECTIVENESS_DATA = {
+    "actions": {
+        "build_portfolio_dashboard": {
+            "failure_count": 0,
+            "last_status": "ok",
+            "success_count": 1,
+            "total_runs": 1,
+        }
+    }
+}
+
 
 def _make_manifest(tmp_path, data=None):
     p = tmp_path / "manifest.json"
@@ -125,12 +136,14 @@ def _side_effect_writing_state(
     governed_result_data=None,
     execution_result_data=None,
     execution_history_data=None,
+    action_effectiveness_data=None,
 ):
     """Return a side_effect function that writes JSON files on the appropriate subprocess call."""
     pstate = portfolio_state_data or _PORTFOLIO_STATE_DATA
     gresult = governed_result_data or _GOVERNED_RESULT_DATA
     eresult = execution_result_data or _EXECUTION_RESULT_DATA
     hresult = execution_history_data or _EXECUTION_HISTORY_DATA
+    aresult = action_effectiveness_data or _ACTION_EFFECTIVENESS_DATA
 
     def _fn(cmd, **kwargs):
         cmd_str = " ".join(cmd)
@@ -158,6 +171,12 @@ def _side_effect_writing_state(
             out_path = Path(cmd[out_idx + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(hresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "update_action_effectiveness_from_history" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(aresult) + "\n", encoding="utf-8")
             return _ok_proc()
         # portfolio task phase
         return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
@@ -1204,3 +1223,157 @@ class TestExecutionHistory:
             run_cycle(args)
         data = json.loads(Path(args.output).read_text())
         assert data["execution_history"] is None
+
+
+# ---------------------------------------------------------------------------
+# I. Action effectiveness phase (Phase F)
+# ---------------------------------------------------------------------------
+
+class TestActionEffectiveness:
+    """Tests for Phase F: action effectiveness ledger update."""
+
+    def test_success_cycle_includes_action_effectiveness_ledger(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run",
+                   side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "action_effectiveness_ledger" in data
+        assert data["action_effectiveness_ledger"] == _ACTION_EFFECTIVENESS_DATA
+
+    def test_action_effectiveness_path_in_artifacts(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        wd = _work_dir(str(output))
+        ap = _artifact_paths(wd)
+        assert "action_effectiveness_ledger" in ap
+
+    def test_phase_f_receives_execution_history_and_output(self, tmp_path):
+        args = _make_args(tmp_path)
+        captured_cmd = []
+
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_HISTORY_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_action_effectiveness_from_history" in cmd_str:
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_ACTION_EFFECTIVENESS_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert "update_action_effectiveness_from_history.py" in captured_cmd[1]
+        assert "--execution-history" in captured_cmd
+        assert "--output" in captured_cmd
+
+    def _make_failure_side_effect(self, tmp_path):
+        """Side effect that succeeds through Phase E then fails Phase F."""
+        def _fn(cmd, **kwargs):
+            cmd_str = " ".join(cmd)
+            if "build_portfolio_state_from_artifacts" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_PORTFOLIO_STATE_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "run_governed_planner_loop" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_GOVERNED_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "execute_governed_actions" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_RESULT_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_execution_history" in cmd_str:
+                out_idx = cmd.index("--output")
+                Path(cmd[out_idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+                Path(cmd[out_idx + 1]).write_text(
+                    json.dumps(_EXECUTION_HISTORY_DATA) + "\n", encoding="utf-8"
+                )
+                return _ok_proc()
+            if "update_action_effectiveness_from_history" in cmd_str:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="aggregation error"
+                )
+            return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
+        return _fn
+
+    def test_phase_f_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+        with patch("subprocess.run", side_effect=self._make_failure_side_effect(tmp_path)):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_phase_f_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+        with patch("subprocess.run", side_effect=self._make_failure_side_effect(tmp_path)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_phase_f_failure_phase_action_effectiveness(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+        with patch("subprocess.run", side_effect=self._make_failure_side_effect(tmp_path)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "action_effectiveness"
+
+    def test_phase_f_failure_action_effectiveness_none(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+        with patch("subprocess.run", side_effect=self._make_failure_side_effect(tmp_path)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["action_effectiveness_ledger"] is None
+
+    def test_phase_f_failure_preserves_prior_phase_data(self, tmp_path):
+        args = _make_args(tmp_path)
+        _work_dir(args.output).mkdir(parents=True, exist_ok=True)
+        with patch("subprocess.run", side_effect=self._make_failure_side_effect(tmp_path)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["governed_result"] == _GOVERNED_RESULT_DATA
+        assert data["execution_history"] == _EXECUTION_HISTORY_DATA
