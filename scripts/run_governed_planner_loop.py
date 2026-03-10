@@ -272,6 +272,11 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
+    if args.mapping_override is not None:
+        args.mapping_override = json.loads(
+            Path(args.mapping_override).read_text(encoding="utf-8")
+        )
+
     run_governed_loop(args)
 
 

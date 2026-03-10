@@ -673,7 +673,8 @@ class TestMappingOverride:
             _mod.run_governed_loop = original
 
         assert len(captured_args) == 1
-        assert captured_args[0].mapping_override == str(override_file)
+        # After the bug fix, mapping_override is the loaded dict, not the path string.
+        assert isinstance(captured_args[0].mapping_override, dict)
 
     def test_governed_loop_passes_mapping_override_to_preflight(self, tmp_path):
         """mapping_override on args is forwarded to each preflight call."""
@@ -706,3 +707,89 @@ class TestMappingOverride:
                           preflight_fn=recording_preflight)
 
         assert seen_overrides[0] is None
+
+
+# ---------------------------------------------------------------------------
+# 10. CLI loads mapping override JSON file into dict (bug-fix regression)
+# ---------------------------------------------------------------------------
+
+class TestMappingOverrideJsonLoading:
+    def test_cli_loads_mapping_override_file_as_dict(self, tmp_path):
+        """main() must load the JSON file so mapping_override is a dict, not a path string."""
+        override_data = {"action_a": "task_x", "action_b": "task_y"}
+        override_file = tmp_path / "override.json"
+        override_file.write_text(
+            json.dumps(override_data, indent=2) + "\n", encoding="utf-8"
+        )
+        output = tmp_path / "governed_result.json"
+
+        captured_args = []
+
+        def capturing_loop(args, **kwargs):
+            captured_args.append(args)
+            return {"selected_offset": 0, "attempts": [], "result": {}}
+
+        original = _mod.run_governed_loop
+        _mod.run_governed_loop = capturing_loop
+        try:
+            _mod.main([
+                "--mapping-override", str(override_file),
+                "--output", str(output),
+            ])
+        finally:
+            _mod.run_governed_loop = original
+
+        assert isinstance(captured_args[0].mapping_override, dict)
+        assert captured_args[0].mapping_override == override_data
+
+    def test_cli_loaded_dict_passed_to_preflight(self, tmp_path):
+        """Preflight receives dict-form mapping_override when CLI flag is used."""
+        override_data = {"regenerate_missing_artifact": "build_portfolio_dashboard"}
+        override_file = tmp_path / "override.json"
+        override_file.write_text(json.dumps(override_data) + "\n", encoding="utf-8")
+        output = tmp_path / "governed_result.json"
+
+        seen_overrides = []
+
+        def recording_preflight(a):
+            seen_overrides.append(getattr(a, "mapping_override", "MISSING"))
+            return {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 2}
+
+        original_loop = _mod.run_governed_loop
+
+        def patched_loop(args, **kwargs):
+            return original_loop(args, planner_main=_noop_planner,
+                                 preflight_fn=recording_preflight)
+
+        original_main_loop = _mod.run_governed_loop
+        _mod.run_governed_loop = patched_loop
+        try:
+            _mod.main([
+                "--mapping-override", str(override_file),
+                "--output", str(output),
+            ])
+        finally:
+            _mod.run_governed_loop = original_main_loop
+
+        assert len(seen_overrides) == 1
+        assert isinstance(seen_overrides[0], dict)
+        assert seen_overrides[0] == override_data
+
+    def test_absent_mapping_override_remains_none_through_cli(self, tmp_path):
+        """When --mapping-override is not given, mapping_override stays None."""
+        output = tmp_path / "governed_result.json"
+
+        captured_args = []
+
+        def capturing_loop(args, **kwargs):
+            captured_args.append(args)
+            return {"selected_offset": 0, "attempts": [], "result": {}}
+
+        original = _mod.run_governed_loop
+        _mod.run_governed_loop = capturing_loop
+        try:
+            _mod.main(["--output", str(output)])
+        finally:
+            _mod.run_governed_loop = original
+
+        assert captured_args[0].mapping_override is None
