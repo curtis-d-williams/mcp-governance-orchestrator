@@ -135,6 +135,23 @@ def artifact_paths(work_dir_path):
     }
 
 
+def build_runtime_config(args, ledger_path):
+    """Construct a normalized runtime configuration object.
+
+    This prevents configuration sprawl as the system scales
+    (multi-repo portfolios, scheduler overrides, etc.).
+    """
+    return {
+        "top_k": args.top_k,
+        "exploration_offset": args.exploration_offset,
+        "ledger_path": ledger_path,
+        "planner_policy": args.policy,
+        "max_actions": args.max_actions,
+        "explain": args.explain,
+        "force": args.force,
+        "governance_policy": getattr(args, "governance_policy", None),
+    }
+
 # ---------------------------------------------------------------------------
 # Default governance policy
 # ---------------------------------------------------------------------------
@@ -456,6 +473,7 @@ def run_cycle(args):
 
     # Resolve which ledger the planner will consume (before Phase C writes its own).
     ledger_source, ledger_path = resolve_planner_ledger(args.ledger, arts)
+    config = build_runtime_config(args, ledger_path)
     base_artifact["planner_inputs"] = {
         "ledger_path": ledger_path,
         "ledger_source": ledger_source,
@@ -466,13 +484,13 @@ def run_cycle(args):
     try:
         run_governed_loop(
             arts,
-            top_k=args.top_k,
-            exploration_offset=args.exploration_offset,
-            ledger=ledger_path,
-            policy=args.policy,
-            max_actions=args.max_actions,
-            explain=args.explain,
-            force=args.force,
+            top_k=config["top_k"],
+            exploration_offset=config["exploration_offset"],
+            ledger=config["ledger_path"],
+            policy=config["planner_policy"],
+            max_actions=config["max_actions"],
+            explain=config["explain"],
+            force=config["force"],
         )
     except subprocess.CalledProcessError:
         governed_result = try_read_json(arts["governed_result"])
@@ -607,9 +625,8 @@ def run_cycle(args):
     cycle_history_regression = try_read_json(arts["cycle_history_regression"])
 
     # --- Phase L: governance policy enforcement ---
-    governance_policy = getattr(args, "governance_policy", None)
     try:
-        run_enforce_governance_policy(arts, governance_policy)
+        run_enforce_governance_policy(arts, config["governance_policy"])
     except subprocess.CalledProcessError:
         cycle = {
             **cycle,
