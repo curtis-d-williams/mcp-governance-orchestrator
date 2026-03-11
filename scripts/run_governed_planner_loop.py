@@ -70,6 +70,17 @@ _repair_cycle_spec.loader.exec_module(_repair_cycle_mod)
 
 run_mapping_repair_cycle = _repair_cycle_mod.run_mapping_repair_cycle
 
+# ---------------------------------------------------------------------------
+# Load update_action_effectiveness_ledger via importlib (optional learning)
+# ---------------------------------------------------------------------------
+
+_LEARNING_SCRIPT = Path(__file__).resolve().parent / "update_action_effectiveness_ledger.py"
+_learning_spec = importlib.util.spec_from_file_location("update_action_effectiveness_ledger", _LEARNING_SCRIPT)
+_learning_mod = importlib.util.module_from_spec(_learning_spec)
+_learning_spec.loader.exec_module(_learning_mod)
+
+update_action_effectiveness_ledger = _learning_mod.update_action_effectiveness_ledger
+
 
 # ---------------------------------------------------------------------------
 # Offset sequence builder
@@ -268,6 +279,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
                 "attempts": attempts,
                 "result": result,
             }
+            artifact = _apply_optional_learning(args, artifact)
             _write_artifact(args, artifact)
             return artifact
 
@@ -286,6 +298,7 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
                     "result": result,
                     "forced": True,
                 }
+                artifact = _apply_optional_learning(args, artifact)
                 _write_artifact(args, artifact)
                 return artifact
             # Healthy idle: no eligible actions exist — not a failure.
@@ -435,6 +448,44 @@ def _run_optional_repair_cycle(args):
     )
 
 
+def _default_learning_output(args):
+    output_path = Path(getattr(args, "output", "governed_result.json") or "governed_result.json")
+    return str(output_path.with_name(output_path.stem + "_learned_ledger.json"))
+
+
+def _apply_optional_learning(args, artifact):
+    """Optionally update the effectiveness ledger from a governed artifact."""
+    learning_output = getattr(args, "learn_ledger_output", None)
+    if not learning_output:
+        return artifact
+
+    ledger_path = getattr(args, "ledger", None)
+    if not ledger_path:
+        artifact["learning_update"] = {
+            "applied": False,
+            "reason": "no_ledger_path",
+        }
+        return artifact
+
+    artifact_path = Path(getattr(args, "output", "governed_result.json") or "governed_result.json")
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    learning_result = update_action_effectiveness_ledger(
+        ledger_path=ledger_path,
+        governed_artifact_path=str(artifact_path),
+        output_path=learning_output,
+    )
+    artifact["learning_update"] = {
+        "applied": True,
+        **learning_result,
+    }
+    return artifact
+
+
 def _write_artifact(args, artifact):
     """Write the governed loop artifact to the configured output path."""
     output_path = Path(getattr(args, "output", "governed_result.json") or "governed_result.json")
@@ -480,6 +531,8 @@ def main(argv=None):
                         help="Path to JSON file overriding the action→task mapping (optional).")
     parser.add_argument("--auto-repair-cycle", action="store_true", default=False,
                         help="When all offsets remain high_risk, run the validated mapping repair cycle before aborting.")
+    parser.add_argument("--learn-ledger-output", default=None, metavar="FILE",
+                        help="After a successful governed run, write an updated effectiveness ledger to this path.")
 
     args = parser.parse_args(argv)
 
