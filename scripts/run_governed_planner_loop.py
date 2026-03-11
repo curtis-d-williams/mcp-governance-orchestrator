@@ -211,11 +211,14 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
     Returns:
         A dict with keys: selected_offset, attempts, result.
         When --force overrides a high_risk attempt, "forced": True is added.
+        When the action window is empty (no eligible actions), "idle": True and
+        "risk_level": "no_action_window" are added instead of "result".
 
     Raises:
         SystemExit(1) when a high_risk result cannot be resolved and --force
-        is not set.  This includes both the empty-window short-circuit and the
-        case where all offsets are exhausted.
+        is not set.  This covers only collision/diversity high_risk where all
+        offsets are exhausted.  Empty-window (no eligible actions) is not a
+        failure; it returns an idle artifact with rc=0 instead.
     """
     if preflight_fn is None:
         preflight_fn = _run_preflight_check
@@ -274,13 +277,16 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
                 }
                 _write_artifact(args, artifact)
                 return artifact
-            print(
-                "Governed planner loop: empty action window — no eligible actions exist. "
-                "Use --force to run anyway.",
-                file=sys.stderr,
-            )
-            _write_artifact(args, _build_abort_artifact(args, attempts, evaluation))
-            raise SystemExit(1)
+            # Healthy idle: no eligible actions exist — not a failure.
+            artifact = {
+                "governance": _build_governance(args, None),
+                "idle": True,
+                "risk_level": "no_action_window",
+                "selected_offset": offset,
+                "attempts": attempts,
+            }
+            _write_artifact(args, artifact)
+            return artifact
 
         # collision/diversity high_risk — continue to next offset
 

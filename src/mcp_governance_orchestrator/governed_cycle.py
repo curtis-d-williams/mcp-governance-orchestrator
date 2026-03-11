@@ -490,23 +490,31 @@ def run_cycle(args):
     governed_result = try_read_json(arts["governed_result"])
 
     # --- Phase D: governed execution ---
-    try:
-        run_execute_governed_actions(arts, manifest)
-    except subprocess.CalledProcessError:
-        execution_result = try_read_json(arts["execution_result"])
-        cycle = {
-            **base_artifact,
-            "status": "aborted",
-            "phase": "governed_execution",
-            "portfolio_task_summary": portfolio_task_summary,
-            "portfolio_state": portfolio_state,
-            "governed_result": governed_result,
-            "execution_result": execution_result,
+    if governed_result and governed_result.get("idle") is True:
+        execution_result = {
+            "resolved_via": "no_action_window",
+            "selected_tasks": [],
+            "status": "ok",
         }
-        write_json(args.output, cycle)
-        return 1
+        write_json(arts["execution_result"], execution_result)
+    else:
+        try:
+            run_execute_governed_actions(arts, manifest)
+        except subprocess.CalledProcessError:
+            execution_result = try_read_json(arts["execution_result"])
+            cycle = {
+                **base_artifact,
+                "status": "aborted",
+                "phase": "governed_execution",
+                "portfolio_task_summary": portfolio_task_summary,
+                "portfolio_state": portfolio_state,
+                "governed_result": governed_result,
+                "execution_result": execution_result,
+            }
+            write_json(args.output, cycle)
+            return 1
 
-    execution_result = try_read_json(arts["execution_result"])
+        execution_result = try_read_json(arts["execution_result"])
 
     # --- Phase E: execution history ---
     try:
