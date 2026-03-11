@@ -13,11 +13,11 @@ Capabilities used:
 
 import argparse
 import importlib.util
-import io
-import json
 import sys
-from contextlib import redirect_stdout
 from pathlib import Path
+
+from factory_pipeline import decide_action as _pipeline_decide_action
+from factory_pipeline import run_factory_cycle
 
 
 # ---------------------------------------------------------------------
@@ -64,34 +64,8 @@ evaluate_planner_config = _eval_mod.evaluate_planner_config
 # ---------------------------------------------------------------------
 
 def _decide_action(evaluation):
-    """
-    Determine the appropriate factory action.
-
-    Returns:
-        dict describing the decision.
-    """
-    if not evaluation:
-        return {"action": "idle", "reason": "no_evaluation"}
-
-    risk = evaluation.get("risk_level")
-
-    if risk == "high_risk":
-        return {
-            "action": "repair_only",
-            "reason": "planner_high_risk",
-            "repair_enabled": True,
-            "learning_enabled": False,
-        }
-
-    if risk in ("low_risk", "moderate_risk"):
-        return {
-            "action": "governed_run",
-            "reason": "planner_acceptable_risk",
-            "repair_enabled": True,
-            "learning_enabled": True,
-        }
-
-    return {"action": "idle", "reason": "unknown_state"}
+    """Backward-compatible wrapper around factory_pipeline.decide_action."""
+    return _pipeline_decide_action(evaluation)
 
 
 # ---------------------------------------------------------------------
@@ -108,74 +82,16 @@ def run_autonomous_factory_cycle(
     """
     Run a single autonomous factory cycle.
     """
-
-    with redirect_stdout(io.StringIO()):
-        evaluation = evaluate_planner_config(
-            portfolio_state_path=portfolio_state,
-            ledger_path=ledger,
-            policy_path=policy,
-            top_k=top_k,
-            exploration_offset=0,
-            mapping_override_path=None,
-            output_path=None,
-        )
-
-    decision = _decide_action(evaluation)
-
-    result = None
-
-    if decision["action"] == "repair_only":
-        result = run_mapping_repair_cycle(
-            portfolio_state_path=portfolio_state,
-            ledger_path=ledger,
-            policy_path=policy,
-            top_k=top_k,
-        )
-
-    elif decision["action"] == "governed_run":
-        class Args:
-            pass
-
-        args = Args()
-        args.runs = 1
-        args.portfolio_state = portfolio_state
-        args.ledger = ledger
-        args.policy = policy
-        args.top_k = top_k
-        args.output = output
-        args.force = False
-        args.exploration_offset = 0
-        args.max_actions = None
-        args.explain = False
-        args.envelope_prefix = "planner_run_envelope"
-        args.mapping_override = None
-        args.mapping_override_path = None
-        args.auto_repair_cycle = True
-        out = Path(output)
-        args.learn_ledger_output = str(
-            out.with_name(out.stem + "_learned_ledger.json")
-        )
-
-        result = run_governed_loop(args)
-
-    artifact = {
-        "decision": decision,
-        "inputs": {
-            "portfolio_state": portfolio_state,
-            "ledger": ledger,
-            "policy": policy,
-            "top_k": top_k,
-        },
-        "evaluation": evaluation,
-        "cycle_result": result,
-        "status": "completed",
-    }
-
-    out = Path(output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-    return artifact
+    return run_factory_cycle(
+        portfolio_state=portfolio_state,
+        ledger=ledger,
+        policy=policy,
+        top_k=top_k,
+        output=output,
+        evaluate_planner_config=evaluate_planner_config,
+        run_mapping_repair_cycle=run_mapping_repair_cycle,
+        run_governed_loop=run_governed_loop,
+    )
 
 
 # ---------------------------------------------------------------------

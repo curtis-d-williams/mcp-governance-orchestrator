@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import factory_pipeline as _pipeline
 import pytest
 
 
@@ -160,6 +161,164 @@ def test_run_autonomous_factory_cycle_runs_governed_path_and_sets_learning_outpu
     assert called["learn_ledger_output"] == str(
         output.with_name(output.stem + "_learned_ledger.json")
     )
+
+    written = _read_json(output)
+    assert written == artifact
+
+
+def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    called = {}
+
+    def _fake_builder():
+        called["builder_called"] = True
+        return {
+            "status": "ok",
+            "generated_repo": "generated_mcp_github",
+            "tools": [
+                "list_repositories",
+                "get_repository",
+                "create_issue",
+            ],
+        }
+
+    monkeypatch.setattr(_pipeline, "build_mcp_server", _fake_builder)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert called["builder_called"] is True
+    assert artifact["cycle_result"]["builder"] == {
+        "status": "ok",
+        "generated_repo": "generated_mcp_github",
+        "tools": [
+            "list_repositories",
+            "get_repository",
+            "create_issue",
+        ],
+    }
+
+    written = _read_json(output)
+    assert written == artifact
+
+
+def test_run_autonomous_factory_cycle_records_builder_error(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _failing_builder():
+        raise RuntimeError("builder failed deterministically")
+
+    monkeypatch.setattr(_pipeline, "build_mcp_server", _failing_builder)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert artifact["cycle_result"]["builder_error"] == "builder failed deterministically"
+
+    written = _read_json(output)
+    assert written == artifact
+
+
+def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": [],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    called = {}
+
+    def _fake_builder():
+        called["builder_called"] = True
+        return {
+            "status": "ok",
+            "generated_repo": "generated_mcp_github",
+            "tools": [
+                "list_repositories",
+                "get_repository",
+                "create_issue",
+            ],
+        }
+
+    monkeypatch.setattr(_pipeline, "build_mcp_server", _fake_builder)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert called["builder_called"] is True
+    assert artifact["cycle_result"]["builder"]["status"] == "ok"
 
     written = _read_json(output)
     assert written == artifact

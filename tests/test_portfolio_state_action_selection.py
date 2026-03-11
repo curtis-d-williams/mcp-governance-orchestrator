@@ -504,3 +504,60 @@ class TestPortfolioRecommendations:
         state = _build(self._SIGNALS)
         for rec in state["portfolio_recommendations"]:
             assert set(rec.keys()) == _ACTION_KEYS
+
+
+class TestMcpCapabilityGapRule:
+    _BASE = {
+        "repo_id": "factory-gap-repo",
+        "last_run_ok": True,
+        "artifact_completeness": 1.0,
+        "determinism_ok": True,
+        "recent_failures": 0,
+        "stale_runs": 0,
+        "missing_capabilities": ["github_repository_management"],
+    }
+
+    def test_action_fires(self):
+        types = [a["action_type"] for a in _repo([self._BASE])["recommended_actions"]]
+        assert "build_mcp_server" in types
+
+    def test_priority_is_0_60(self):
+        action = next(
+            a for a in _repo([self._BASE])["recommended_actions"]
+            if a["action_type"] == "build_mcp_server"
+        )
+        assert action["priority"] == 0.60
+
+    def test_issue_type_capability_gap(self):
+        issues = _repo([self._BASE])["open_issues"]
+        assert any(i["issue_type"] == "capability_gap" for i in issues)
+
+    def test_issue_reason(self):
+        issue = next(
+            i for i in _repo([self._BASE])["open_issues"]
+            if i["issue_type"] == "capability_gap"
+        )
+        assert issue["reason"] == "missing github_repository_management MCP capability"
+
+    def test_action_reason(self):
+        action = next(
+            a for a in _repo([self._BASE])["recommended_actions"]
+            if a["action_type"] == "build_mcp_server"
+        )
+        assert action["reason"] == "missing github_repository_management MCP capability"
+
+    def test_task_binding_task_id(self):
+        action = next(
+            a for a in _repo([self._BASE])["recommended_actions"]
+            if a["action_type"] == "build_mcp_server"
+        )
+        assert action["task_binding"]["task_id"] == ACTION_TASK_BINDINGS["build_mcp_server"]
+
+    def test_clean_repo_status_unchanged(self):
+        assert _repo([self._BASE])["status"] == "healthy"
+
+    def test_clean_repo_risk_unchanged(self):
+        assert _repo([self._BASE])["risk_level"] == "low"
+
+    def test_clean_repo_health_score_unchanged(self):
+        assert _repo([self._BASE])["health_score"] == 1.0

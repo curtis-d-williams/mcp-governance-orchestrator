@@ -24,6 +24,7 @@ ACTION_TASK_BINDINGS: Dict[str, str] = {
     "regenerate_missing_artifact": "artifact_regeneration_check",
     "rerun_failed_task": "failed_task_retry",
     "run_determinism_regression_suite": "determinism_regression_suite",
+    "build_mcp_server": "factory_build_mcp_server",
 }
 
 # Required fields and their expected Python types (int accepted for float fields).
@@ -62,7 +63,7 @@ def _validate_signal(signal: Any, idx: int) -> List[str]:
                 f"signal[{idx}].{field}: expected {expected_type.__name__},"
                 f" got {type(val).__name__}"
             )
-    # Range check for completeness after type validation passes.
+        # Range check for completeness after type validation passes.
     if "artifact_completeness" in signal and "artifact_completeness" not in [
         e.split(".")[1].split(":")[0] for e in errors if f"signal[{idx}]." in e
     ]:
@@ -71,6 +72,15 @@ def _validate_signal(signal: Any, idx: int) -> List[str]:
             errors.append(
                 f"signal[{idx}].artifact_completeness: must be in [0.0, 1.0], got {val}"
             )
+
+    # Optional: capability-gap signal for factory-generation actions.
+    if "missing_capabilities" in signal:
+        caps = signal["missing_capabilities"]
+        if not isinstance(caps, list) or not all(isinstance(c, str) for c in caps):
+            errors.append(
+                f"signal[{idx}].missing_capabilities: expected list[str], got {type(caps).__name__}"
+            )
+
     return errors
 
 
@@ -117,6 +127,7 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
     determinism_ok: bool = bool(signal["determinism_ok"])
     recent_failures: int = int(signal["recent_failures"])
     stale_runs: int = int(signal["stale_runs"])
+    missing_capabilities: List[str] = list(signal.get("missing_capabilities", []))
 
     issues: List[Dict[str, Any]] = []
     actions: List[Dict[str, Any]] = []
@@ -148,6 +159,20 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
     if not determinism_ok:
         issues.append(_make_issue("determinism_regression", "critical", "determinism regression detected"))
         actions.append(_make_action("run_determinism_regression_suite", repo_id, 0.95, "determinism regression detected"))
+
+    # Rule: MCP capability gap
+    if "github_repository_management" in missing_capabilities:
+        issues.append(_make_issue(
+            "capability_gap",
+            "medium",
+            "missing github_repository_management MCP capability",
+        ))
+        actions.append(_make_action(
+            "build_mcp_server",
+            repo_id,
+            0.60,
+            "missing github_repository_management MCP capability",
+        ))
 
     # Health score: start at 1.0, subtract deductions, clamp, round.
     score = 1.0
