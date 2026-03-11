@@ -242,7 +242,8 @@ def _propose_repair(ranked_action_window, current_mapped_tasks, active_mapping,
 # ---------------------------------------------------------------------------
 
 def propose_mapping_repair(policy_path, portfolio_state_path, ledger_path,
-                            top_k=3, exploration_offset=0, output_path=None):
+                            top_k=3, exploration_offset=0, output_path=None,
+                            output_override_path=None):
     """Simulate the ranked window and propose a diversifying mapping override.
 
     Args:
@@ -251,7 +252,8 @@ def propose_mapping_repair(policy_path, portfolio_state_path, ledger_path,
         ledger_path:           Path to action_effectiveness_ledger.json (or None).
         top_k:                 Window size.
         exploration_offset:    Start index into ranked action list.
-        output_path:           If set, write JSON here; otherwise print to stdout.
+        output_path:           If set, write full proposal JSON here; otherwise print to stdout.
+        output_override_path:  If set, write only proposed_mapping_override JSON here.
 
     Returns:
         The proposal dict.
@@ -288,13 +290,27 @@ def propose_mapping_repair(policy_path, portfolio_state_path, ledger_path,
     }
 
     serialized = json.dumps(proposal, indent=2) + "\n"
+    override_serialized = json.dumps(
+        proposal["proposed_mapping_override"], indent=2, sort_keys=True
+    ) + "\n"
+
+    wrote_any = False
 
     if output_path is not None:
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(serialized, encoding="utf-8")
         print(f"Wrote {out}", file=sys.stderr)
-    else:
+        wrote_any = True
+
+    if output_override_path is not None:
+        out_override = Path(output_override_path)
+        out_override.parent.mkdir(parents=True, exist_ok=True)
+        out_override.write_text(override_serialized, encoding="utf-8")
+        print(f"Wrote {out_override}", file=sys.stderr)
+        wrote_any = True
+
+    if not wrote_any:
         print(serialized, end="")
 
     return proposal
@@ -331,7 +347,11 @@ def main(argv=None):
     )
     parser.add_argument(
         "--output", default=None, metavar="FILE",
-        help="Write proposal JSON to this path. Omit to print to stdout.",
+        help="Write full proposal JSON to this path. Omit to print to stdout.",
+    )
+    parser.add_argument(
+        "--output-override", default=None, metavar="FILE",
+        help="Write only proposed_mapping_override JSON to this path.",
     )
     args = parser.parse_args(argv)
 
@@ -342,6 +362,7 @@ def main(argv=None):
         top_k=args.top_k,
         exploration_offset=args.exploration_offset,
         output_path=args.output,
+        output_override_path=args.output_override,
     )
 
 
