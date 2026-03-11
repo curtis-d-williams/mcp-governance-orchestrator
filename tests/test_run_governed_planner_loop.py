@@ -532,11 +532,14 @@ class TestEmptyWindowShortCircuit:
             calls.append(a.exploration_offset)
             return _empty_window_preflight(a)
 
-        with pytest.raises(SystemExit) as exc_info:
-            run_governed_loop(args, planner_main=_noop_planner,
-                              preflight_fn=tracking_preflight)
+        result = run_governed_loop(
+            args,
+            planner_main=_noop_planner,
+            preflight_fn=tracking_preflight,
+        )
 
-        assert exc_info.value.code == 1
+        assert result["idle"] is True
+        assert result["risk_level"] == "no_action_window"
         assert len(calls) == 1  # short-circuited after first attempt
 
     def test_empty_window_abort_records_attempt(self, tmp_path, capsys):
@@ -551,10 +554,13 @@ class TestEmptyWindowShortCircuit:
             recorded.append(ev)
             return ev
 
-        with pytest.raises(SystemExit):
-            run_governed_loop(args, planner_main=_noop_planner,
-                              preflight_fn=tracking_preflight)
+        result = run_governed_loop(
+            args,
+            planner_main=_noop_planner,
+            preflight_fn=tracking_preflight,
+        )
 
+        assert result["idle"] is True
         assert len(recorded) == 1
         assert recorded[0]["risk_level"] == "high_risk"
 
@@ -1155,10 +1161,13 @@ class TestAutoRepair:
             calls.append(getattr(a, "mapping_override", None))
             return _empty_window_preflight(a)
 
-        with pytest.raises(SystemExit):
-            run_governed_loop(args, planner_main=_noop_planner,
-                              preflight_fn=tracking_preflight)
+        result = run_governed_loop(
+            args,
+            planner_main=_noop_planner,
+            preflight_fn=tracking_preflight,
+        )
 
+        assert result["idle"] is True
         # Auto-repair sets mapping_override on repaired_args; it must never be called.
         assert all(o is None for o in calls), "Auto-repair must not be triggered for empty-window"
         data = json.loads(output.read_text(encoding="utf-8"))

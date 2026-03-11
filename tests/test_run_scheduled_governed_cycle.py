@@ -89,6 +89,7 @@ def _make_args(tmp_path, **kwargs):
         manifest=str(tmp_path / "manifest.json"),
         output=str(tmp_path / "cycle.json"),
         task=["artifact_audit_example"],
+        repo_ids=None,
         top_k=None,
         force=False,
         governance_policy=None,
