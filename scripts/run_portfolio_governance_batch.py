@@ -1,137 +1,24 @@
 # SPDX-License-Identifier: MIT
-"""Run scheduled governed cycles across every repo in a portfolio manifest.
-
-This script fans out execution so each repo receives its own governed cycle
-execution scope. It composes existing scheduled cycle infrastructure.
-
-Outputs:
-    <output-dir>/<repo-id>/governed_cycle.json
-    <output-dir>/<repo-id>/summary.json
-    <output-dir>/<repo-id>/alert.json
-
-Also produces portfolio-level aggregates:
-
-    <output-dir>/portfolio_batch_summary.json
-    <output-dir>/portfolio_batch_alert.json
-"""
+"""Thin CLI wrapper for portfolio governance batch execution."""
 
 import argparse
-import json
-import subprocess
-import sys
-from pathlib import Path
 
-_PLAN_SCRIPT = Path(__file__).resolve().parent / "build_portfolio_governance_plan.py"
-
-def write_json(path, data):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-
-
-def load_manifest(path):
-    return json.loads(Path(path).read_text())
-
-
-def run_repo_cycle(manifest_path, repo_id, tasks, output_dir):
-
-    repo_dir = output_dir / repo_id
-    repo_dir.mkdir(parents=True, exist_ok=True)
-
-    cycle_output = repo_dir / "governed_cycle.json"
-    summary_output = repo_dir / "summary.json"
-    alert_output = repo_dir / "alert.json"
-
-    cmd = [
-        "python3",
-        "scripts/run_scheduled_governed_cycle.py",
-        "--manifest",
-        str(manifest_path),
-        "--output",
-        str(cycle_output),
-        "--summary-output",
-        str(summary_output),
-        "--alert-output",
-        str(alert_output),
-        "--repo-id",
-        repo_id,
-    ]
-
-    for t in tasks:
-        cmd.extend(["--task", t])
-
-    subprocess.run(cmd, check=True)
-
-    summary = json.loads(summary_output.read_text())
-    alert = json.loads(alert_output.read_text())
-
-    return summary, alert
-
-
-def aggregate(results):
-
-    summaries = []
-    alerts = []
-
-    for summary, alert in results:
-        summaries.append(summary)
-        alerts.append(alert)
-
-    portfolio_alert = any(a.get("alert") for a in alerts)
-
-    return {
-        "repos_total": len(results),
-        "alerts_triggered": portfolio_alert,
-    }, {
-        "alert": portfolio_alert
-    }
+from portfolio_governance_runtime import (
+    aggregate,
+    run_portfolio_governance_batch,
+    run_repo_cycle,
+)
 
 
 def main():
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--task", action="append", required=True)
 
     args = parser.parse_args()
-
-    manifest = load_manifest(args.manifest)
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    plan_path = output_dir / "portfolio_governance_plan.json"
-
-    subprocess.run([
-        sys.executable,
-        str(_PLAN_SCRIPT),
-        "--manifest",
-        args.manifest,
-        "--output",
-        str(plan_path),
-        "--output-dir",
-        str(output_dir),
-    ], check=True)
-
-    plan = json.loads(plan_path.read_text())
-
-    repo_ids = [r["repo_id"] for r in plan.get("repos", []) if r.get("enabled")]
-
-    results = []
-
-    for repo_id in repo_ids:
-        summary, alert = run_repo_cycle(
-            args.manifest,
-            repo_id,
-            args.task,
-            output_dir,
-        )
-        results.append((summary, alert))
-
-    portfolio_summary, portfolio_alert = aggregate(results)
-
-    write_json(output_dir / "portfolio_batch_summary.json", portfolio_summary)
-    write_json(output_dir / "portfolio_batch_alert.json", portfolio_alert)
+    return run_portfolio_governance_batch(args)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

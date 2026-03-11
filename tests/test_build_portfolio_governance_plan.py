@@ -285,3 +285,80 @@ def test_build_plan_prioritizes_higher_alert_repos_within_budget(tmp_path: Path)
             },
         ]
     }
+
+def test_build_plan_latest_abort_bypasses_attention_budget(tmp_path: Path):
+    manifest_path = tmp_path / "manifest.json"
+    output_dir = tmp_path / "portfolio_batch"
+
+    _write_json(
+        manifest_path,
+        {
+            "repos": [
+                {"id": "repo_a"},
+                {"id": "repo_b"},
+            ]
+        },
+    )
+
+    _write_json(
+        output_dir / "repo_a" / "summary.json",
+        {
+            "alert_level": "warning",
+            "governance_decision": "warn",
+            "regression_detected": False,
+            "status": "ok",
+            "timestamp": "2026-03-11T00:00:00Z",
+        },
+    )
+    _write_json(
+        output_dir / "repo_a" / "summary_history.json",
+        [
+            {
+                "alert_level": "warning",
+                "governance_decision": "warn",
+                "regression_detected": False,
+                "status": "ok",
+                "timestamp": "2026-03-11T00:00:00Z",
+            }
+        ],
+    )
+
+    _write_json(
+        output_dir / "repo_b" / "summary.json",
+        {
+            "alert_level": "warning",
+            "governance_decision": "abort",
+            "regression_detected": False,
+            "status": "ok",
+            "timestamp": "2026-03-11T01:00:00Z",
+        },
+    )
+    _write_json(
+        output_dir / "repo_b" / "summary_history.json",
+        [
+            {
+                "alert_level": "warning",
+                "governance_decision": "abort",
+                "regression_detected": False,
+                "status": "ok",
+                "timestamp": "2026-03-11T01:00:00Z",
+            }
+        ],
+    )
+
+    plan = build_plan(manifest_path, output_dir, max_repos_per_cycle=0)
+
+    assert plan == {
+        "repos": [
+            {
+                "enabled": False,
+                "reason": "attention_budget_exceeded",
+                "repo_id": "repo_a",
+            },
+            {
+                "enabled": True,
+                "reason": "prior_attention_signal",
+                "repo_id": "repo_b",
+            },
+        ]
+    }
