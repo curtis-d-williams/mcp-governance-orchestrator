@@ -18,8 +18,10 @@ Also produces portfolio-level aggregates:
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
+_PLAN_SCRIPT = Path(__file__).resolve().parent / "build_portfolio_governance_plan.py"
 
 def write_json(path, data):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -97,7 +99,20 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    repo_ids = [repo["id"] for repo in manifest.get("repos", [])]
+    plan_path = output_dir / "portfolio_governance_plan.json"
+
+    subprocess.run([
+        sys.executable,
+        str(_PLAN_SCRIPT),
+        "--manifest",
+        args.manifest,
+        "--output",
+        str(plan_path),
+    ], check=True)
+
+    plan = json.loads(plan_path.read_text())
+
+    repo_ids = [r["repo_id"] for r in plan.get("repos", []) if r.get("enabled")]
 
     results = []
 
