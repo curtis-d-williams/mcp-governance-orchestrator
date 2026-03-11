@@ -47,7 +47,7 @@ def build_governance(args, result):
     }
 
 
-def build_abort_artifact(args, attempts, last_evaluation, *, propose_repair):
+def build_abort_artifact(args, attempts, last_evaluation, *, propose_repair=None):
     """Build the artifact written before a persistent high_risk abort."""
     repair_proposal = None
     if last_evaluation is not None:
@@ -56,11 +56,14 @@ def build_abort_artifact(args, attempts, last_evaluation, *, propose_repair):
         mapped = last_evaluation.get("mapped_tasks", [])
 
         from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
+        from scripts.propose_mapping_repair import _propose_repair as _default_propose_repair
+
+        propose_repair_fn = propose_repair or _default_propose_repair
 
         active_mapping = resolve_action_to_task_mapping(
             ACTION_TO_TASK, getattr(args, "mapping_override", None)
         )
-        proposed_override, repair_reasons = propose_repair(
+        proposed_override, repair_reasons = propose_repair_fn(
             window, mapped, active_mapping, window_detail=window_detail
         )
         if proposed_override:
