@@ -45,3 +45,7 @@ manifests/portfolio_manifest_example.json
 governed_portfolio_cycle.json
 governed_portfolio_cycle_artifacts/
 governed_result.json
+
+# Scheduled wrapper operator-facing artifacts (regenerated every cron run)
+scheduled_cycle_alert.json
+scheduled_cycle_summary.json
