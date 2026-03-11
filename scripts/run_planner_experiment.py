@@ -130,7 +130,6 @@ def _build_planner_argv(args, envelope_path):
 # v0.39: Pre-flight risk guardrail
 # ---------------------------------------------------------------------------
 
-# Cached evaluator module — loaded once on first use.
 _evaluator_mod = None
 
 
@@ -147,38 +146,30 @@ def _load_evaluator_mod():
 
 
 def _run_preflight_check(args):
-    """Compute a risk evaluation for the configured planner run.
-
-    Imports build_evaluation and the underlying risk helpers from
-    evaluate_planner_config (no subprocess; no JSON I/O).
-
-    Returns the evaluation dict, or None when portfolio_state is not set
-    (fallback mode — no risk assessment possible).
-    """
+    """Compute a risk evaluation for the configured planner run."""
     if getattr(args, "portfolio_state", None) is None:
         return None
 
-    from scripts.planner_scoring import (
-        load_effectiveness_ledger,
-        load_planner_policy,
-        load_portfolio_signals,
-    )
-    from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
-
     ev_mod = _load_evaluator_mod()
 
-    ledger = load_effectiveness_ledger(getattr(args, "ledger", None))
-    signals = load_portfolio_signals(args.portfolio_state)
-    policy = load_planner_policy(getattr(args, "policy", None))
+    ledger = ev_mod.load_effectiveness_ledger(getattr(args, "ledger", None))
+    signals = ev_mod.load_portfolio_signals(args.portfolio_state)
+    policy = ev_mod.load_planner_policy(getattr(args, "policy", None))
     mapping_override = getattr(args, "mapping_override", None)
-    active_mapping = resolve_action_to_task_mapping(ACTION_TO_TASK, mapping_override)
+    active_mapping = ev_mod.resolve_action_to_task_mapping(ev_mod.ACTION_TO_TASK, mapping_override)
 
     top_k = getattr(args, "top_k", 3) or 3
     exploration_offset = getattr(args, "exploration_offset", 0) or 0
 
     raw_actions = ev_mod._fetch_actions(args.portfolio_state, getattr(args, "ledger", None))
     metrics = ev_mod._compute_risk(
-        raw_actions, top_k, ledger, signals, policy, active_mapping, exploration_offset,
+        raw_actions,
+        top_k,
+        ledger,
+        signals,
+        policy,
+        active_mapping,
+        exploration_offset=exploration_offset,
         mapping_override=mapping_override,
     )
     return ev_mod.build_evaluation(metrics, top_k)
@@ -211,7 +202,6 @@ def _print_preflight_result(evaluation, force, top_k):
         print("  WARNING: continuing with experiment run.", file=sys.stderr)
         return True
 
-    # high_risk
     if force:
         print(
             "  WARNING: high risk override — --force is set, continuing.",
