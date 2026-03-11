@@ -102,6 +102,41 @@ _CYCLE_HISTORY_DATA = {
     }]
 }
 
+_CYCLE_HISTORY_SUMMARY_DATA = {
+    "average_tasks_selected_per_cycle": 1.0,
+    "cycles_total": 1,
+    "cycles_with_selected_tasks": 1,
+    "ledger_source_counts": {"work_dir": 1},
+    "most_recent_cycle_timestamp": "2026-01-01T00:00:00Z",
+    "status_counts": {"ok": 1},
+    "success_rate": 1.0,
+    "task_selection_counts": {"build_portfolio_dashboard": 1},
+    "unique_tasks_selected": 1,
+}
+
+_CYCLE_HISTORY_REGRESSION_DATA = {
+    "current_cycle_timestamp": "2026-01-01T00:00:00Z",
+    "insufficient_history": True,
+    "regression_detected": False,
+    "signals": [],
+    "summary_context": {
+        "cycles_total": 1,
+        "success_rate": 1.0,
+        "unique_tasks_selected": 1,
+    },
+}
+
+_GOVERNANCE_DECISION_DATA = {
+    "decision": "continue",
+    "policy_applied": {
+        "abort_on_signals": ["status_regressed"],
+        "allow_if_only": ["action_set_changed"],
+        "on_regression": "warn",
+    },
+    "regression_detected": False,
+    "signals": [],
+}
+
 
 def _make_manifest(tmp_path, data=None):
     p = tmp_path / "manifest.json"
@@ -120,6 +155,7 @@ def _make_args(tmp_path, manifest=None, tasks=None, **kwargs):
         output=str(tmp_path / "governed_portfolio_cycle.json"),
         ledger=None,
         policy=None,
+        governance_policy=None,
         top_k=3,
         exploration_offset=0,
         max_actions=None,
@@ -147,6 +183,9 @@ def _side_effect_writing_state(
     execution_history_data=None,
     action_effectiveness_data=None,
     cycle_history_data=None,
+    cycle_history_summary_data=None,
+    cycle_history_regression_data=None,
+    governance_decision_data=None,
 ):
     """Return a side_effect function that writes JSON files on the appropriate subprocess call."""
     pstate = portfolio_state_data or _PORTFOLIO_STATE_DATA
@@ -155,6 +194,9 @@ def _side_effect_writing_state(
     hresult = execution_history_data or _EXECUTION_HISTORY_DATA
     aresult = action_effectiveness_data or _ACTION_EFFECTIVENESS_DATA
     cresult = cycle_history_data or _CYCLE_HISTORY_DATA
+    jresult = cycle_history_summary_data or _CYCLE_HISTORY_SUMMARY_DATA
+    kresult = cycle_history_regression_data or _CYCLE_HISTORY_REGRESSION_DATA
+    lresult = governance_decision_data or _GOVERNANCE_DECISION_DATA
 
     def _fn(cmd, **kwargs):
         cmd_str = " ".join(cmd)
@@ -194,6 +236,24 @@ def _side_effect_writing_state(
             out_path = Path(cmd[out_idx + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(cresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "aggregate_cycle_history" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(jresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "detect_cycle_history_regression" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(kresult) + "\n", encoding="utf-8")
+            return _ok_proc()
+        if "enforce_governance_policy" in cmd_str:
+            out_idx = cmd.index("--output")
+            out_path = Path(cmd[out_idx + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(lresult) + "\n", encoding="utf-8")
             return _ok_proc()
         # portfolio task phase
         return _ok_proc(stdout=_PORTFOLIO_TASK_STDOUT)
@@ -1760,3 +1820,306 @@ class TestCycleHistory:
                    side_effect=_side_effect_writing_state(artifacts)):
             run_cycle(args)
         assert Path(args.output).read_text(encoding="utf-8").endswith("\n")
+
+
+# ---------------------------------------------------------------------------
+# L. Cycle analytics phases (J / K / L)
+# ---------------------------------------------------------------------------
+
+class TestCycleAnalyticsPhases:
+    """Tests for post-cycle analytics phases J, K, and L."""
+
+    # ---- success path: new fields present ----
+
+    def test_success_includes_cycle_history_summary(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "cycle_history_summary" in data
+        assert data["cycle_history_summary"] == _CYCLE_HISTORY_SUMMARY_DATA
+
+    def test_success_includes_cycle_history_regression(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "cycle_history_regression" in data
+        assert data["cycle_history_regression"] == _CYCLE_HISTORY_REGRESSION_DATA
+
+    def test_success_includes_governance_decision(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=_side_effect_writing_state(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert "governance_decision" in data
+        assert data["governance_decision"] == _GOVERNANCE_DECISION_DATA
+
+    # ---- artifact paths ----
+
+    def test_artifact_paths_include_cycle_history_summary(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        ap = _artifact_paths(_work_dir(str(output)))
+        assert "cycle_history_summary" in ap
+        assert ap["cycle_history_summary"].endswith("cycle_history_summary.json")
+
+    def test_artifact_paths_include_cycle_history_regression(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        ap = _artifact_paths(_work_dir(str(output)))
+        assert "cycle_history_regression" in ap
+        assert ap["cycle_history_regression"].endswith("cycle_history_regression_report.json")
+
+    def test_artifact_paths_include_governance_decision(self, tmp_path):
+        output = tmp_path / "cycle.json"
+        ap = _artifact_paths(_work_dir(str(output)))
+        assert "governance_decision" in ap
+        assert ap["governance_decision"].endswith("governance_decision.json")
+
+    # ---- default governance policy ----
+
+    def test_default_policy_used_when_governance_policy_not_set(self, tmp_path):
+        """Phase L subprocess must receive --policy pointing to a real file."""
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        captured_policy = []
+
+        def _fn(cmd, **kwargs):
+            if "enforce_governance_policy" in " ".join(cmd):
+                idx = cmd.index("--policy")
+                captured_policy.append(cmd[idx + 1])
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert len(captured_policy) == 1
+        assert Path(captured_policy[0]).exists()
+
+    def test_default_policy_file_contains_expected_keys(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        captured_policy = []
+
+        def _fn(cmd, **kwargs):
+            if "enforce_governance_policy" in " ".join(cmd):
+                idx = cmd.index("--policy")
+                captured_policy.append(cmd[idx + 1])
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        policy = json.loads(Path(captured_policy[0]).read_text())
+        assert "abort_on_signals" in policy
+        assert "allow_if_only" in policy
+        assert "on_regression" in policy
+
+    # ---- custom --governance-policy wiring ----
+
+    def test_custom_governance_policy_passed_to_phase_l(self, tmp_path):
+        policy_file = tmp_path / "custom_policy.json"
+        policy_file.write_text(
+            json.dumps({"abort_on_signals": [], "allow_if_only": [], "on_regression": "warn"}),
+            encoding="utf-8",
+        )
+        args = _make_args(tmp_path, governance_policy=str(policy_file))
+        artifacts = _artifact_paths(_work_dir(args.output))
+        captured_policy = []
+
+        def _fn(cmd, **kwargs):
+            if "enforce_governance_policy" in " ".join(cmd):
+                idx = cmd.index("--policy")
+                captured_policy.append(cmd[idx + 1])
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+
+        with patch("subprocess.run", side_effect=_fn):
+            run_cycle(args)
+
+        assert len(captured_policy) == 1
+        assert captured_policy[0] == str(policy_file)
+
+    # ---- governance_decision does not override cycle status ----
+
+    def test_governance_abort_decision_does_not_change_cycle_status(self, tmp_path):
+        """governance_decision.decision == abort must not set cycle status to aborted."""
+        abort_decision = {
+            "decision": "abort",
+            "policy_applied": {},
+            "regression_detected": True,
+            "signals": [{"type": "status_regressed"}],
+        }
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch(
+            "subprocess.run",
+            side_effect=_side_effect_writing_state(
+                artifacts, governance_decision_data=abort_decision
+            ),
+        ):
+            rc = run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert rc == 0
+        assert data["status"] == "ok"
+        assert data["governance_decision"]["decision"] == "abort"
+
+    # ---- Phase J failure ----
+
+    def _make_j_failure_side_effect(self, artifacts):
+        def _fn(cmd, **kwargs):
+            if "aggregate_cycle_history" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="read error"
+                )
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+        return _fn
+
+    def test_phase_j_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_j_failure_side_effect(artifacts)):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_phase_j_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_j_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_phase_j_failure_phase_cycle_history_summary(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_j_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "cycle_history_summary"
+
+    def test_phase_j_failure_preserves_cycle_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_j_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["cycle_history"] == _CYCLE_HISTORY_DATA
+
+    def test_phase_j_failure_preserves_prior_phase_data(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_j_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["governed_result"] == _GOVERNED_RESULT_DATA
+        assert data["action_effectiveness_ledger"] == _ACTION_EFFECTIVENESS_DATA
+
+    # ---- Phase K failure ----
+
+    def _make_k_failure_side_effect(self, artifacts):
+        def _fn(cmd, **kwargs):
+            if "detect_cycle_history_regression" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="read error"
+                )
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+        return _fn
+
+    def test_phase_k_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_k_failure_side_effect(artifacts)):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_phase_k_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_k_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_phase_k_failure_phase_cycle_history_regression(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_k_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "cycle_history_regression"
+
+    def test_phase_k_failure_preserves_cycle_history_summary(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_k_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["cycle_history_summary"] == _CYCLE_HISTORY_SUMMARY_DATA
+
+    def test_phase_k_failure_preserves_cycle_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_k_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["cycle_history"] == _CYCLE_HISTORY_DATA
+
+    # ---- Phase L failure ----
+
+    def _make_l_failure_side_effect(self, artifacts):
+        def _fn(cmd, **kwargs):
+            if "enforce_governance_policy" in " ".join(cmd):
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=cmd, output="", stderr="policy error"
+                )
+            return _side_effect_writing_state(artifacts)(cmd, **kwargs)
+        return _fn
+
+    def test_phase_l_failure_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_l_failure_side_effect(artifacts)):
+            rc = run_cycle(args)
+        assert rc == 1
+
+    def test_phase_l_failure_status_aborted(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_l_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["status"] == "aborted"
+
+    def test_phase_l_failure_phase_governance_enforcement(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_l_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["phase"] == "governance_enforcement"
+
+    def test_phase_l_failure_preserves_cycle_history_summary(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_l_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["cycle_history_summary"] == _CYCLE_HISTORY_SUMMARY_DATA
+
+    def test_phase_l_failure_preserves_cycle_history_regression(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_l_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["cycle_history_regression"] == _CYCLE_HISTORY_REGRESSION_DATA
+
+    def test_phase_l_failure_preserves_cycle_history(self, tmp_path):
+        args = _make_args(tmp_path)
+        artifacts = _artifact_paths(_work_dir(args.output))
+        with patch("subprocess.run", side_effect=self._make_l_failure_side_effect(artifacts)):
+            run_cycle(args)
+        data = json.loads(Path(args.output).read_text())
+        assert data["cycle_history"] == _CYCLE_HISTORY_DATA

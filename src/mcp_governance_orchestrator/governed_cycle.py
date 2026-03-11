@@ -6,6 +6,7 @@ Extracted from scripts/run_governed_portfolio_cycle.py so that future phases
 without touching the CLI entrypoint.
 
 Public API:
+    DEFAULT_GOVERNANCE_POLICY
     write_json(path, data)
     validate_manifest_repos(manifest_data) -> list
     work_dir(output_path) -> Path
@@ -20,6 +21,9 @@ Public API:
     run_update_execution_history(artifacts) -> CompletedProcess
     run_update_action_effectiveness_from_history(artifacts) -> CompletedProcess
     run_update_cycle_history(artifacts, cycle_artifact_path) -> CompletedProcess
+    run_aggregate_cycle_history(artifacts) -> CompletedProcess
+    run_detect_cycle_history_regression(artifacts) -> CompletedProcess
+    run_enforce_governance_policy(artifacts, policy_file=None) -> CompletedProcess
     run_cycle(args) -> int
 """
 
@@ -125,7 +129,21 @@ def artifact_paths(work_dir_path):
         "execution_history": str(wd / "execution_history.json"),
         "action_effectiveness_ledger": str(wd / "action_effectiveness_ledger.json"),
         "cycle_history": str(wd / "cycle_history.json"),
+        "cycle_history_summary": str(wd / "cycle_history_summary.json"),
+        "cycle_history_regression": str(wd / "cycle_history_regression_report.json"),
+        "governance_decision": str(wd / "governance_decision.json"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Default governance policy
+# ---------------------------------------------------------------------------
+
+DEFAULT_GOVERNANCE_POLICY = {
+    "abort_on_signals": ["status_regressed"],
+    "allow_if_only": ["action_set_changed"],
+    "on_regression": "warn",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +304,61 @@ def run_update_cycle_history(artifacts, cycle_artifact_path):
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
+def run_aggregate_cycle_history(artifacts):
+    """Phase J: compute an aggregate summary from cycle_history.json.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    script = str(_REPO_ROOT / "scripts" / "aggregate_cycle_history.py")
+    cmd = [
+        "python3", script,
+        "--history", artifacts["cycle_history"],
+        "--output", artifacts["cycle_history_summary"],
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def run_detect_cycle_history_regression(artifacts):
+    """Phase K: detect regressions in governed cycle history.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    script = str(_REPO_ROOT / "scripts" / "detect_cycle_history_regression.py")
+    cmd = [
+        "python3", script,
+        "--history", artifacts["cycle_history"],
+        "--summary", artifacts["cycle_history_summary"],
+        "--output", artifacts["cycle_history_regression"],
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def run_enforce_governance_policy(artifacts, policy_file=None):
+    """Phase L: evaluate governance policy against cycle history regression.
+
+    If *policy_file* is None, writes DEFAULT_GOVERNANCE_POLICY to
+    <work_dir>/_default_governance_policy.json and uses that path.
+
+    Returns the subprocess.CompletedProcess result.
+    Raises subprocess.CalledProcessError on non-zero exit.
+    """
+    if policy_file is None:
+        default_path = Path(artifacts["work_dir"]) / "_default_governance_policy.json"
+        write_json(default_path, DEFAULT_GOVERNANCE_POLICY)
+        policy_file = str(default_path)
+    script = str(_REPO_ROOT / "scripts" / "enforce_governance_policy.py")
+    cmd = [
+        "python3", script,
+        "--history", artifacts["cycle_history"],
+        "--summary", artifacts["cycle_history_summary"],
+        "--policy", policy_file,
+        "--output", artifacts["governance_decision"],
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
 # ---------------------------------------------------------------------------
 # Main cycle runner
 # ---------------------------------------------------------------------------
@@ -296,7 +369,8 @@ def run_cycle(args):
     Args:
         args: Parsed argparse namespace with attributes:
             manifest, task, output, ledger, policy, top_k,
-            exploration_offset, max_actions, explain, force.
+            exploration_offset, max_actions, explain, force,
+            governance_policy (optional, defaults to None).
 
     Returns:
         0 on success, 1 on any failure.
@@ -341,6 +415,9 @@ def run_cycle(args):
         "execution_history": None,
         "action_effectiveness_ledger": None,
         "cycle_history": None,
+        "cycle_history_summary": None,
+        "cycle_history_regression": None,
+        "governance_decision": None,
         "planner_inputs": None,
     }
 
@@ -479,6 +556,9 @@ def run_cycle(args):
         "execution_history": execution_history,
         "action_effectiveness_ledger": action_effectiveness_ledger,
         "cycle_history": None,
+        "cycle_history_summary": None,
+        "cycle_history_regression": None,
+        "governance_decision": None,
     }
     write_json(args.output, cycle)
 
@@ -492,5 +572,53 @@ def run_cycle(args):
 
     cycle_history = try_read_json(arts["cycle_history"])
     cycle["cycle_history"] = cycle_history
+
+    # --- Phase J: cycle history aggregation ---
+    try:
+        run_aggregate_cycle_history(arts)
+    except subprocess.CalledProcessError:
+        cycle = {**cycle, "status": "aborted", "phase": "cycle_history_summary"}
+        write_json(args.output, cycle)
+        return 1
+
+    cycle_history_summary = try_read_json(arts["cycle_history_summary"])
+
+    # --- Phase K: cycle history regression detection ---
+    try:
+        run_detect_cycle_history_regression(arts)
+    except subprocess.CalledProcessError:
+        cycle = {
+            **cycle,
+            "status": "aborted",
+            "phase": "cycle_history_regression",
+            "cycle_history_summary": cycle_history_summary,
+        }
+        write_json(args.output, cycle)
+        return 1
+
+    cycle_history_regression = try_read_json(arts["cycle_history_regression"])
+
+    # --- Phase L: governance policy enforcement ---
+    governance_policy = getattr(args, "governance_policy", None)
+    try:
+        run_enforce_governance_policy(arts, governance_policy)
+    except subprocess.CalledProcessError:
+        cycle = {
+            **cycle,
+            "status": "aborted",
+            "phase": "governance_enforcement",
+            "cycle_history_summary": cycle_history_summary,
+            "cycle_history_regression": cycle_history_regression,
+        }
+        write_json(args.output, cycle)
+        return 1
+
+    governance_decision = try_read_json(arts["governance_decision"])
+
+    # Final artifact: governance_decision is an assessment artifact.
+    # cycle status reflects actual orchestration success, not governance outcome.
+    cycle["cycle_history_summary"] = cycle_history_summary
+    cycle["cycle_history_regression"] = cycle_history_regression
+    cycle["governance_decision"] = governance_decision
     write_json(args.output, cycle)
     return 0

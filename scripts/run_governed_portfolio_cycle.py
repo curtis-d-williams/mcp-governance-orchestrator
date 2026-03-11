@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: MIT
 """Thin CLI entrypoint: one full governed portfolio cycle.
 
-Executes phases A→B→C→D→E→F→I in sequence using existing scripts as black-box
-subprocesses:
+Executes phases A→B→C→D→E→F→I→J→K→L in sequence using existing scripts as
+black-box subprocesses:
 
-  A. Portfolio task phase  — run_portfolio_task.py
-  B. Portfolio state phase — build_portfolio_state_from_artifacts.py
-  C. Governed loop phase   — run_governed_planner_loop.py
-  D. Governed execution    — execute_governed_actions.py
-  E. Execution history     — update_execution_history.py
-  F. Action effectiveness  — update_action_effectiveness_from_history.py
-  I. Cycle history index   — update_cycle_history.py
+  A. Portfolio task phase        — run_portfolio_task.py
+  B. Portfolio state phase       — build_portfolio_state_from_artifacts.py
+  C. Governed loop phase         — run_governed_planner_loop.py
+  D. Governed execution          — execute_governed_actions.py
+  E. Execution history           — update_execution_history.py
+  F. Action effectiveness        — update_action_effectiveness_from_history.py
+  I. Cycle history index         — update_cycle_history.py
+  J. Cycle history aggregation   — aggregate_cycle_history.py
+  K. Cycle history regression    — detect_cycle_history_regression.py
+  L. Governance policy           — enforce_governance_policy.py
 
 Emits a single cycle artifact JSON to --output.
 
@@ -78,6 +81,9 @@ def main(argv=None):
                         help="Pass --explain to the governed planner loop.")
     parser.add_argument("--force", action="store_true", default=False,
                         help="Pass --force to the governed planner loop.")
+    parser.add_argument("--governance-policy", default=None, metavar="FILE",
+                        dest="governance_policy",
+                        help="Path to governance_policy.json for Phase L (optional).")
 
     args = parser.parse_args(argv)
     sys.exit(run_cycle(args))
