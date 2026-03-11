@@ -60,6 +60,9 @@ def _build_cycle_cmd(args):
     ]
     for task in args.task:
         cmd += ["--task", task]
+    if args.repo_ids:
+        for repo_id in args.repo_ids:
+            cmd += ["--repo-id", repo_id]
     if args.top_k is not None:
         cmd += ["--top-k", str(args.top_k)]
     if args.force:
@@ -67,7 +70,6 @@ def _build_cycle_cmd(args):
     if args.governance_policy is not None:
         cmd += ["--governance-policy", args.governance_policy]
     return cmd
-
 
 # ---------------------------------------------------------------------------
 # Pure helpers for summary and alert construction
@@ -247,6 +249,9 @@ def main(argv=None):
                         help="Output path for the cycle artifact JSON.")
     parser.add_argument("--task", action="append", required=True, metavar="TASK",
                         help="Task name to run (repeatable; at least one required).")
+    parser.add_argument("--repo-id", action="append", default=None, metavar="REPO_ID",
+                        dest="repo_ids",
+                        help="Repo id to include from the manifest (repeatable; default: all repos).")
     parser.add_argument("--top-k", type=int, default=None, metavar="N",
                         dest="top_k",
                         help="Number of top actions to consider (optional passthrough).")
