@@ -13,8 +13,8 @@ Adaptive rule:
 
 Attention budgeting rule:
 - optionally limit the number of enabled repos requiring attention
-- sort attention-needing repos deterministically by repo_id
-- enable only the first N repos in that sorted set
+- prioritize higher-severity repos deterministically
+- enable only the first N repos in that ranked set
 - mark remaining repos as disabled with reason attention_budget_exceeded
 
 Output format:
@@ -55,6 +55,24 @@ def _repo_summary_path(output_dir, repo_id):
     return Path(output_dir) / repo_id / "summary.json"
 
 
+def _attention_priority(summary):
+    if summary is None:
+        return (5, 0)
+
+    alert_level = summary.get("alert_level")
+    governance_decision = summary.get("governance_decision")
+
+    if alert_level == "critical":
+        return (0, 0)
+    if alert_level == "warning":
+        return (1, 0)
+    if governance_decision == "abort":
+        return (2, 0)
+    if governance_decision == "warn":
+        return (3, 0)
+    return (4, 0)
+
+
 def build_plan(manifest_path, output_dir, max_repos_per_cycle=None):
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     repos = manifest.get("repos", [])
@@ -85,25 +103,29 @@ def build_plan(manifest_path, output_dir, max_repos_per_cycle=None):
             "enabled": enabled,
             "reason": reason,
             "repo_id": repo_id,
+            "_priority": _attention_priority(summary),
         })
 
     if max_repos_per_cycle is not None:
         attention_candidates = sorted(
             [
                 repo for repo in provisional
-                if repo["enabled"] and repo["reason"] == "prior_attention_signal"
+                if repo["enabled"] and repo["reason"] in ("prior_attention_signal", "no_prior_run")
             ],
-            key=lambda repo: repo["repo_id"],
+            key=lambda repo: (repo["_priority"], repo["repo_id"]),
         )
         allowed_repo_ids = {
             repo["repo_id"] for repo in attention_candidates[:max_repos_per_cycle]
         }
 
         for repo in provisional:
-            if repo["enabled"] and repo["reason"] == "prior_attention_signal":
+            if repo["enabled"] and repo["reason"] in ("prior_attention_signal", "no_prior_run"):
                 if repo["repo_id"] not in allowed_repo_ids:
                     repo["enabled"] = False
                     repo["reason"] = "attention_budget_exceeded"
+
+    for repo in provisional:
+        repo.pop("_priority", None)
 
     return {"repos": sorted(provisional, key=lambda repo: repo["repo_id"])}
 

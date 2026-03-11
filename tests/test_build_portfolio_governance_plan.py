@@ -226,3 +226,62 @@ def test_build_plan_preserves_stable_skip_when_budget_is_present(tmp_path: Path)
             },
         ]
     }
+
+def test_build_plan_prioritizes_higher_alert_repos_within_budget(tmp_path: Path):
+    manifest_path = tmp_path / "manifest.json"
+    output_dir = tmp_path / "portfolio_batch"
+
+    _write_json(
+        manifest_path,
+        {
+            "repos": [
+                {"id": "repo_c"},
+                {"id": "repo_a"},
+                {"id": "repo_b"},
+            ]
+        },
+    )
+
+    _write_json(
+        output_dir / "repo_a" / "summary.json",
+        {
+            "alert_level": "warning",
+            "governance_decision": "warn",
+        },
+    )
+    _write_json(
+        output_dir / "repo_b" / "summary.json",
+        {
+            "alert_level": "critical",
+            "governance_decision": "abort",
+        },
+    )
+    _write_json(
+        output_dir / "repo_c" / "summary.json",
+        {
+            "alert_level": "warning",
+            "governance_decision": "warn",
+        },
+    )
+
+    plan = build_plan(manifest_path, output_dir, max_repos_per_cycle=1)
+
+    assert plan == {
+        "repos": [
+            {
+                "enabled": False,
+                "reason": "attention_budget_exceeded",
+                "repo_id": "repo_a",
+            },
+            {
+                "enabled": True,
+                "reason": "prior_attention_signal",
+                "repo_id": "repo_b",
+            },
+            {
+                "enabled": False,
+                "reason": "attention_budget_exceeded",
+                "repo_id": "repo_c",
+            },
+        ]
+    }
