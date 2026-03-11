@@ -37,6 +37,18 @@ def _empty_ledger():
     return {"action_types": []}
 
 
+def _extract_governed_payload(artifact):
+    """Return the governed-run payload from either supported artifact shape."""
+    if not isinstance(artifact, dict):
+        return {}
+    if isinstance(artifact.get("result"), dict):
+        return artifact
+    cycle_result = artifact.get("cycle_result")
+    if isinstance(cycle_result, dict):
+        return cycle_result
+    return {}
+
+
 def _index_ledger_rows(ledger):
     rows = ledger.get("action_types", [])
     index = {}
@@ -67,6 +79,8 @@ def _ensure_row(index, action_type):
 
 
 def _extract_selected_action_types(governed_artifact):
+    governed_artifact = _extract_governed_payload(governed_artifact)
+    governed_artifact = _extract_governed_payload(governed_artifact)
     runs = governed_artifact.get("result", {}).get("evaluation_summary", {}).get("runs", [])
     if not runs:
         return []
@@ -76,9 +90,14 @@ def _extract_selected_action_types(governed_artifact):
     mapping = detail.get("active_action_to_task_mapping", {})
 
     selected_action_types = []
+    credited_tasks = set()
+
     for action_type in window:
-        if mapping.get(action_type) in selected_tasks:
+        task_name = mapping.get(action_type)
+        if task_name in selected_tasks and task_name not in credited_tasks:
             selected_action_types.append(action_type)
+            credited_tasks.add(task_name)
+
     return selected_action_types
 
 
@@ -101,14 +120,22 @@ def _extract_task_outcomes(task_results_artifact):
 
 
 def _extract_selected_task_outcomes(governed_artifact):
+    governed_artifact = _extract_governed_payload(governed_artifact)
     runs = governed_artifact.get("result", {}).get("evaluation_summary", {}).get("runs", [])
     if not runs:
         return {}
     selected_tasks = runs[0].get("selected_actions", [])
-    # Conservative fallback: if the artifact lacks per-task outcome detail,
-    # treat selected tasks as successful when the governed run completed.
-    overall_ok = "result" in governed_artifact
-    return {task: overall_ok for task in selected_tasks}
+
+    result_block = governed_artifact.get("result", {})
+    repos = result_block.get("repos", [])
+    succeeded = True
+    for repo in repos:
+        summary = repo.get("summary", {})
+        if summary.get("repos_failed", 0) > 0:
+            succeeded = False
+            break
+
+    return {task: succeeded for task in selected_tasks}
 
 
 def _recompute_effectiveness_score(row):
@@ -130,6 +157,7 @@ def update_action_effectiveness_ledger(ledger_path, governed_artifact_path, outp
     selected_action_types = _extract_selected_action_types(governed)
     selected_task_outcomes = _extract_selected_task_outcomes(governed)
 
+    governed = _extract_governed_payload(governed)
     runs = governed.get("result", {}).get("evaluation_summary", {}).get("runs", [])
     mapping = runs[0].get("selection_detail", {}).get("active_action_to_task_mapping", {}) if runs else {}
 
