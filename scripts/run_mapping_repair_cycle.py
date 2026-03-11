@@ -12,8 +12,10 @@ This script does not mutate the default mapping. It only produces artifacts.
 """
 
 import argparse
+import io
 import json
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 
 # Ensure repo root is importable when invoked as a script.
@@ -41,15 +43,16 @@ def run_mapping_repair_cycle(
     output_path = str(output_path)
     override_output_path = override_output_path or _default_override_output(output_path)
 
-    baseline = evaluate_planner_config(
-        policy_path=policy_path,
-        top_k=top_k,
-        portfolio_state_path=portfolio_state_path,
-        ledger_path=ledger_path,
-        mapping_override_path=None,
-        output_path=None,
-        exploration_offset=exploration_offset,
-    )
+    with redirect_stdout(io.StringIO()):
+        baseline = evaluate_planner_config(
+            policy_path=policy_path,
+            top_k=top_k,
+            portfolio_state_path=portfolio_state_path,
+            ledger_path=ledger_path,
+            mapping_override_path=None,
+            output_path=None,
+            exploration_offset=exploration_offset,
+        )
 
     result = {
         "inputs": {
@@ -72,15 +75,16 @@ def run_mapping_repair_cycle(
     if baseline.get("risk_level") == "low_risk":
         result["status"] = "already_low_risk"
     else:
-        proposal = propose_mapping_repair(
-            policy_path=policy_path,
-            portfolio_state_path=portfolio_state_path,
-            ledger_path=ledger_path,
-            top_k=top_k,
-            exploration_offset=exploration_offset,
-            output_path=None,
-            output_override_path=None,
-        )
+        with redirect_stdout(io.StringIO()):
+            proposal = propose_mapping_repair(
+                policy_path=policy_path,
+                portfolio_state_path=portfolio_state_path,
+                ledger_path=ledger_path,
+                top_k=top_k,
+                exploration_offset=exploration_offset,
+                output_path=None,
+                output_override_path=None,
+            )
         result["repair_proposal"] = proposal
         result["repair_attempted"] = True
 
@@ -96,15 +100,16 @@ def run_mapping_repair_cycle(
             )
             result["override_artifact_path"] = str(override_out)
 
-            repaired = evaluate_planner_config(
-                policy_path=policy_path,
-                top_k=top_k,
-                portfolio_state_path=portfolio_state_path,
-                ledger_path=ledger_path,
-                mapping_override_path=str(override_out),
-                output_path=None,
-                exploration_offset=exploration_offset,
-            )
+            with redirect_stdout(io.StringIO()):
+                repaired = evaluate_planner_config(
+                    policy_path=policy_path,
+                    top_k=top_k,
+                    portfolio_state_path=portfolio_state_path,
+                    ledger_path=ledger_path,
+                    mapping_override_path=str(override_out),
+                    output_path=None,
+                    exploration_offset=exploration_offset,
+                )
             result["repaired_evaluation"] = repaired
 
             baseline_collision = baseline.get("collision_ratio", 1.0)

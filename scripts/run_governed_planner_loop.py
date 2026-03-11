@@ -59,6 +59,17 @@ _repair_spec.loader.exec_module(_repair_mod)
 
 _propose_repair = _repair_mod._propose_repair
 
+# ---------------------------------------------------------------------------
+# Load run_mapping_repair_cycle via importlib (optional safeguard)
+# ---------------------------------------------------------------------------
+
+_REPAIR_CYCLE_SCRIPT = Path(__file__).resolve().parent / "run_mapping_repair_cycle.py"
+_repair_cycle_spec = importlib.util.spec_from_file_location("run_mapping_repair_cycle", _REPAIR_CYCLE_SCRIPT)
+_repair_cycle_mod = importlib.util.module_from_spec(_repair_cycle_spec)
+_repair_cycle_spec.loader.exec_module(_repair_cycle_mod)
+
+run_mapping_repair_cycle = _repair_cycle_mod.run_mapping_repair_cycle
+
 
 # ---------------------------------------------------------------------------
 # Offset sequence builder
@@ -315,6 +326,37 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
     # Build the abort artifact first — it already calls _propose_repair internally.
     # Empty-window failures are short-circuited above and never reach here.
     _abort_artifact = _build_abort_artifact(args, attempts, last_evaluation)
+
+    # Optional safeguard: run the standalone validated repair cycle first.
+    if getattr(args, "auto_repair_cycle", False):
+        cycle_result = _run_optional_repair_cycle(args)
+        _abort_artifact["auto_repair_cycle"] = cycle_result
+
+        if cycle_result.get("repair_success") and cycle_result.get("override_artifact"):
+            repaired_args = _copy_args(args)
+            repaired_args.exploration_offset = final_offset
+            repaired_args.mapping_override = cycle_result["override_artifact"]
+
+            result = run_experiment(
+                repaired_args,
+                planner_main=planner_main,
+                risk_check_fn=lambda _a: None,
+            )
+            artifact = {
+                "auto_repair_applied": True,
+                "auto_repair_attempted": True,
+                "auto_repair_cycle_used": True,
+                "attempts": attempts,
+                "governance": _build_governance(args, result),
+                "repair_proposal": cycle_result["override_artifact"],
+                "repair_cycle_status": cycle_result.get("status"),
+                "repaired_from_offset": final_offset,
+                "result": result,
+                "selected_offset": final_offset,
+            }
+            _write_artifact(args, artifact)
+            return artifact
+
     _proposal_data = _abort_artifact.get("repair_proposal")
     _proposed_override = (
         _proposal_data.get("proposed_mapping_override") if _proposal_data else None
@@ -376,6 +418,23 @@ def run_governed_loop(args, planner_main=None, preflight_fn=None):
 # Output artifact writer
 # ---------------------------------------------------------------------------
 
+def _run_optional_repair_cycle(args):
+    """Run the standalone repair cycle and return its result dict."""
+    output_path = Path(getattr(args, "output", "governed_result.json") or "governed_result.json")
+    cycle_output = output_path.with_name(output_path.stem + "_repair_cycle.json")
+    cycle_override = output_path.with_name(output_path.stem + "_repair_override.json")
+
+    return run_mapping_repair_cycle(
+        portfolio_state_path=getattr(args, "portfolio_state", None),
+        ledger_path=getattr(args, "ledger", None),
+        policy_path=getattr(args, "policy", None),
+        top_k=getattr(args, "top_k", 3),
+        exploration_offset=getattr(args, "exploration_offset", 0) or 0,
+        output_path=str(cycle_output),
+        override_output_path=str(cycle_override),
+    )
+
+
 def _write_artifact(args, artifact):
     """Write the governed loop artifact to the configured output path."""
     output_path = Path(getattr(args, "output", "governed_result.json") or "governed_result.json")
@@ -419,6 +478,8 @@ def main(argv=None):
                         help="Prefix for envelope filenames (default: planner_run_envelope).")
     parser.add_argument("--mapping-override", default=None, metavar="FILE",
                         help="Path to JSON file overriding the action→task mapping (optional).")
+    parser.add_argument("--auto-repair-cycle", action="store_true", default=False,
+                        help="When all offsets remain high_risk, run the validated mapping repair cycle before aborting.")
 
     args = parser.parse_args(argv)
 
