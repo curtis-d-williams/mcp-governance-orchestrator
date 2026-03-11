@@ -31,6 +31,17 @@ import json
 import sys
 from pathlib import Path
 
+from governed_runtime import (
+    apply_optional_learning as _apply_optional_learning,
+    build_abort_artifact as _build_abort_artifact,
+    build_governance as _build_governance,
+    build_offset_sequence as _build_offset_sequence,
+    default_learning_output as _default_learning_output,
+    is_empty_window_high_risk as _is_empty_window_high_risk,
+    run_governed_loop as _runtime_run_governed_loop,
+    run_optional_repair_cycle as _run_optional_repair_cycle,
+)
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -83,348 +94,22 @@ update_action_effectiveness_ledger = _learning_mod.update_action_effectiveness_l
 
 
 # ---------------------------------------------------------------------------
-# Offset sequence builder
-# ---------------------------------------------------------------------------
-
-_DEFAULT_OFFSETS = [0, 1, 2, 3, 5]
-
-
-def _build_offset_sequence(starting_offset):
-    """Return deduplicated offset list beginning with *starting_offset*.
-
-    The candidate pool is [starting_offset] + _DEFAULT_OFFSETS.
-    Duplicates are removed while preserving order; starting_offset always first.
-
-    Args:
-        starting_offset: int — the user-requested exploration offset.
-
-    Returns:
-        list[int] of offsets to try, in order.
-    """
-    seen = set()
-    result = []
-    for offset in [starting_offset] + _DEFAULT_OFFSETS:
-        if offset not in seen:
-            seen.add(offset)
-            result.append(offset)
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Empty-window detection helper
-# ---------------------------------------------------------------------------
-
-def _is_empty_window_high_risk(evaluation):
-    """Return True when *evaluation* is high_risk caused by an empty action window.
-
-    Retrying with a different exploration_offset cannot fix an empty window
-    (no eligible actions exist regardless of offset), so the loop short-circuits.
-
-    Detection: risk_level == "high_risk" AND at least one reason contains
-    "empty" or "no actions".  This matches the reason text produced by
-    _classify_risk in evaluate_planner_config.py.
-
-    Args:
-        evaluation: dict returned by preflight_fn, or None.
-
-    Returns:
-        bool
-    """
-    if not evaluation:
-        return False
-    if evaluation.get("risk_level") != "high_risk":
-        return False
-    return any(
-        "empty" in r.lower() or "no actions" in r.lower()
-        for r in evaluation.get("reasons", [])
-    )
-
-
-# ---------------------------------------------------------------------------
-# Governance metadata helper
-# ---------------------------------------------------------------------------
-
-_GOVERNED_LOOP_VERSION = "0.60.0-alpha"
-
-
-def _build_governance(args, result):
-    """Build the governance metadata block for the artifact.
-
-    Args:
-        args:   Namespace-like object with CLI attributes.
-        result: run_experiment result dict (may be None if not yet executed).
-
-    Returns:
-        dict with keys: planner_version, mapping_override, governed_loop_version.
-    """
-    planner_version = None
-    if result is not None:
-        runs = result.get("evaluation_summary", {}).get("runs", [])
-        if runs:
-            planner_version = runs[0].get("planner_version")
-    return {
-        "governed_loop_version": _GOVERNED_LOOP_VERSION,
-        "mapping_override": getattr(args, "mapping_override_path", None),
-        "planner_version": planner_version,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Abort artifact builder
-# ---------------------------------------------------------------------------
-
-def _build_abort_artifact(args, attempts, last_evaluation):
-    """Build the artifact written before a persistent high_risk abort.
-
-    Calls _propose_repair using data already in *last_evaluation* (no extra I/O).
-    repair_proposal is included when the proposal is non-empty; set to None otherwise.
-
-    Args:
-        args:            Namespace-like object with CLI attributes.
-        attempts:        list of attempt dicts recorded so far.
-        last_evaluation: evaluation dict from the final preflight call, or None.
-
-    Returns:
-        dict suitable for _write_artifact.
-    """
-    repair_proposal = None
-    if last_evaluation is not None:
-        window = last_evaluation.get("ranked_action_window", [])
-        window_detail = last_evaluation.get("ranked_action_window_detail")
-        mapped = last_evaluation.get("mapped_tasks", [])
-        from scripts.claude_dynamic_planner_loop import ACTION_TO_TASK, resolve_action_to_task_mapping
-        active_mapping = resolve_action_to_task_mapping(
-            ACTION_TO_TASK, getattr(args, "mapping_override", None)
-        )
-        proposed_override, repair_reasons = _propose_repair(
-            window, mapped, active_mapping, window_detail=window_detail
-        )
-        if proposed_override:
-            repair_proposal = {
-                "ranked_action_window": window,
-                "current_mapped_tasks": mapped,
-                "proposed_mapping_override": proposed_override,
-                "repair_needed": True,
-                "reasons": repair_reasons,
-            }
-
-    artifact = {
-        "abort_reason": "high_risk_persistent",
-        "attempts": attempts,
-        "governance": _build_governance(args, None),
-        "repair_proposal": repair_proposal,
-    }
-    return artifact
-
-
-# ---------------------------------------------------------------------------
-# Core loop (injectable for testing)
+# Core loop wrapper (backward-compatible script API)
 # ---------------------------------------------------------------------------
 
 def run_governed_loop(args, planner_main=None, preflight_fn=None):
-    """Adaptive governance loop: retry over offsets until risk is acceptable.
-
-    Args:
-        args:          Namespace-like object with CLI attributes (see main()).
-        planner_main:  Optional planner callable injected for testing.
-        preflight_fn:  Optional callable(args) → evaluation dict | None.
-                       Defaults to _run_preflight_check.
-
-    Returns:
-        A dict with keys: selected_offset, attempts, result.
-        When --force overrides a high_risk attempt, "forced": True is added.
-        When the action window is empty (no eligible actions), "idle": True and
-        "risk_level": "no_action_window" are added instead of "result".
-
-    Raises:
-        SystemExit(1) when a high_risk result cannot be resolved and --force
-        is not set.  This covers only collision/diversity high_risk where all
-        offsets are exhausted.  Empty-window (no eligible actions) is not a
-        failure; it returns an idle artifact with rc=0 instead.
-    """
-    if preflight_fn is None:
-        preflight_fn = _run_preflight_check
-
-    offsets = _build_offset_sequence(getattr(args, "exploration_offset", 0) or 0)
-    force = getattr(args, "force", False) or False
-
-    attempts = []
-    last_evaluation = None
-
-    for offset in offsets:
-        attempt_args = _copy_args(args)
-        attempt_args.exploration_offset = offset
-
-        evaluation = preflight_fn(attempt_args)
-        risk_level = evaluation.get("risk_level", "low_risk") if evaluation else "low_risk"
-
-        attempts.append({
-            "offset": offset,
-            "risk_level": risk_level,
-            "collision_ratio": evaluation.get("collision_ratio", 0.0) if evaluation else 0.0,
-            "unique_tasks": evaluation.get("unique_tasks", 0) if evaluation else 0,
-        })
-
-        last_evaluation = evaluation
-
-        if risk_level in ("low_risk", "moderate_risk"):
-            result = run_experiment(
-                attempt_args,
-                planner_main=planner_main,
-                risk_check_fn=lambda _a: None,  # preflight already done
-            )
-            artifact = {
-                "governance": _build_governance(args, result),
-                "selected_offset": offset,
-                "attempts": attempts,
-                "result": result,
-            }
-            artifact = _apply_optional_learning(args, artifact)
-            _write_artifact(args, artifact)
-            return artifact
-
-        # high_risk — check for empty-window short-circuit before retrying
-        if _is_empty_window_high_risk(evaluation):
-            if force:
-                result = run_experiment(
-                    attempt_args,
-                    planner_main=planner_main,
-                    risk_check_fn=lambda _a: None,
-                )
-                artifact = {
-                    "governance": _build_governance(args, result),
-                    "selected_offset": offset,
-                    "attempts": attempts,
-                    "result": result,
-                    "forced": True,
-                }
-                artifact = _apply_optional_learning(args, artifact)
-                _write_artifact(args, artifact)
-                return artifact
-            # Healthy idle: no eligible actions exist — not a failure.
-            artifact = {
-                "governance": _build_governance(args, None),
-                "idle": True,
-                "risk_level": "no_action_window",
-                "selected_offset": offset,
-                "attempts": attempts,
-            }
-            _write_artifact(args, artifact)
-            return artifact
-
-        # collision/diversity high_risk — continue to next offset
-
-    # All attempts were high_risk.
-    final_offset = offsets[-1]
-    final_args = _copy_args(args)
-    final_args.exploration_offset = final_offset
-
-    if force:
-        result = run_experiment(
-            final_args,
-            planner_main=planner_main,
-            risk_check_fn=lambda _a: None,
-        )
-        artifact = {
-            "governance": _build_governance(args, result),
-            "selected_offset": final_offset,
-            "attempts": attempts,
-            "result": result,
-            "forced": True,
-        }
-        _write_artifact(args, artifact)
-        return artifact
-
-    # --- Auto-repair attempt (one shot, before final abort) ---
-    # Build the abort artifact first — it already calls _propose_repair internally.
-    # Empty-window failures are short-circuited above and never reach here.
-    _abort_artifact = _build_abort_artifact(args, attempts, last_evaluation)
-
-    # Optional safeguard: run the standalone validated repair cycle first.
-    if getattr(args, "auto_repair_cycle", False):
-        cycle_result = _run_optional_repair_cycle(args)
-        _abort_artifact["auto_repair_cycle"] = cycle_result
-
-        if cycle_result.get("repair_success") and cycle_result.get("override_artifact"):
-            repaired_args = _copy_args(args)
-            repaired_args.exploration_offset = final_offset
-            repaired_args.mapping_override = cycle_result["override_artifact"]
-
-            result = run_experiment(
-                repaired_args,
-                planner_main=planner_main,
-                risk_check_fn=lambda _a: None,
-            )
-            artifact = {
-                "auto_repair_applied": True,
-                "auto_repair_attempted": True,
-                "auto_repair_cycle_used": True,
-                "attempts": attempts,
-                "governance": _build_governance(args, result),
-                "repair_proposal": cycle_result["override_artifact"],
-                "repair_cycle_status": cycle_result.get("status"),
-                "repaired_from_offset": final_offset,
-                "result": result,
-                "selected_offset": final_offset,
-            }
-            _write_artifact(args, artifact)
-            return artifact
-
-    _proposal_data = _abort_artifact.get("repair_proposal")
-    _proposed_override = (
-        _proposal_data.get("proposed_mapping_override") if _proposal_data else None
+    """Adaptive governance loop wrapper preserving the historical script API."""
+    return _runtime_run_governed_loop(
+        args,
+        run_experiment=run_experiment,
+        preflight_fn=preflight_fn or _run_preflight_check,
+        copy_args=_copy_args,
+        propose_repair=_propose_repair,
+        run_mapping_repair_cycle=run_mapping_repair_cycle,
+        update_action_effectiveness_ledger=update_action_effectiveness_ledger,
+        write_artifact=_write_artifact,
+        planner_main=planner_main,
     )
-
-    if _proposed_override:
-        repaired_args = _copy_args(args)
-        repaired_args.exploration_offset = final_offset
-        repaired_args.mapping_override = _proposed_override
-
-        repaired_eval = preflight_fn(repaired_args)
-        repaired_risk = (
-            repaired_eval.get("risk_level", "low_risk") if repaired_eval else "low_risk"
-        )
-
-        if repaired_risk in ("low_risk", "moderate_risk"):
-            result = run_experiment(
-                repaired_args,
-                planner_main=planner_main,
-                risk_check_fn=lambda _a: None,
-            )
-            artifact = {
-                "auto_repair_applied": True,
-                "auto_repair_attempted": True,
-                "attempts": attempts,
-                "governance": _build_governance(args, result),
-                "repair_proposal": _proposed_override,
-                "repaired_from_offset": final_offset,
-                "result": result,
-                "selected_offset": final_offset,
-            }
-            _write_artifact(args, artifact)
-            return artifact
-
-        # Repaired preflight is still high_risk — fail-closed.
-        _abort_artifact["auto_repair_attempted"] = True
-        _abort_artifact["auto_repair_applied"] = False
-        _abort_artifact["repaired_from_offset"] = final_offset
-        print(
-            f"Governed planner loop: all {len(offsets)} offset(s) returned high_risk. "
-            "Auto-repair attempted but repaired configuration is still high_risk. "
-            "Use --force to run anyway.",
-            file=sys.stderr,
-        )
-        _write_artifact(args, _abort_artifact)
-        raise SystemExit(1)
-
-    # Abort (no repair proposal — window is unrepairable).
-    print(
-        f"Governed planner loop: all {len(offsets)} offset(s) returned high_risk. "
-        "Use --force to run anyway.",
-        file=sys.stderr,
-    )
-    _write_artifact(args, _abort_artifact)
-    raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------
