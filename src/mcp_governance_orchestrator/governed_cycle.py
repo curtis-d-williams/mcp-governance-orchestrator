@@ -101,6 +101,28 @@ def validate_manifest_repos(manifest_data):
     return invalid
 
 
+def write_effective_manifest(manifest_data, work_dir_path, repo_ids=None):
+    """Write an effective manifest scoped to *repo_ids* if provided.
+
+    Args:
+        manifest_data: parsed manifest dict
+        work_dir_path: output work dir path
+        repo_ids:      list[str] | None
+
+    Returns:
+        Path to the effective manifest JSON written inside work_dir_path.
+    """
+    effective = dict(manifest_data)
+    repos = list(manifest_data.get("repos", []))
+    if repo_ids:
+        repo_id_set = set(repo_ids)
+        repos = [repo for repo in repos if repo.get("id") in repo_id_set]
+    effective["repos"] = repos
+    out_path = Path(work_dir_path) / "effective_portfolio_manifest.json"
+    write_json(out_path, effective)
+    return out_path
+
+
 # ---------------------------------------------------------------------------
 # Artifact path helpers
 # ---------------------------------------------------------------------------
@@ -150,7 +172,9 @@ def build_runtime_config(args, ledger_path):
         "explain": args.explain,
         "force": args.force,
         "governance_policy": getattr(args, "governance_policy", None),
+        "repo_ids": getattr(args, "repo_ids", None),
     }
+
 
 # ---------------------------------------------------------------------------
 # Default governance policy
@@ -421,6 +445,13 @@ def run_cycle(args):
     wd.mkdir(parents=True, exist_ok=True)
     arts = artifact_paths(wd)
 
+    repo_ids = getattr(args, "repo_ids", None)
+    effective_manifest = (
+        write_effective_manifest(manifest_data, wd, repo_ids=repo_ids).resolve()
+        if repo_ids
+        else manifest
+    )
+
     base_artifact = {
         "manifest": str(manifest),
         "tasks": list(args.task),
@@ -440,7 +471,7 @@ def run_cycle(args):
 
     # --- Phase A: portfolio tasks ---
     try:
-        proc_a = run_portfolio_tasks(args.task, manifest, wd)
+        proc_a = run_portfolio_tasks(args.task, effective_manifest, wd)
     except subprocess.CalledProcessError as exc:
         cycle = {
             **base_artifact,
@@ -517,7 +548,7 @@ def run_cycle(args):
         write_json(arts["execution_result"], execution_result)
     else:
         try:
-            run_execute_governed_actions(arts, manifest)
+            run_execute_governed_actions(arts, effective_manifest)
         except subprocess.CalledProcessError:
             execution_result = try_read_json(arts["execution_result"])
             cycle = {

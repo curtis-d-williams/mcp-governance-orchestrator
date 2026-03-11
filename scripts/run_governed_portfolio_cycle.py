@@ -65,6 +65,9 @@ def main(argv=None):
                         help="Path to portfolio manifest JSON.")
     parser.add_argument("--task", action="append", required=True, metavar="TASK",
                         help="Task name to run (repeatable; at least one required).")
+    parser.add_argument("--repo-id", action="append", default=None, metavar="REPO_ID",
+                        dest="repo_ids",
+                        help="Repo id to include from the manifest (repeatable; default: all repos).")
     parser.add_argument("--output", required=True, metavar="FILE",
                         help="Output path for the cycle artifact JSON.")
     parser.add_argument("--ledger", default=None, metavar="FILE",
