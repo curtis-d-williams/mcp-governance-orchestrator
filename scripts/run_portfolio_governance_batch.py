@@ -108,6 +108,8 @@ def main():
         args.manifest,
         "--output",
         str(plan_path),
+        "--output-dir",
+        str(output_dir),
     ], check=True)
 
     plan = json.loads(plan_path.read_text())
