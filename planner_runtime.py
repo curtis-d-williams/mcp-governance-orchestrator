@@ -467,6 +467,50 @@ def _build_priority_breakdown(actions, ledger, current_signals, policy):
     ]
 
 
+def _compute_task_reliability(task_name, ledger):
+    """Return success_rate for a task from the historical ledger.
+
+    Ledger schema:
+        {
+            "actions": {
+                "<task_name>": {
+                    "total_runs": int,
+                    "success_count": int,
+                    "failure_count": int
+                }
+            }
+        }
+
+    Returns:
+        float in [0,1] when history exists
+        None when task has no historical data
+    """
+    if not ledger:
+        return None
+
+    actions = ledger.get("actions")
+    if not isinstance(actions, dict):
+        return None
+
+    row = actions.get(task_name)
+    if not isinstance(row, dict):
+        return None
+
+    total = row.get("total_runs")
+    success = row.get("success_count")
+
+    try:
+        total = float(total)
+        success = float(success)
+    except (TypeError, ValueError):
+        return None
+
+    if total <= 0:
+        return None
+
+    return success / total
+
+
 def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None):
     """Re-sort actions by base_priority + learning_adjustment (deterministic).
 
@@ -489,8 +533,17 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=No
 
     def _sort_key(a):
         bd = _compute_priority_breakdown(a, ledger, _signals, _policy)
+
+        task_name = None
+        if isinstance(a, dict):
+            task_name = a.get("task_name")
+
+        reliability = _compute_task_reliability(task_name, ledger)
+
+        reliability_boost = reliability if reliability is not None else 0.0
+
         return (
-            -bd.final_priority,
+            -(bd.final_priority + reliability_boost * 0.05),
             bd.action_type,
             a.get("action_id", ""),
             a.get("repo_id", ""),

@@ -985,3 +985,87 @@ class TestHistoricalSuccessSignals:
 
         assert result["expected_success_rate"] is None
         assert result["historical_runs"] == 0
+
+
+class TestReliabilityWeightedRanking:
+    def test_reliable_task_is_promoted_over_equal_priority_peer(self, tmp_path):
+        portfolio_state = tmp_path / "ps.json"
+        portfolio_state.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        ledger = tmp_path / "ledger.json"
+        ledger.write_text(json.dumps({
+            "actions": {
+                "repo_insights_example": {
+                    "total_runs": 10,
+                    "success_count": 9,
+                    "failure_count": 1,
+                    "last_status": "ok",
+                },
+                "failure_recovery_example": {
+                    "total_runs": 10,
+                    "success_count": 1,
+                    "failure_count": 9,
+                    "last_status": "aborted",
+                },
+            }
+        }), encoding="utf-8")
+
+        actions = [
+            {
+                "action_type": "recover_failed_workflow",
+                "priority": 0.80,
+                "action_id": "a-1",
+                "repo_id": "repo-1",
+            },
+            {
+                "action_type": "analyze_repo_insights",
+                "priority": 0.80,
+                "action_id": "a-2",
+                "repo_id": "repo-1",
+            },
+        ]
+
+        with patch.object(_mod, "_fetch_actions", return_value=actions):
+            result = evaluate_planner_config(
+                policy_path=None,
+                top_k=2,
+                portfolio_state_path=str(portfolio_state),
+                ledger_path=str(ledger),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["ranked_action_window"][0] == "analyze_repo_insights"
+        assert result["mapped_tasks"][0] == "repo_insights_example"
+
+    def test_no_history_preserves_base_priority_order(self, tmp_path):
+        portfolio_state = tmp_path / "ps.json"
+        portfolio_state.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        actions = [
+            {
+                "action_type": "recover_failed_workflow",
+                "priority": 0.81,
+                "action_id": "a-1",
+                "repo_id": "repo-1",
+            },
+            {
+                "action_type": "analyze_repo_insights",
+                "priority": 0.80,
+                "action_id": "a-2",
+                "repo_id": "repo-1",
+            },
+        ]
+
+        with patch.object(_mod, "_fetch_actions", return_value=actions):
+            result = evaluate_planner_config(
+                policy_path=None,
+                top_k=2,
+                portfolio_state_path=str(portfolio_state),
+                ledger_path=None,
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["ranked_action_window"] == [
+            "recover_failed_workflow",
+            "analyze_repo_insights",
+        ]
