@@ -20,14 +20,7 @@ import json
 import sys
 from pathlib import Path
 
-
-def _write_json(path, data):
-    """Write *data* as deterministic JSON (indent=2, sort_keys, trailing newline)."""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(
-        json.dumps(data, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+from mcp_governance_orchestrator.learning_ledger import write_json_deterministic
 
 
 def _as_int(value):
@@ -90,7 +83,7 @@ def update_capability_effectiveness_from_cycles(cycle_history_path, output_path)
         return 1
 
     capabilities = _aggregate(cycles)
-    _write_json(output_path, {"capabilities": capabilities})
+    write_json_deterministic(output_path, {"capabilities": capabilities})
     return 0
 
 

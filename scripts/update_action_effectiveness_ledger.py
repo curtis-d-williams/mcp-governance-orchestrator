@@ -22,19 +22,11 @@ import argparse
 import json
 from pathlib import Path
 
-
-def _load_json(path, default):
-    p = Path(path)
-    if not p.exists():
-        return default
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-
-
-def _empty_ledger():
-    return {"action_types": []}
+from mcp_governance_orchestrator.learning_ledger import (
+    empty_ledger,
+    load_json_fail_closed,
+    write_json_deterministic,
+)
 
 
 def _extract_governed_payload(artifact):
@@ -150,8 +142,8 @@ def _recompute_effectiveness_score(row):
 
 
 def update_action_effectiveness_ledger(ledger_path, governed_artifact_path, output_path=None):
-    ledger = _load_json(ledger_path, _empty_ledger())
-    governed = _load_json(governed_artifact_path, {})
+    ledger = load_json_fail_closed(ledger_path, empty_ledger("action_types"))
+    governed = load_json_fail_closed(governed_artifact_path, {})
 
     index = _index_ledger_rows(ledger)
     selected_action_types = _extract_selected_action_types(governed)
@@ -194,8 +186,7 @@ def update_action_effectiveness_ledger(ledger_path, governed_artifact_path, outp
     }
 
     out = Path(output_path or ledger_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_json_deterministic(out, ledger)
     return output
 
 
