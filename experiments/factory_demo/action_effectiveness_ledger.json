@@ -1,0 +1,13 @@
+{
+  "action_types": [
+    {
+      "action_type": "build_capability_artifact",
+      "times_recommended": 1,
+      "times_executed": 0,
+      "success_rate": 0.0,
+      "effectiveness_score": 0.0,
+      "recommended_priority_adjustment": 0.0,
+      "classification": "neutral"
+    }
+  ]
+}

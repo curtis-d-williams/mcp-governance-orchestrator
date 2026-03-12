@@ -1,0 +1,99 @@
+{
+  "generated_at": "",
+  "portfolio_id": "portfolio-factory-demo",
+  "portfolio_recommendations": [
+    {
+      "action_id": "build_capability_artifact_demo-repo",
+      "action_type": "build_capability_artifact",
+      "blocked_by": [],
+      "eligible": true,
+      "priority": 0.6,
+      "reason": "missing github_repository_management capability",
+      "task_binding": {
+        "args": {
+          "artifact_kind": "mcp_server",
+          "capability": "github_repository_management"
+        },
+        "task_id": "factory_build_capability_artifact"
+      }
+    },
+    {
+      "action_id": "analyze_repo_insights_demo-repo",
+      "action_type": "analyze_repo_insights",
+      "blocked_by": [],
+      "eligible": true,
+      "priority": 0.5,
+      "reason": "collect supporting repo insights for capability planning",
+      "task_binding": {
+        "args": {},
+        "task_id": "repo_insights_example"
+      }
+    }
+  ],
+  "repos": [
+    {
+      "action_history": [],
+      "cooldowns": [],
+      "escalations": [],
+      "health_score": 1.0,
+      "open_issues": [
+        {
+          "issue_type": "capability_gap",
+          "reason": "missing github_repository_management capability",
+          "severity": "medium",
+          "status": "open"
+        }
+      ],
+      "recommended_actions": [
+        {
+          "action_id": "build_capability_artifact_demo-repo",
+          "action_type": "build_capability_artifact",
+          "blocked_by": [],
+          "eligible": true,
+          "priority": 0.6,
+          "reason": "missing github_repository_management capability",
+          "task_binding": {
+            "args": {
+              "artifact_kind": "mcp_server",
+              "capability": "github_repository_management"
+            },
+            "task_id": "factory_build_capability_artifact"
+          }
+        },
+        {
+          "action_id": "analyze_repo_insights_demo-repo",
+          "action_type": "analyze_repo_insights",
+          "blocked_by": [],
+          "eligible": true,
+          "priority": 0.5,
+          "reason": "collect supporting repo insights for capability planning",
+          "task_binding": {
+            "args": {},
+            "task_id": "repo_insights_example"
+          }
+        }
+      ],
+      "repo_id": "demo-repo",
+      "risk_level": "low",
+      "signals": {
+        "artifact_completeness": 1.0,
+        "determinism_ok": true,
+        "last_run_ok": true,
+        "recent_failures": 0,
+        "stale_runs": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "schema_version": "v1",
+  "summary": {
+    "blocked_actions_total": 0,
+    "eligible_actions_total": 2,
+    "open_issues_total": 1,
+    "repo_count": 1,
+    "repos_degraded": 0,
+    "repos_failing": 0,
+    "repos_healthy": 1,
+    "repos_stale": 0
+  }
+}

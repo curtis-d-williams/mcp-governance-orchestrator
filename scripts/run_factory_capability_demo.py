@@ -2,7 +2,7 @@
 """
 Factory Capability Demo
 
-Demonstrates the MCP Automation Factory generating a new MCP server
+Demonstrates the governed capability factory generating an artifact
 when a capability gap is detected.
 """
 
@@ -37,7 +37,7 @@ def run_factory_cycle():
 
 def verify_generated_repo():
     if not GENERATED_REPO.exists():
-        raise RuntimeError("Factory did not generate MCP server")
+        raise RuntimeError("Factory did not generate capability artifact")
 
     expected_files = [
         "README.md",
@@ -56,7 +56,7 @@ def verify_generated_repo():
 
 
 def verify_factory_artifact():
-    data = json.loads(OUTPUT.read_text())
+    data = json.loads(OUTPUT.read_text(encoding="utf-8"))
 
     builder = data["cycle_result"].get("builder")
     if not builder:
@@ -65,9 +65,19 @@ def verify_factory_artifact():
     if builder["status"] != "ok":
         raise RuntimeError("Builder reported failure")
 
+    if builder["generated_repo"] != str(GENERATED_REPO):
+        raise RuntimeError("Builder generated unexpected repo path")
+
+    if builder.get("tools") != [
+        "list_repositories",
+        "get_repository",
+        "create_issue",
+    ]:
+        raise RuntimeError("Builder generated unexpected tool set")
+
 
 def main():
-    print("Running MCP Capability Factory demo...")
+    print("Running governed capability factory demo...")
 
     run_factory_cycle()
 
@@ -75,7 +85,7 @@ def main():
     verify_factory_artifact()
 
     print("Factory demo succeeded.")
-    print(f"MCP server generated at: {GENERATED_REPO}")
+    print(f"Capability artifact generated at: {GENERATED_REPO}")
 
 
 if __name__ == "__main__":

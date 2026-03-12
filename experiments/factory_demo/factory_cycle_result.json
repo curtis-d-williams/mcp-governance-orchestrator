@@ -1,0 +1,171 @@
+{
+  "cycle_result": {
+    "attempts": [
+      {
+        "collision_ratio": 0.0,
+        "offset": 0,
+        "risk_level": "low_risk",
+        "unique_tasks": 2
+      }
+    ],
+    "builder": {
+      "generated_repo": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_github",
+      "status": "ok",
+      "tools": [
+        "list_repositories",
+        "get_repository",
+        "create_issue"
+      ]
+    },
+    "governance": {
+      "governed_loop_version": "0.60.0-alpha",
+      "mapping_override": null,
+      "planner_version": "0.36"
+    },
+    "learning_update": {
+      "action_types": [
+        {
+          "action_type": "analyze_repo_insights",
+          "effect_deltas": {},
+          "effectiveness_score": 1.0,
+          "failure_count": 0,
+          "success_count": 1,
+          "times_executed": 1
+        },
+        {
+          "action_type": "build_capability_artifact",
+          "classification": "neutral",
+          "effect_deltas": {},
+          "effectiveness_score": 1.0,
+          "failure_count": 0,
+          "recommended_priority_adjustment": 0.0,
+          "success_count": 1,
+          "success_rate": 0.0,
+          "times_executed": 1,
+          "times_recommended": 1
+        }
+      ],
+      "applied": true,
+      "ledger_path": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/experiments/factory_demo/factory_cycle_result_learned_ledger.json",
+      "selected_action_types": [
+        "build_capability_artifact",
+        "analyze_repo_insights"
+      ],
+      "updated": true,
+      "updates": [
+        {
+          "action_type": "build_capability_artifact",
+          "effectiveness_score": 1.0,
+          "succeeded": true,
+          "task_name": "build_portfolio_dashboard",
+          "times_executed": 1
+        },
+        {
+          "action_type": "analyze_repo_insights",
+          "effectiveness_score": 1.0,
+          "succeeded": true,
+          "task_name": "repo_insights_example",
+          "times_executed": 1
+        }
+      ]
+    },
+    "result": {
+      "envelope_paths": [
+        "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/experiments/factory_demo/planner_run_envelope_run1.json"
+      ],
+      "evaluation_summary": {
+        "envelope_count": 1,
+        "identical": true,
+        "ordering_differences": false,
+        "runs": [
+          {
+            "index": 0,
+            "inputs": {
+              "explain": false,
+              "exploration_offset": 0,
+              "ledger": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/experiments/factory_demo/action_effectiveness_ledger.json",
+              "max_actions": null,
+              "policy": null,
+              "portfolio_state": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/experiments/factory_demo/portfolio_state_missing_github.json",
+              "top_k": 3
+            },
+            "planner_version": "0.36",
+            "selected_actions": [
+              "build_portfolio_dashboard",
+              "repo_insights_example"
+            ],
+            "selection_count": 2,
+            "selection_detail": {
+              "action_task_collapse_count": 0,
+              "active_action_to_task_mapping": {
+                "analyze_repo_insights": "repo_insights_example",
+                "build_capability_artifact": "build_portfolio_dashboard",
+                "build_mcp_server": "build_portfolio_dashboard",
+                "recover_failed_workflow": "failure_recovery_example",
+                "refresh_repo_health": "build_portfolio_dashboard",
+                "regenerate_missing_artifact": "build_portfolio_dashboard",
+                "rerun_failed_task": "build_portfolio_dashboard",
+                "run_determinism_regression_suite": "build_portfolio_dashboard"
+              },
+              "ranked_action_window": [
+                "build_capability_artifact",
+                "analyze_repo_insights"
+              ]
+            }
+          }
+        ]
+      },
+      "run_count": 1
+    },
+    "selected_offset": 0
+  },
+  "decision": {
+    "action": "governed_run",
+    "learning_enabled": true,
+    "reason": "planner_acceptable_risk",
+    "repair_enabled": true
+  },
+  "evaluation": {
+    "action_entropy": 1.0,
+    "collapse_count": 0,
+    "collision_ratio": 0.0,
+    "mapped_tasks": [
+      "build_portfolio_dashboard",
+      "repo_insights_example"
+    ],
+    "policy": null,
+    "ranked_action_window": [
+      "build_capability_artifact",
+      "analyze_repo_insights"
+    ],
+    "ranked_action_window_detail": [
+      {
+        "action_id": "build_capability_artifact_demo-repo",
+        "action_type": "build_capability_artifact",
+        "repo_id": "demo-repo"
+      },
+      {
+        "action_id": "analyze_repo_insights_demo-repo",
+        "action_type": "analyze_repo_insights",
+        "repo_id": "demo-repo"
+      }
+    ],
+    "reasons": [
+      "no collisions detected"
+    ],
+    "recommendations": [
+      "safe to use as-is"
+    ],
+    "risk_level": "low_risk",
+    "task_entropy": 1.0,
+    "top_k": 3,
+    "unique_tasks": 2
+  },
+  "inputs": {
+    "ledger": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/experiments/factory_demo/action_effectiveness_ledger.json",
+    "policy": null,
+    "portfolio_state": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/experiments/factory_demo/portfolio_state_missing_github.json",
+    "top_k": 3
+  },
+  "status": "completed"
+}
