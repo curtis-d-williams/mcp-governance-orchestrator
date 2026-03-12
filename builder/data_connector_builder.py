@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from builder.artifact_registry import register_builder
+from builder.spec_builder_support import require_capability_spec, default_generated_repo_name
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,13 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _write(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.rstrip() + "\n", encoding="utf-8")
-
-
-def _default_repo_name_for_capability(capability):
-    if capability == "postgres_data_access":
-        return "generated_data_connector_postgres"
-    suffix = capability.lower().replace(" ", "_")
-    return f"generated_data_connector_{suffix}"
 
 
 @register_builder("data_connector")
@@ -36,8 +30,10 @@ def build_data_connector(
     Generate a deterministic data connector repo.
     """
 
+    spec = require_capability_spec(capability, "data_connector")
+
     if name is None:
-        name = _default_repo_name_for_capability(capability)
+        name = default_generated_repo_name(spec)
 
     root = REPO_ROOT / name
 
@@ -45,7 +41,7 @@ def build_data_connector(
         "name": name,
         "artifact_kind": "data_connector",
         "capability": capability,
-        "provider": "postgres",
+        "provider": spec["provider"],
         "version": "0.1.0",
         "entrypoint": "postgres_connector.py",
     }
@@ -62,12 +58,12 @@ data_connector
 {capability}
 
 ## Provider
-postgres
+{spec["provider"]}
 """
 
     connector_py = f'''
 """
-Generated Postgres connector for capability: {capability}
+Generated {spec["title"]} connector for capability: {capability}
 """
 
 
