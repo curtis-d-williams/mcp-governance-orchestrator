@@ -166,6 +166,83 @@ def test_run_autonomous_factory_cycle_runs_governed_path_and_sets_learning_outpu
     assert written == artifact
 
 
+def test_run_autonomous_factory_cycle_invokes_generic_capability_builder(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    called = {}
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        called["builder_called"] = True
+        called["artifact_kind"] = artifact_kind
+        called["capability"] = capability
+        called["kwargs"] = kwargs
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert called == {
+        "builder_called": True,
+        "artifact_kind": "data_connector",
+        "capability": "snowflake_data_access",
+        "kwargs": {},
+    }
+    assert artifact["cycle_result"]["builder"] == {
+        "status": "ok",
+        "artifact_kind": "data_connector",
+        "capability": "snowflake_data_access",
+        "generated_repo": "generated_data_connector_snowflake",
+    }
+
+    written = _read_json(output)
+    assert written == artifact
+
+
+
 def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_path, monkeypatch):
     evaluation = {
         "risk_level": "moderate_risk",

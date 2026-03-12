@@ -10,6 +10,7 @@ import json
 
 from builder.artifact_registry import build_capability_artifact
 from builder.mcp_builder import build_mcp_server
+from src.mcp_governance_orchestrator.capability_registry import artifact_kind_for_capability
 
 
 def decide_action(evaluation):
@@ -69,8 +70,8 @@ def _resolve_factory_build_request(first_run):
 
     request = {
         "dispatch": "legacy_mcp" if should_build_legacy_mcp else "generic",
-        "artifact_kind": "mcp_server",
-        "capability": "github_repository_management",
+        "artifact_kind": None,
+        "capability": None,
     }
 
     for action in ranked_action_window_detail:
@@ -87,7 +88,7 @@ def _resolve_factory_build_request(first_run):
                 "capability",
                 request["capability"],
             )
-            return request
+            break
 
         if action_type == "build_mcp_server":
             request["dispatch"] = "legacy_mcp"
@@ -96,9 +97,27 @@ def _resolve_factory_build_request(first_run):
                 "capability",
                 request["capability"],
             )
-            return request
+            break
+
+    if request["dispatch"] == "legacy_mcp":
+        if request["capability"] is None:
+            request["capability"] = "github_repository_management"
+        request["artifact_kind"] = "mcp_server"
+        return request
+
+    if request["capability"] is None:
+        return None
+
+    if request["artifact_kind"] is None:
+        request["artifact_kind"] = artifact_kind_for_capability(
+            request["capability"]
+        )
+
+    if request["artifact_kind"] is None:
+        return None
 
     return request
+
 
 def run_factory_cycle(
     *,
