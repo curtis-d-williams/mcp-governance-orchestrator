@@ -20,12 +20,9 @@ from pathlib import Path
 from mcp_governance_orchestrator.learning_ledger import (
     empty_ledger,
     load_json_fail_closed,
+    merge_counter_ledger,
     write_json_deterministic,
 )
-
-
-def _as_int(value):
-    return value if isinstance(value, int) and value >= 0 else 0
 
 
 def _extract_cycle_capabilities(artifact):
@@ -34,28 +31,6 @@ def _extract_cycle_capabilities(artifact):
     ledger = artifact.get("capability_effectiveness_ledger") or {}
     capabilities = ledger.get("capabilities") or {}
     return capabilities if isinstance(capabilities, dict) else {}
-
-
-def _ensure_entry(index, capability, incoming):
-    entry = index.get(capability)
-    if entry is None:
-        entry = {
-            "artifact_kind": incoming.get("artifact_kind"),
-            "failed_syntheses": 0,
-            "last_synthesis_source": incoming.get("last_synthesis_source"),
-            "last_synthesis_status": incoming.get("last_synthesis_status"),
-            "successful_syntheses": 0,
-            "total_syntheses": 0,
-        }
-        index[capability] = entry
-
-    entry.setdefault("artifact_kind", incoming.get("artifact_kind"))
-    entry.setdefault("failed_syntheses", 0)
-    entry.setdefault("last_synthesis_source", incoming.get("last_synthesis_source"))
-    entry.setdefault("last_synthesis_status", incoming.get("last_synthesis_status"))
-    entry.setdefault("successful_syntheses", 0)
-    entry.setdefault("total_syntheses", 0)
-    return entry
 
 
 def update_capability_effectiveness_ledger(ledger_path, cycle_artifact_path, output_path=None):
@@ -67,47 +42,36 @@ def update_capability_effectiveness_ledger(ledger_path, cycle_artifact_path, out
         capabilities = {}
 
     incoming_caps = _extract_cycle_capabilities(artifact)
-    updates = []
-
-    for capability, incoming in sorted(incoming_caps.items()):
-        if not isinstance(incoming, dict):
-            continue
-
-        entry = _ensure_entry(capabilities, capability, incoming)
-        entry["artifact_kind"] = incoming.get("artifact_kind", entry.get("artifact_kind"))
-        entry["failed_syntheses"] = _as_int(entry.get("failed_syntheses")) + _as_int(
-            incoming.get("failed_syntheses")
-        )
-        entry["successful_syntheses"] = _as_int(entry.get("successful_syntheses")) + _as_int(
-            incoming.get("successful_syntheses")
-        )
-        entry["total_syntheses"] = _as_int(entry.get("total_syntheses")) + _as_int(
-            incoming.get("total_syntheses")
-        )
-        entry["last_synthesis_source"] = incoming.get(
+    capabilities = merge_counter_ledger(
+        capabilities,
+        incoming_caps,
+        counter_fields=[
+            "failed_syntheses",
+            "successful_syntheses",
+            "total_syntheses",
+        ],
+        last_fields=[
             "last_synthesis_source",
-            entry.get("last_synthesis_source"),
-        )
-        entry["last_synthesis_status"] = incoming.get(
             "last_synthesis_status",
-            entry.get("last_synthesis_status"),
-        )
+        ],
+    )
 
-        updates.append({
+    updates = [
+        {
             "capability": capability,
-            "artifact_kind": entry.get("artifact_kind"),
-            "failed_syntheses": entry["failed_syntheses"],
-            "successful_syntheses": entry["successful_syntheses"],
-            "total_syntheses": entry["total_syntheses"],
-            "last_synthesis_source": entry.get("last_synthesis_source"),
-            "last_synthesis_status": entry.get("last_synthesis_status"),
-        })
+            "artifact_kind": capabilities[capability].get("artifact_kind"),
+            "failed_syntheses": capabilities[capability]["failed_syntheses"],
+            "successful_syntheses": capabilities[capability]["successful_syntheses"],
+            "total_syntheses": capabilities[capability]["total_syntheses"],
+            "last_synthesis_source": capabilities[capability].get("last_synthesis_source"),
+            "last_synthesis_status": capabilities[capability].get("last_synthesis_status"),
+        }
+        for capability, incoming in sorted(incoming_caps.items())
+        if isinstance(incoming, dict)
+    ]
 
     result_ledger = {
-        "capabilities": {
-            capability: capabilities[capability]
-            for capability in sorted(capabilities)
-        }
+        "capabilities": capabilities
     }
 
     out = Path(output_path or ledger_path)

@@ -20,12 +20,10 @@ import json
 import sys
 from pathlib import Path
 
-from mcp_governance_orchestrator.learning_ledger import write_json_deterministic
-
-
-def _as_int(value):
-    """Return *value* as a non-negative int when possible, else 0."""
-    return value if isinstance(value, int) and value >= 0 else 0
+from mcp_governance_orchestrator.learning_ledger import (
+    write_json_deterministic,
+    merge_counter_ledger,
+)
 
 
 def _aggregate(cycles):
@@ -41,33 +39,21 @@ def _aggregate(cycles):
         if not isinstance(cycle_capabilities, dict):
             continue
 
-        for capability, incoming in cycle_capabilities.items():
-            if not isinstance(incoming, dict):
-                continue
-
-            if capability not in capabilities:
-                capabilities[capability] = {
-                    "artifact_kind": incoming.get("artifact_kind"),
-                    "failed_syntheses": 0,
-                    "last_synthesis_source": incoming.get("last_synthesis_source"),
-                    "last_synthesis_status": incoming.get("last_synthesis_status"),
-                    "successful_syntheses": 0,
-                    "total_syntheses": 0,
-                }
-
-            entry = capabilities[capability]
-            entry["artifact_kind"] = incoming.get(
-                "artifact_kind",
-                entry.get("artifact_kind"),
-            )
-            entry["failed_syntheses"] += _as_int(incoming.get("failed_syntheses"))
-            entry["successful_syntheses"] += _as_int(incoming.get("successful_syntheses"))
-            entry["total_syntheses"] += _as_int(incoming.get("total_syntheses"))
-            entry["last_synthesis_source"] = incoming.get("last_synthesis_source")
-            entry["last_synthesis_status"] = incoming.get("last_synthesis_status")
+        capabilities = merge_counter_ledger(
+            capabilities,
+            cycle_capabilities,
+            counter_fields=[
+                "failed_syntheses",
+                "successful_syntheses",
+                "total_syntheses",
+            ],
+            last_fields=[
+                "last_synthesis_source",
+                "last_synthesis_status",
+            ],
+        )
 
     return capabilities
-
 
 def update_capability_effectiveness_from_cycles(cycle_history_path, output_path):
     """Aggregate cycle history into a capability effectiveness ledger."""
