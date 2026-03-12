@@ -18,12 +18,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.claude_dynamic_planner_loop import (  # noqa: E402
+from planner_runtime import (  # noqa: E402
     EFFECTIVENESS_CLAMP,
     EFFECTIVENESS_WEIGHT,
     SIGNAL_IMPACT_CLAMP,
     SIGNAL_IMPACT_WEIGHT,
     _apply_learning_adjustments,
+    _build_priority_breakdown,
+    _compute_priority_breakdown,
     compute_learning_adjustment,
     load_effectiveness_ledger,
 )
@@ -342,3 +344,64 @@ class TestApplyLearningAdjustments:
             capability_ledger=capability_ledger,
         )
         assert [a["action_type"] for a in result] == ["type_a", "type_b"]
+
+    def test_compute_priority_breakdown_includes_capability_reliability_component(self):
+        action = {
+            "action_type": "build_capability_artifact",
+            "priority": 0.80,
+            "action_id": "aid-1",
+            "repo_id": "repo-1",
+            "args": {"capability": "snowflake_data_access"},
+        }
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 4,
+                }
+            }
+        }
+
+        breakdown = _compute_priority_breakdown(
+            action,
+            {},
+            {},
+            {},
+            capability_ledger,
+        )
+
+        assert breakdown.capability_reliability_component == pytest.approx(0.05)
+        assert breakdown.final_priority == pytest.approx(
+            0.80 + 0.05 + breakdown.exploration_component
+        )
+
+    def test_build_priority_breakdown_emits_capability_reliability_component(self):
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.80,
+                "action_id": "aid-1",
+                "repo_id": "repo-1",
+                "args": {"capability": "snowflake_data_access"},
+            }
+        ]
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 0,
+                }
+            }
+        }
+
+        breakdown = _build_priority_breakdown(
+            actions,
+            {},
+            {},
+            {},
+            capability_ledger,
+        )
+
+        assert len(breakdown) == 1
+        assert "capability_reliability_component" in breakdown[0]
+        assert breakdown[0]["capability_reliability_component"] == pytest.approx(-0.05)

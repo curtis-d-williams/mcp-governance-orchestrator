@@ -57,11 +57,11 @@ _EXPECTED_DICT_FIELDS = {
     "signal_delta_component",
     "weak_signal_targeting_component",
     "policy_component",
+    "capability_reliability_component",
     "confidence_factor",
     "exploration_component",
     "final_priority",
 }
-
 
 def _make_action(action_type, priority, action_id="aid-0", repo_id="repo-0"):
     return {
@@ -108,6 +108,7 @@ class TestPriorityBreakdownDataclass:
             signal_delta_component=0.05,
             weak_signal_targeting_component=0.02,
             policy_component=0.03,
+            capability_reliability_component=0.0,
             confidence_factor=1.0,
             exploration_component=0.04,
             final_priority=1.24,
@@ -124,6 +125,7 @@ class TestPriorityBreakdownDataclass:
             signal_delta_component=0.05,
             weak_signal_targeting_component=0.02,
             policy_component=0.03,
+            capability_reliability_component=0.0,
             confidence_factor=0.8,
             exploration_component=0.04,
             final_priority=0.74,
@@ -139,6 +141,7 @@ class TestPriorityBreakdownDataclass:
             signal_delta_component=0.0,
             weak_signal_targeting_component=0.0,
             policy_component=0.0,
+            capability_reliability_component=0.0,
             confidence_factor=1.0,
             exploration_component=0.0,
             final_priority=1.0 / 3.0,
@@ -155,6 +158,7 @@ class TestPriorityBreakdownDataclass:
             signal_delta_component=0.0,
             weak_signal_targeting_component=0.0,
             policy_component=0.0,
+            capability_reliability_component=0.0,
             confidence_factor=0.0,
             exploration_component=0.0,
             final_priority=0.0,
@@ -211,6 +215,7 @@ class TestComputePriorityBreakdown:
             + bd.signal_delta_component
             + bd.weak_signal_targeting_component
             + bd.policy_component
+            + bd.capability_reliability_component
             + bd.exploration_component
         )
         assert bd.final_priority == pytest.approx(expected, rel=1e-9)

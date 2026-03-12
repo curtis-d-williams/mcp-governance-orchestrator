@@ -392,7 +392,7 @@ class PriorityBreakdown:
     """Internal per-action priority component record (v0.32).
 
     All weighted components are stored confidence-scaled (multiplied by
-    confidence_factor) so that:
+    confidence_factor) where applicable so that:
 
         final_priority = (
             base_priority
@@ -400,6 +400,7 @@ class PriorityBreakdown:
             + signal_delta_component
             + weak_signal_targeting_component
             + policy_component
+            + capability_reliability_component
             + exploration_component
         )
 
@@ -408,10 +409,11 @@ class PriorityBreakdown:
     """
     action_type: str
     base_priority: float
-    effectiveness_component: float        # = confidence_factor * raw_effectiveness_adj
-    signal_delta_component: float         # = confidence_factor * raw_signal_delta_adj
-    weak_signal_targeting_component: float  # = confidence_factor * raw_targeting_adj
-    policy_component: float               # = confidence_factor * raw_policy_adj
+    effectiveness_component: float
+    signal_delta_component: float
+    weak_signal_targeting_component: float
+    policy_component: float
+    capability_reliability_component: float
     confidence_factor: float
     exploration_component: float
     final_priority: float
@@ -425,13 +427,18 @@ class PriorityBreakdown:
             "signal_delta_component": round(self.signal_delta_component, 6),
             "weak_signal_targeting_component": round(self.weak_signal_targeting_component, 6),
             "policy_component": round(self.policy_component, 6),
+            "capability_reliability_component": round(
+                self.capability_reliability_component, 6
+            ),
             "confidence_factor": round(self.confidence_factor, 6),
             "exploration_component": round(self.exploration_component, 6),
             "final_priority": round(self.final_priority, 6),
         }
 
 
-def _compute_priority_breakdown(action, ledger, current_signals, policy):
+def _compute_priority_breakdown(
+    action, ledger, current_signals, policy, capability_ledger=None
+):
     """Build a PriorityBreakdown for a single action. Read-only; never raises.
 
     Single canonical path for all priority arithmetic — used by both the
@@ -469,9 +476,14 @@ def _compute_priority_breakdown(action, ledger, current_signals, policy):
     policy_adj = compute_policy_adjustment(at, ledger, policy)
     exploration = compute_exploration_bonus(at, ledger)
 
+    capability_adj = _compute_capability_reliability_adjustment(
+        action, capability_ledger
+    )
+        
     final = (
         base
         + confidence * (effectiveness_adj + signal_delta_adj + targeting_adj + policy_adj)
+        + capability_adj
         + exploration
     )
 
@@ -482,13 +494,16 @@ def _compute_priority_breakdown(action, ledger, current_signals, policy):
         signal_delta_component=confidence * signal_delta_adj,
         weak_signal_targeting_component=confidence * targeting_adj,
         policy_component=confidence * policy_adj,
+        capability_reliability_component=capability_adj,
         confidence_factor=confidence,
         exploration_component=exploration,
         final_priority=final,
     )
 
 
-def _build_priority_breakdown(actions, ledger, current_signals, policy):
+def _build_priority_breakdown(
+    actions, ledger, current_signals, policy, capability_ledger=None
+):
     """Return a deterministic list of per-action priority component dicts.
 
     Delegates to _compute_priority_breakdown for each action so that explain
@@ -504,7 +519,9 @@ def _build_priority_breakdown(actions, ledger, current_signals, policy):
     _signals = current_signals or {}
     _policy = policy or {}
     return [
-        _compute_priority_breakdown(a, ledger, _signals, _policy).to_dict()
+        _compute_priority_breakdown(
+            a, ledger, _signals, _policy, capability_ledger
+        ).to_dict()
         for a in actions
     ]
 
@@ -635,7 +652,9 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=No
     _policy = policy or {}
 
     def _sort_key(a):
-        bd = _compute_priority_breakdown(a, ledger, _signals, _policy)
+        bd = _compute_priority_breakdown(
+            a, ledger, _signals, _policy, capability_ledger
+        )
 
         task_name = None
         if isinstance(a, dict):
@@ -643,12 +662,9 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=No
 
         reliability = _compute_task_reliability(task_name, ledger)
         reliability_boost = reliability if reliability is not None else 0.0
-        capability_boost = _compute_capability_reliability_adjustment(
-            a, capability_ledger
-        )
 
         return (
-            -(bd.final_priority + reliability_boost * 0.05 + capability_boost),
+            -(bd.final_priority + reliability_boost * 0.05),
             bd.action_type,
             a.get("action_id", ""),
             a.get("repo_id", ""),

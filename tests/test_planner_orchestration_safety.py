@@ -431,7 +431,8 @@ class TestWriteExplainArtifact:
         expected_fields = {
             "action_type", "base_priority", "effectiveness_component",
             "signal_delta_component", "weak_signal_targeting_component",
-            "policy_component", "confidence_factor", "exploration_component",
+            "policy_component", "capability_reliability_component",
+            "confidence_factor", "exploration_component",
             "final_priority",
         }
         assert set(data[0].keys()) == expected_fields

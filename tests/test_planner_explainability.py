@@ -40,6 +40,7 @@ _EXPECTED_FIELDS = {
     "signal_delta_component",
     "weak_signal_targeting_component",
     "policy_component",
+    "capability_reliability_component",
     "confidence_factor",
     "exploration_component",
     "final_priority",
@@ -126,6 +127,7 @@ class TestBuildPriorityBreakdown:
                 + entry["signal_delta_component"]
                 + entry["weak_signal_targeting_component"]
                 + entry["policy_component"]
+                + entry["capability_reliability_component"]
                 + entry["exploration_component"]
             )
             assert entry["final_priority"] == pytest.approx(expected_final, rel=1e-5)
