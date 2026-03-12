@@ -29,8 +29,43 @@ def _render(template, variables):
     return template
 
 
+def _default_tools_for_capability(capability):
+    if capability == "github_repository_management":
+        return [
+            "list_repositories",
+            "get_repository",
+            "create_issue",
+        ]
+    if capability == "slack_workspace_access":
+        return [
+            "list_channels",
+            "get_channel",
+            "post_message",
+        ]
+    if capability == "postgres_data_access":
+        return [
+            "list_tables",
+            "describe_table",
+            "run_query",
+        ]
+    return [
+        "health_check",
+    ]
+
+
+def _default_repo_name_for_capability(capability):
+    if capability == "github_repository_management":
+        return "generated_mcp_github"
+    if capability == "slack_workspace_access":
+        return "generated_mcp_slack"
+    if capability == "postgres_data_access":
+        return "generated_mcp_postgres"
+    suffix = capability.lower().replace(" ", "_")
+    return f"generated_mcp_{suffix}"
+
+
 def build_mcp_server(
-    name="generated_mcp_github",
+    name=None,
     capability="github_repository_management",
     tools=None,
 ):
@@ -38,12 +73,11 @@ def build_mcp_server(
     Generate a deterministic MCP server repo.
     """
 
+    if name is None:
+        name = _default_repo_name_for_capability(capability)
+
     if tools is None:
-        tools = [
-            "list_repositories",
-            "get_repository",
-            "create_issue",
-        ]
+        tools = _default_tools_for_capability(capability)
 
     root = REPO_ROOT / name
 

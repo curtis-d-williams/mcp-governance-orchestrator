@@ -78,3 +78,34 @@ def test_build_mcp_server_is_deterministic_across_repeated_runs():
     assert first_snapshot == second_snapshot
 
     shutil.rmtree(generated)
+
+
+def test_build_mcp_server_supports_slack_capability():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_slack"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    result = _mod.build_mcp_server(capability="slack_workspace_access")
+
+    assert result == {
+        "status": "ok",
+        "generated_repo": str(generated),
+        "tools": [
+            "list_channels",
+            "get_channel",
+            "post_message",
+        ],
+    }
+
+    manifest = json.loads((generated / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["name"] == "generated_mcp_slack"
+    assert manifest["capability"] == "slack_workspace_access"
+    assert manifest["tools"] == [
+        "list_channels",
+        "get_channel",
+        "post_message",
+    ]
+
+    shutil.rmtree(generated)

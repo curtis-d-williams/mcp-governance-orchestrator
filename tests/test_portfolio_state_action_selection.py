@@ -553,6 +553,15 @@ class TestMcpCapabilityGapRule:
         )
         assert action["task_binding"]["task_id"] == ACTION_TASK_BINDINGS["build_mcp_server"]
 
+    def test_task_binding_capability_arg(self):
+        action = next(
+            a for a in _repo([self._BASE])["recommended_actions"]
+            if a["action_type"] == "build_mcp_server"
+        )
+        assert action["task_binding"]["args"] == {
+            "capability": "github_repository_management",
+        }
+
     def test_clean_repo_status_unchanged(self):
         assert _repo([self._BASE])["status"] == "healthy"
 
@@ -561,3 +570,28 @@ class TestMcpCapabilityGapRule:
 
     def test_clean_repo_health_score_unchanged(self):
         assert _repo([self._BASE])["health_score"] == 1.0
+
+
+class TestSlackCapabilityGapRule:
+    _BASE = {
+        "repo_id": "factory-gap-repo-slack",
+        "last_run_ok": True,
+        "artifact_completeness": 1.0,
+        "determinism_ok": True,
+        "recent_failures": 0,
+        "stale_runs": 0,
+        "missing_capabilities": ["slack_workspace_access"],
+    }
+
+    def test_action_fires(self):
+        types = [a["action_type"] for a in _repo([self._BASE])["recommended_actions"]]
+        assert "build_mcp_server" in types
+
+    def test_task_binding_capability_arg(self):
+        action = next(
+            a for a in _repo([self._BASE])["recommended_actions"]
+            if a["action_type"] == "build_mcp_server"
+        )
+        assert action["task_binding"]["args"] == {
+            "capability": "slack_workspace_access",
+        }

@@ -189,8 +189,9 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
 
     called = {}
 
-    def _fake_builder():
+    def _fake_builder(capability="github_repository_management"):
         called["builder_called"] = True
+        called["capability"] = capability
         return {
             "status": "ok",
             "generated_repo": "generated_mcp_github",
@@ -248,7 +249,7 @@ def test_run_autonomous_factory_cycle_records_builder_error(tmp_path, monkeypatc
     monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
     monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
 
-    def _failing_builder():
+    def _failing_builder(capability="github_repository_management"):
         raise RuntimeError("builder failed deterministically")
 
     monkeypatch.setattr(_pipeline, "build_mcp_server", _failing_builder)
@@ -294,8 +295,9 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
 
     called = {}
 
-    def _fake_builder():
+    def _fake_builder(capability="github_repository_management"):
         called["builder_called"] = True
+        called["capability"] = capability
         return {
             "status": "ok",
             "generated_repo": "generated_mcp_github",
@@ -318,7 +320,76 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
     )
 
     assert called["builder_called"] is True
+    assert called["capability"] == "github_repository_management"
     assert artifact["cycle_result"]["builder"]["status"] == "ok"
+
+    written = _read_json(output)
+    assert written == artifact
+
+
+def test_run_autonomous_factory_cycle_passes_capability_from_ranked_action_window_detail(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": [],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "slack_workspace_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    called = {}
+
+    def _fake_builder(capability="github_repository_management"):
+        called["builder_called"] = True
+        called["capability"] = capability
+        return {
+            "status": "ok",
+            "generated_repo": "generated_mcp_slack",
+            "tools": [
+                "list_channels",
+                "get_channel",
+                "post_message",
+            ],
+        }
+
+    monkeypatch.setattr(_pipeline, "build_mcp_server", _fake_builder)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert called["builder_called"] is True
+    assert called["capability"] == "slack_workspace_access"
+    assert artifact["cycle_result"]["builder"]["generated_repo"] == "generated_mcp_slack"
 
     written = _read_json(output)
     assert written == artifact

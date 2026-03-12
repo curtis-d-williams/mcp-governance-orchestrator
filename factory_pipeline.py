@@ -108,8 +108,10 @@ def run_factory_cycle(
             runs = result.get("result", {}).get("evaluation_summary", {}).get("runs", [])
             first_run = runs[0] if runs else {}
             selected_actions = first_run.get("selected_actions", [])
-            ranked_action_window = first_run.get("selection_detail", {}).get(
-                "ranked_action_window",
+            selection_detail = first_run.get("selection_detail", {})
+            ranked_action_window = selection_detail.get("ranked_action_window", [])
+            ranked_action_window_detail = selection_detail.get(
+                "ranked_action_window_detail",
                 [],
             )
 
@@ -118,8 +120,17 @@ def run_factory_cycle(
                 or "build_mcp_server" in ranked_action_window
             )
 
+            capability = "github_repository_management"
+            for action in ranked_action_window_detail:
+                if action.get("action_type") == "build_mcp_server":
+                    capability = action.get("task_binding", {}).get(
+                        "args",
+                        {},
+                    ).get("capability", capability)
+                    break
+
             if should_build_mcp:
-                builder_result = build_mcp_server()
+                builder_result = build_mcp_server(capability=capability)
 
                 if isinstance(result, dict):
                     result["builder"] = builder_result
