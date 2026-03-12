@@ -49,3 +49,4 @@ governed_result.json
 # Scheduled wrapper operator-facing artifacts (regenerated every cron run)
 scheduled_cycle_alert.json
 scheduled_cycle_summary.json
+mapping_repair_cycle.json
