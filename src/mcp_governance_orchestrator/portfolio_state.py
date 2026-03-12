@@ -170,54 +170,24 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
         actions.append(_make_action("run_determinism_regression_suite", repo_id, 0.95, "determinism regression detected"))
 
         # Rule: capability gap
-    if "github_repository_management" in missing_capabilities:
+    for capability in missing_capabilities:
+        artifact_kind = artifact_kind_for_capability(capability)
+        if artifact_kind is None:
+            continue
+        reason = f"missing {capability} capability"
         issues.append(_make_issue(
             "capability_gap",
             "medium",
-            "missing github_repository_management capability",
+            reason,
         ))
         actions.append(_make_action(
             "build_capability_artifact",
             repo_id,
             0.60,
-            "missing github_repository_management capability",
+            reason,
             task_args={
-                "artifact_kind": artifact_kind_for_capability("github_repository_management"),
-                "capability": "github_repository_management",
-            },
-        ))
-
-    if "slack_workspace_access" in missing_capabilities:
-        issues.append(_make_issue(
-            "capability_gap",
-            "medium",
-            "missing slack_workspace_access capability",
-        ))
-        actions.append(_make_action(
-            "build_capability_artifact",
-            repo_id,
-            0.60,
-            "missing slack_workspace_access capability",
-            task_args={
-                "artifact_kind": artifact_kind_for_capability("slack_workspace_access"),
-                "capability": "slack_workspace_access",
-            },
-        ))
-
-    if "postgres_data_access" in missing_capabilities:
-        issues.append(_make_issue(
-            "capability_gap",
-            "medium",
-            "missing postgres_data_access capability",
-        ))
-        actions.append(_make_action(
-            "build_capability_artifact",
-            repo_id,
-            0.60,
-            "missing postgres_data_access capability",
-            task_args={
-                "artifact_kind": artifact_kind_for_capability("postgres_data_access"),
-                "capability": "postgres_data_access",
+                "artifact_kind": artifact_kind,
+                "capability": capability,
             },
         ))
 
