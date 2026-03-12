@@ -13,14 +13,14 @@ def _read(path):
     return Path(path).read_text(encoding="utf-8")
 
 
-def test_build_slack_agent_adapter_generates_expected_repo_shape():
+def test_build_agent_adapter_generates_expected_repo_shape():
     repo_root = _mod.REPO_ROOT
     generated = repo_root / "generated_agent_adapter_slack"
 
     if generated.exists():
         shutil.rmtree(generated)
 
-    result = _mod.build_slack_agent_adapter()
+    result = _mod.build_agent_adapter()
 
     assert result == {
         "status": "ok",
@@ -48,20 +48,20 @@ def test_build_slack_agent_adapter_generates_expected_repo_shape():
     shutil.rmtree(generated)
 
 
-def test_build_slack_agent_adapter_is_deterministic_across_repeated_runs():
+def test_build_agent_adapter_is_deterministic_across_repeated_runs():
     repo_root = _mod.REPO_ROOT
     generated = repo_root / "generated_agent_adapter_slack"
 
     if generated.exists():
         shutil.rmtree(generated)
 
-    _mod.build_slack_agent_adapter()
+    _mod.build_agent_adapter()
     first_snapshot = {
         str(path.relative_to(generated)): _read(path)
         for path in sorted(p for p in generated.rglob("*") if p.is_file())
     }
 
-    _mod.build_slack_agent_adapter()
+    _mod.build_agent_adapter()
     second_snapshot = {
         str(path.relative_to(generated)): _read(path)
         for path in sorted(p for p in generated.rglob("*") if p.is_file())
@@ -73,7 +73,7 @@ def test_build_slack_agent_adapter_is_deterministic_across_repeated_runs():
 
 
 def test_agent_adapter_builder_registers_in_artifact_registry():
-    assert ARTIFACT_BUILDERS["agent_adapter"] is _mod.build_slack_agent_adapter
+    assert ARTIFACT_BUILDERS["agent_adapter"] is _mod.build_agent_adapter
 
 
 def test_build_capability_artifact_dispatches_agent_adapter_builder():

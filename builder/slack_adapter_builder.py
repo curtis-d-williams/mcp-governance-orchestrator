@@ -28,7 +28,7 @@ def _default_repo_name_for_capability(capability):
 
 
 @register_builder("agent_adapter")
-def build_slack_agent_adapter(
+def build_agent_adapter(
     name=None,
     capability="slack_workspace_access",
 ):
