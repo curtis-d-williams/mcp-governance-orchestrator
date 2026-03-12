@@ -506,7 +506,7 @@ class TestPortfolioRecommendations:
             assert set(rec.keys()) == _ACTION_KEYS
 
 
-class TestMcpCapabilityGapRule:
+class TestCapabilityArtifactGapRule:
     _BASE = {
         "repo_id": "factory-gap-repo",
         "last_run_ok": True,
@@ -519,12 +519,12 @@ class TestMcpCapabilityGapRule:
 
     def test_action_fires(self):
         types = [a["action_type"] for a in _repo([self._BASE])["recommended_actions"]]
-        assert "build_mcp_server" in types
+        assert "build_capability_artifact" in types
 
     def test_priority_is_0_60(self):
         action = next(
             a for a in _repo([self._BASE])["recommended_actions"]
-            if a["action_type"] == "build_mcp_server"
+            if a["action_type"] == "build_capability_artifact"
         )
         assert action["priority"] == 0.60
 
@@ -537,28 +537,29 @@ class TestMcpCapabilityGapRule:
             i for i in _repo([self._BASE])["open_issues"]
             if i["issue_type"] == "capability_gap"
         )
-        assert issue["reason"] == "missing github_repository_management MCP capability"
+        assert issue["reason"] == "missing github_repository_management capability"
 
     def test_action_reason(self):
         action = next(
             a for a in _repo([self._BASE])["recommended_actions"]
-            if a["action_type"] == "build_mcp_server"
+            if a["action_type"] == "build_capability_artifact"
         )
-        assert action["reason"] == "missing github_repository_management MCP capability"
+        assert action["reason"] == "missing github_repository_management capability"
 
     def test_task_binding_task_id(self):
         action = next(
             a for a in _repo([self._BASE])["recommended_actions"]
-            if a["action_type"] == "build_mcp_server"
+            if a["action_type"] == "build_capability_artifact"
         )
-        assert action["task_binding"]["task_id"] == ACTION_TASK_BINDINGS["build_mcp_server"]
+        assert action["task_binding"]["task_id"] == ACTION_TASK_BINDINGS["build_capability_artifact"]
 
-    def test_task_binding_capability_arg(self):
+    def test_task_binding_args(self):
         action = next(
             a for a in _repo([self._BASE])["recommended_actions"]
-            if a["action_type"] == "build_mcp_server"
+            if a["action_type"] == "build_capability_artifact"
         )
         assert action["task_binding"]["args"] == {
+            "artifact_kind": "mcp_server",
             "capability": "github_repository_management",
         }
 
@@ -572,7 +573,7 @@ class TestMcpCapabilityGapRule:
         assert _repo([self._BASE])["health_score"] == 1.0
 
 
-class TestSlackCapabilityGapRule:
+class TestSlackCapabilityArtifactGapRule:
     _BASE = {
         "repo_id": "factory-gap-repo-slack",
         "last_run_ok": True,
@@ -585,13 +586,14 @@ class TestSlackCapabilityGapRule:
 
     def test_action_fires(self):
         types = [a["action_type"] for a in _repo([self._BASE])["recommended_actions"]]
-        assert "build_mcp_server" in types
+        assert "build_capability_artifact" in types
 
-    def test_task_binding_capability_arg(self):
+    def test_task_binding_args(self):
         action = next(
             a for a in _repo([self._BASE])["recommended_actions"]
-            if a["action_type"] == "build_mcp_server"
+            if a["action_type"] == "build_capability_artifact"
         )
         assert action["task_binding"]["args"] == {
+            "artifact_kind": "agent_adapter",
             "capability": "slack_workspace_access",
         }

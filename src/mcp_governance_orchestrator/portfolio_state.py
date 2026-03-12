@@ -25,6 +25,7 @@ ACTION_TASK_BINDINGS: Dict[str, str] = {
     "rerun_failed_task": "failed_task_retry",
     "run_determinism_regression_suite": "determinism_regression_suite",
     "build_mcp_server": "factory_build_mcp_server",
+    "build_capability_artifact": "factory_build_capability_artifact",
 }
 
 # Required fields and their expected Python types (int accepted for float fields).
@@ -166,47 +167,56 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
         issues.append(_make_issue("determinism_regression", "critical", "determinism regression detected"))
         actions.append(_make_action("run_determinism_regression_suite", repo_id, 0.95, "determinism regression detected"))
 
-        # Rule: MCP capability gap
+        # Rule: capability gap
     if "github_repository_management" in missing_capabilities:
         issues.append(_make_issue(
             "capability_gap",
             "medium",
-            "missing github_repository_management MCP capability",
+            "missing github_repository_management capability",
         ))
         actions.append(_make_action(
-            "build_mcp_server",
+            "build_capability_artifact",
             repo_id,
             0.60,
-            "missing github_repository_management MCP capability",
-            task_args={"capability": "github_repository_management"},
+            "missing github_repository_management capability",
+            task_args={
+                "artifact_kind": "mcp_server",
+                "capability": "github_repository_management",
+            },
         ))
 
     if "slack_workspace_access" in missing_capabilities:
         issues.append(_make_issue(
             "capability_gap",
             "medium",
-            "missing slack_workspace_access MCP capability",
+            "missing slack_workspace_access capability",
         ))
         actions.append(_make_action(
-            "build_mcp_server",
+            "build_capability_artifact",
             repo_id,
             0.60,
-            "missing slack_workspace_access MCP capability",
-            task_args={"capability": "slack_workspace_access"},
+            "missing slack_workspace_access capability",
+            task_args={
+                "artifact_kind": "agent_adapter",
+                "capability": "slack_workspace_access",
+            },
         ))
 
     if "postgres_data_access" in missing_capabilities:
         issues.append(_make_issue(
             "capability_gap",
             "medium",
-            "missing postgres_data_access MCP capability",
+            "missing postgres_data_access capability",
         ))
         actions.append(_make_action(
-            "build_mcp_server",
+            "build_capability_artifact",
             repo_id,
             0.60,
-            "missing postgres_data_access MCP capability",
-            task_args={"capability": "postgres_data_access"},
+            "missing postgres_data_access capability",
+            task_args={
+                "artifact_kind": "mcp_server",
+                "capability": "postgres_data_access",
+            },
         ))
 
     # Health score: start at 1.0, subtract deductions, clamp, round.
