@@ -9,6 +9,7 @@ MCP server repository.
 import json
 from pathlib import Path
 from builder.artifact_registry import register_builder
+from builder.spec_builder_support import require_capability_spec, default_generated_repo_name
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -30,41 +31,6 @@ def _render(template, variables):
     return template
 
 
-def _default_tools_for_capability(capability):
-    if capability == "github_repository_management":
-        return [
-            "list_repositories",
-            "get_repository",
-            "create_issue",
-        ]
-    if capability == "slack_workspace_access":
-        return [
-            "list_channels",
-            "get_channel",
-            "post_message",
-        ]
-    if capability == "postgres_data_access":
-        return [
-            "list_tables",
-            "describe_table",
-            "run_query",
-        ]
-    return [
-        "health_check",
-    ]
-
-
-def _default_repo_name_for_capability(capability):
-    if capability == "github_repository_management":
-        return "generated_mcp_github"
-    if capability == "slack_workspace_access":
-        return "generated_mcp_slack"
-    if capability == "postgres_data_access":
-        return "generated_mcp_postgres"
-    suffix = capability.lower().replace(" ", "_")
-    return f"generated_mcp_{suffix}"
-
-
 @register_builder("mcp_server")
 def build_mcp_server(
     name=None,
@@ -75,11 +41,13 @@ def build_mcp_server(
     Generate a deterministic MCP server repo.
     """
 
+    spec = require_capability_spec(capability, "mcp_server")
+
     if name is None:
-        name = _default_repo_name_for_capability(capability)
+        name = default_generated_repo_name(spec)
 
     if tools is None:
-        tools = _default_tools_for_capability(capability)
+        tools = spec.get("default_tools", ["health_check"])
 
     root = REPO_ROOT / name
 

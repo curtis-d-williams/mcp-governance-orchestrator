@@ -14,7 +14,7 @@ def _read(path):
 
 def test_build_mcp_server_generates_expected_repo_shape():
     repo_root = _mod.REPO_ROOT
-    generated = repo_root / "generated_mcp_github"
+    generated = repo_root / "generated_mcp_server_github"
 
     if generated.exists():
         shutil.rmtree(generated)
@@ -42,7 +42,7 @@ def test_build_mcp_server_generates_expected_repo_shape():
 
     manifest = json.loads((generated / "manifest.json").read_text(encoding="utf-8"))
     assert manifest == {
-        "name": "generated_mcp_github",
+        "name": "generated_mcp_server_github",
         "capability": "github_repository_management",
         "protocol": "model-context-protocol",
         "version": "0.1.0",
@@ -58,7 +58,7 @@ def test_build_mcp_server_generates_expected_repo_shape():
 
 def test_build_mcp_server_is_deterministic_across_repeated_runs():
     repo_root = _mod.REPO_ROOT
-    generated = repo_root / "generated_mcp_github"
+    generated = repo_root / "generated_mcp_server_github"
 
     if generated.exists():
         shutil.rmtree(generated)
@@ -80,32 +80,10 @@ def test_build_mcp_server_is_deterministic_across_repeated_runs():
     shutil.rmtree(generated)
 
 
-def test_build_mcp_server_supports_slack_capability():
-    repo_root = _mod.REPO_ROOT
-    generated = repo_root / "generated_mcp_slack"
-
-    if generated.exists():
-        shutil.rmtree(generated)
-
-    result = _mod.build_mcp_server(capability="slack_workspace_access")
-
-    assert result == {
-        "status": "ok",
-        "generated_repo": str(generated),
-        "tools": [
-            "list_channels",
-            "get_channel",
-            "post_message",
-        ],
-    }
-
-    manifest = json.loads((generated / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["name"] == "generated_mcp_slack"
-    assert manifest["capability"] == "slack_workspace_access"
-    assert manifest["tools"] == [
-        "list_channels",
-        "get_channel",
-        "post_message",
-    ]
-
-    shutil.rmtree(generated)
+def test_build_mcp_server_rejects_non_mcp_capability():
+    try:
+        _mod.build_mcp_server(capability="slack_workspace_access")
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "slack_workspace_access" in str(exc)
+        assert "mcp_server" in str(exc)
