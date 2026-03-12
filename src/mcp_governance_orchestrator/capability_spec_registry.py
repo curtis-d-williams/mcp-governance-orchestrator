@@ -24,6 +24,17 @@ CAPABILITY_SPECS = {
             "post_message",
         ],
     },
+    "snowflake_data_access": {
+        "artifact_kind": "data_connector",
+        "provider": "snowflake",
+        "slug": "snowflake",
+        "title": "Snowflake Data Access",
+        "default_tools": [
+            "list_databases",
+            "list_schemas",
+            "run_query",
+        ],
+    },
     "postgres_data_access": {
         "artifact_kind": "data_connector",
         "provider": "postgres",

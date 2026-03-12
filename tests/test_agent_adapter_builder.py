@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Regression tests for the deterministic Slack agent adapter builder."""
+"""Regression tests for the deterministic agent adapter builder."""
 
 import json
 import shutil
 from pathlib import Path
 
-import builder.slack_adapter_builder as _mod
+import builder.agent_adapter_builder as _mod
 from builder.artifact_registry import ARTIFACT_BUILDERS, build_capability_artifact
 
 
