@@ -76,7 +76,7 @@ POLICY_TOTAL_ABS_CAP = 20.0
 # ---------------------------------------------------------------------------
 
 CAPABILITY_RELIABILITY_WEIGHT = 0.10
-
+CAPABILITY_CONFIDENCE_THRESHOLD = 5.0
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -578,9 +578,15 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
     args.capability metadata.
 
     Adjustment formula:
-        success_rate == 1.0  -> +0.05
-        success_rate == 0.5  ->  0.00
-        success_rate == 0.0  -> -0.05
+        raw_adjustment = (success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT
+        confidence = min(1.0, total_syntheses / CAPABILITY_CONFIDENCE_THRESHOLD)
+        adjustment = confidence * raw_adjustment
+
+    Examples:
+        total=1, success_rate=1.0  -> +0.01
+        total=5, success_rate=1.0  -> +0.05
+        total=1, success_rate=0.0  -> -0.01
+        total=5, success_rate=0.0  -> -0.05
 
     Returns 0.0 when:
         - capability_ledger is empty
@@ -624,7 +630,8 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
         return 0.0
 
     success_rate = max(0.0, min(1.0, success / total))
-    return (success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT
+    confidence = min(1.0, total / CAPABILITY_CONFIDENCE_THRESHOLD)
+    return confidence * ((success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT)
 
 def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None,
                                 capability_ledger=None):

@@ -370,9 +370,9 @@ class TestApplyLearningAdjustments:
             capability_ledger,
         )
 
-        assert breakdown.capability_reliability_component == pytest.approx(0.05)
+        assert breakdown.capability_reliability_component == pytest.approx(0.04)
         assert breakdown.final_priority == pytest.approx(
-            0.80 + 0.05 + breakdown.exploration_component
+            0.80 + 0.04 + breakdown.exploration_component
         )
 
     def test_build_priority_breakdown_emits_capability_reliability_component(self):
@@ -404,4 +404,37 @@ class TestApplyLearningAdjustments:
 
         assert len(breakdown) == 1
         assert "capability_reliability_component" in breakdown[0]
-        assert breakdown[0]["capability_reliability_component"] == pytest.approx(-0.05)
+        assert breakdown[0]["capability_reliability_component"] == pytest.approx(-0.04)
+
+    def test_capability_success_history_with_low_sample_count_is_not_overweighted(self):
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.80,
+                "action_id": "aid-1",
+                "repo_id": "repo-1",
+                "args": {"capability": "snowflake_data_access"},
+            },
+            {
+                "action_type": "analyze_repo_insights",
+                "priority": 0.81,
+                "action_id": "aid-2",
+                "repo_id": "repo-2",
+            },
+        ]
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 1,
+                    "successful_syntheses": 1,
+                }
+            }
+        }
+
+        result = _apply_learning_adjustments(
+            actions,
+            {},
+            capability_ledger=capability_ledger,
+        )
+        assert result[0]["action_type"] == "analyze_repo_insights"
+        assert result[1]["action_type"] == "build_capability_artifact"
