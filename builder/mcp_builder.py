@@ -8,6 +8,7 @@ MCP server repository.
 
 import json
 from pathlib import Path
+from builder.artifact_registry import register_builder
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +65,7 @@ def _default_repo_name_for_capability(capability):
     return f"generated_mcp_{suffix}"
 
 
+@register_builder("mcp_server")
 def build_mcp_server(
     name=None,
     capability="github_repository_management",

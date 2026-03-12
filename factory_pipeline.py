@@ -7,8 +7,8 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 import json
+from builder.artifact_registry import build_capability_artifact
 from builder.mcp_builder import build_mcp_server
-
 
 def decide_action(evaluation):
     if not evaluation:
