@@ -19,6 +19,8 @@ _SEVERITY_RANK: Dict[str, int] = {
     "low": 1,
 }
 
+from .capability_registry import artifact_kind_for_capability
+
 ACTION_TASK_BINDINGS: Dict[str, str] = {
     "refresh_repo_health": "repo_health_check",
     "regenerate_missing_artifact": "artifact_regeneration_check",
@@ -180,7 +182,7 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
             0.60,
             "missing github_repository_management capability",
             task_args={
-                "artifact_kind": "mcp_server",
+                "artifact_kind": artifact_kind_for_capability("github_repository_management"),
                 "capability": "github_repository_management",
             },
         ))
@@ -197,7 +199,7 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
             0.60,
             "missing slack_workspace_access capability",
             task_args={
-                "artifact_kind": "agent_adapter",
+                "artifact_kind": artifact_kind_for_capability("slack_workspace_access"),
                 "capability": "slack_workspace_access",
             },
         ))
@@ -214,7 +216,7 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
             0.60,
             "missing postgres_data_access capability",
             task_args={
-                "artifact_kind": "data_connector",
+                "artifact_kind": artifact_kind_for_capability("postgres_data_access"),
                 "capability": "postgres_data_access",
             },
         ))
