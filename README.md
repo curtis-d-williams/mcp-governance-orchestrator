@@ -1,17 +1,20 @@
 # MCP Governance Orchestrator
-Adaptive automation factory for multi-repository governance and analysis.
 
-Current architecture milestone: **v0.10.0-alpha**
+Adaptive automation system evolving into a research-grade reference architecture for:
 
-This repository implements a deterministic automation system that:
+**Governed Autonomous Capability Factories for Model Context Protocol Infrastructure**
 
-- executes Tier-3 portfolio tasks
-- derives portfolio state
-- generates prioritized actions
-- evaluates action outcomes
-- adaptively adjusts task prioritization
+This repository implements a deterministic governed factory that can:
 
-The system forms a closed optimization loop.
+- execute Tier-3 portfolio tasks
+- derive portfolio state
+- generate prioritized actions
+- evaluate action outcomes
+- adaptively adjust planner behavior
+- detect missing capabilities
+- generate capability artifacts through a governed factory pipeline
+
+The system forms a closed optimization and generation loop.
 
 ---
 
@@ -23,38 +26,74 @@ docs/ARCHITECTURE_V0_10.md
 
 High-level loop:
 
-Tier-3 execution  
-→ artifact bridge  
-→ portfolio_state.json  
-→ prioritized action queue  
-→ effectiveness ledger  
-→ adaptive planner  
-→ next execution
+portfolio state  
+→ planner evaluation  
+→ ranked action window  
+→ governed execution  
+→ capability factory dispatch  
+→ artifact registry  
+→ capability builder  
+→ generated infrastructure  
+→ effectiveness learning  
+→ next cycle
 
 ---
 
-# Core Scripts
+# Governed Autonomous Capability Factories
 
-Tier-3 execution
+The repository now supports a generalized capability-factory architecture.
 
-scripts/run_portfolio_task.py
+## Core idea
 
-Portfolio state
+Instead of treating missing infrastructure as a static gap, the system can:
 
-scripts/build_portfolio_state_from_artifacts.py  
-scripts/build_portfolio_state.py
+- detect a missing capability in portfolio state
+- surface a governed build action through the planner
+- route the action through the governed execution layer
+- dispatch to a registered capability builder
+- generate the required infrastructure artifact deterministically
 
-Action queue
+## Current factory flow
 
-scripts/list_portfolio_actions.py
+Planner  
+→ Governance Layer  
+→ Capability Factory  
+→ Artifact Registry  
+→ Capability Builders  
+→ Generated Infrastructure
 
-Effectiveness evaluation
+## Current supported artifact kinds
 
-scripts/build_action_effectiveness_ledger.py
+- mcp_server
+- agent_adapter
 
-Adaptive planner
+## Example supported capabilities
 
-scripts/claude_dynamic_planner_loop.py
+- github_repository_management
+- slack_workspace_access
+- postgres_data_access
+
+## Builder registry model
+
+Capability builders register through a decorator-based plugin system:
+
+builder/artifact_registry.py
+
+Example pattern:
+
+@register_builder("mcp_server")
+def build_mcp_server(...):
+    ...
+
+---
+
+# Capability Factory Demo
+
+Run the governed capability factory demo:
+
+python3 scripts/run_factory_capability_demo.py
+
+This demonstrates a capability gap being converted into a governed build action and then into a generated artifact repository.
 
 ---
 
@@ -66,89 +105,44 @@ pytest -q
 
 Current coverage:
 
-> ~335 tests passing
+2514 tests passing
 
 ---
 
-# Key Artifacts
+# Capability Factory Architecture Diagram
 
-Tier-3 outputs
+```mermaid
+flowchart TD
+    PS[Portfolio State]
+    PE[Planner Evaluation]
+    RAW[Ranked Action Window]
+    GE[Governed Execution]
+    CFD[Capability Factory Dispatch]
+    AR[Artifact Registry]
+    CB1[MCP Server Builder]
+    CB2[Agent Adapter Builder]
+    GI[Generated Infrastructure]
 
-tier3_portfolio_report.csv  
-tier3_multi_run_aggregate.json  
+    PS --> PE
+    PE --> RAW
+    RAW --> GE
+    GE --> CFD
+    CFD --> AR
+    AR --> CB1
+    AR --> CB2
+    CB1 --> GI
+    CB2 --> GI
+```
 
-Control plane
+This diagram captures the current governed capability-factory path:
 
-portfolio_state.json  
+- portfolio state surfaces capability gaps
+- planner evaluation prioritizes build actions
+- governed execution authorizes factory dispatch
+- artifact registry routes to the correct builder
+- builders deterministically generate infrastructure artifacts
 
-Adaptive evaluation
+Example generated infrastructure currently includes:
 
-action_effectiveness_ledger.json  
-
----
-
-# Development Status
-
-Current milestone:
-
-v0.10.0-alpha
-
-Adaptive portfolio control plane and effectiveness-driven planner loop implemented.
-
-Next milestone:
-
-v0.11  
-automatic evaluation record generation to fully close the optimization loop.
-
----
-
-## Running Planner Experiments
-
-The repository includes a deterministic experiment pipeline for evaluating planner behavior.
-
-### Run a local experiment
-
-python scripts/run_planner_experiment.py --config experiment_config.json
-
-### Generate a report
-
-python scripts/generate_experiment_report.py
-
-This produces:
-
-experiment_results.json
-experiment_report.json
-experiment_report.md
-
-### Single-command local run
-
-./scripts/run_experiment.sh
-
-Optional custom config:
-
-./scripts/run_experiment.sh path/to/experiment_config.json
-
-### Policy sweep experiments
-
-Experiments can define multiple governance policies inside the config file.
-
-python scripts/run_planner_experiment.py --config experiment_config.json
-
-The system will generate:
-
-policy_sweep_results.json
-
-### CI experiments
-
-The repository includes a GitHub Actions workflow that runs experiments automatically when:
-
-- a commit is pushed
-- a pull request is opened
-
-Artifacts produced by CI include:
-
-experiment_results.json  
-policy_sweep_results.json  
-experiment_report.json  
-experiment_report.md  
-planner_run_envelope_*.json
+- generated_mcp_github/
+- generated_agent_adapter_slack/
