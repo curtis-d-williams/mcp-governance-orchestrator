@@ -893,3 +893,95 @@ class TestStructuredOverrideIntegration:
 
         assert result["collapse_count"] == 0
         assert result["risk_level"] == "low_risk"
+
+
+class TestHistoricalSuccessSignals:
+    def test_round_trip_includes_expected_success_rate_and_historical_runs(self, tmp_path):
+        portfolio_state = tmp_path / "ps.json"
+        portfolio_state.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        ledger = tmp_path / "ledger.json"
+        ledger.write_text(json.dumps({
+            "actions": {
+                "build_portfolio_dashboard": {
+                    "total_runs": 10,
+                    "success_count": 8,
+                    "failure_count": 2,
+                    "last_status": "ok",
+                },
+                "failure_recovery_example": {
+                    "total_runs": 5,
+                    "success_count": 2,
+                    "failure_count": 3,
+                    "last_status": "aborted",
+                },
+            }
+        }), encoding="utf-8")
+
+        with patch.object(_mod, "_fetch_actions", return_value=_make_actions(_MOD_SPECS)):
+            result = evaluate_planner_config(
+                policy_path=None,
+                top_k=3,
+                portfolio_state_path=str(portfolio_state),
+                ledger_path=str(ledger),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["expected_success_rate"] == 0.5
+        assert result["historical_runs"] == 15
+
+    def test_round_trip_uses_only_mapped_tasks_present_in_ledger(self, tmp_path):
+        portfolio_state = tmp_path / "ps.json"
+        portfolio_state.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        ledger = tmp_path / "ledger.json"
+        ledger.write_text(json.dumps({
+            "actions": {
+                "build_portfolio_dashboard": {
+                    "total_runs": 4,
+                    "success_count": 4,
+                    "failure_count": 0,
+                    "last_status": "ok",
+                },
+            }
+        }), encoding="utf-8")
+
+        with patch.object(_mod, "_fetch_actions", return_value=_make_actions(_MOD_SPECS)):
+            result = evaluate_planner_config(
+                policy_path=None,
+                top_k=3,
+                portfolio_state_path=str(portfolio_state),
+                ledger_path=str(ledger),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["expected_success_rate"] == 1.0
+        assert result["historical_runs"] == 4
+
+    def test_round_trip_returns_none_and_zero_when_no_history_matches(self, tmp_path):
+        portfolio_state = tmp_path / "ps.json"
+        portfolio_state.write_text(json.dumps({"repos": []}), encoding="utf-8")
+
+        ledger = tmp_path / "ledger.json"
+        ledger.write_text(json.dumps({
+            "actions": {
+                "unrelated_task": {
+                    "total_runs": 9,
+                    "success_count": 9,
+                    "failure_count": 0,
+                    "last_status": "ok",
+                },
+            }
+        }), encoding="utf-8")
+
+        with patch.object(_mod, "_fetch_actions", return_value=_make_actions(_LOW_SPECS)):
+            result = evaluate_planner_config(
+                policy_path=None,
+                top_k=2,
+                portfolio_state_path=str(portfolio_state),
+                ledger_path=str(ledger),
+                output_path=str(tmp_path / "out.json"),
+            )
+
+        assert result["expected_success_rate"] is None
+        assert result["historical_runs"] == 0

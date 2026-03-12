@@ -10,6 +10,7 @@ import json
 
 from builder.artifact_registry import build_capability_artifact
 from src.mcp_governance_orchestrator.capability_registry import artifact_kind_for_capability
+from src.mcp_governance_orchestrator.capability_effectiveness_ledger import record_synthesis_event
 
 
 def decide_action(evaluation):
@@ -207,14 +208,18 @@ def run_factory_cycle(
         # Builder dispatch (factory artifact generation)
         # ------------------------------------------------------------------
 
+        capability_effectiveness_ledger = {"capabilities": {}}
+
         try:
             runs = result.get("result", {}).get("evaluation_summary", {}).get("runs", [])
             first_run = runs[0] if runs else {}
 
             build_request = _resolve_factory_build_request(first_run)
+            synthesis_source = "planner_request"
 
             if build_request is None:
                 build_request = _resolve_gap_synthesis_request(portfolio_state)
+                synthesis_source = "portfolio_gap"
 
             if build_request is not None:
                 builder_result = build_capability_artifact(
@@ -225,9 +230,29 @@ def run_factory_cycle(
                 if isinstance(result, dict):
                     result["builder"] = builder_result
 
+                synthesis_status = "ok"
+                if isinstance(builder_result, dict):
+                    synthesis_status = builder_result.get("status", "ok")
+
+                capability_effectiveness_ledger = record_synthesis_event(
+                    capability_effectiveness_ledger,
+                    capability=build_request["capability"],
+                    artifact_kind=build_request["artifact_kind"],
+                    synthesis_source=synthesis_source,
+                    synthesis_status=synthesis_status,
+                )
+
         except Exception as exc:
             if isinstance(result, dict):
                 result["builder_error"] = str(exc)
+            if build_request is not None:
+                capability_effectiveness_ledger = record_synthesis_event(
+                    capability_effectiveness_ledger,
+                    capability=build_request["capability"],
+                    artifact_kind=build_request["artifact_kind"],
+                    synthesis_source=synthesis_source,
+                    synthesis_status="error",
+                )
 
     artifact = {
         "decision": decision,
@@ -239,6 +264,10 @@ def run_factory_cycle(
         },
         "evaluation": evaluation,
         "cycle_result": result,
+        "capability_effectiveness_ledger": locals().get(
+            "capability_effectiveness_ledger",
+            {"capabilities": {}},
+        ),
         "status": "completed",
     }
 

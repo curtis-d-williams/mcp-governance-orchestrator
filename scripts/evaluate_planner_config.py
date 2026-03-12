@@ -37,6 +37,7 @@ from scripts.claude_dynamic_planner_loop import (
 from planner_runtime import (
     build_planner_evaluation,
     classify_risk,
+    compute_expected_success_signal,
     compute_planner_collision_risk,
     fetch_planner_actions,
     load_effectiveness_ledger,
@@ -82,7 +83,17 @@ def evaluate_planner_config(policy_path, top_k, portfolio_state_path, ledger_pat
         mapping_override=mapping_override,
     )
 
-    evaluation = build_evaluation(metrics, top_k)
+    expected_success_rate, historical_runs = compute_expected_success_signal(
+        metrics.get("mapped_tasks", []),
+        ledger,
+    )
+
+    evaluation = build_evaluation(
+        metrics,
+        top_k,
+        expected_success_rate=expected_success_rate,
+        historical_runs=historical_runs,
+    )
     evaluation["policy"] = policy_path
     evaluation["top_k"] = top_k
 

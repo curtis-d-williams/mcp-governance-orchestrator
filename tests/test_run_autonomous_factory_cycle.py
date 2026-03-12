@@ -357,6 +357,73 @@ def test_run_autonomous_factory_cycle_records_builder_error(tmp_path, monkeypatc
     assert written == artifact
 
 
+def test_run_autonomous_factory_cycle_records_failed_capability_effectiveness_on_builder_error(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _failing_builder(*, artifact_kind, capability, **kwargs):
+        raise RuntimeError("builder failed deterministically")
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _failing_builder)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert artifact["cycle_result"]["builder_error"] == "builder failed deterministically"
+    assert artifact["capability_effectiveness_ledger"] == {
+        "capabilities": {
+            "snowflake_data_access": {
+                "artifact_kind": "data_connector",
+                "failed_syntheses": 1,
+                "last_synthesis_source": "planner_request",
+                "last_synthesis_status": "error",
+                "successful_syntheses": 0,
+                "total_syntheses": 1,
+            }
+        }
+    }
+
+    written = _read_json(output)
+    assert written == artifact
+
+
 def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(tmp_path, monkeypatch):
     evaluation = {
         "risk_level": "moderate_risk",

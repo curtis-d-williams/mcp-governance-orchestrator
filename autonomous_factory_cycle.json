@@ -1,0 +1,81 @@
+{
+  "capability_effectiveness_ledger": {
+    "capabilities": {}
+  },
+  "cycle_result": {
+    "baseline_evaluation": {
+      "action_entropy": 0.0,
+      "collapse_count": 0,
+      "collision_ratio": 0.0,
+      "mapped_tasks": [],
+      "policy": null,
+      "ranked_action_window": [],
+      "ranked_action_window_detail": [],
+      "reasons": [
+        "planner produced no actions"
+      ],
+      "recommendations": [
+        "inspect portfolio state and mapping coverage"
+      ],
+      "risk_level": "high_risk",
+      "task_entropy": 0.0,
+      "top_k": 3,
+      "unique_tasks": 0
+    },
+    "inputs": {
+      "exploration_offset": 0,
+      "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+      "policy": null,
+      "portfolio_state": "governed_portfolio_cycle_artifacts/portfolio_state.json",
+      "top_k": 3
+    },
+    "override_artifact": {},
+    "override_artifact_path": null,
+    "repair_attempted": true,
+    "repair_proposal": {
+      "current_mapped_tasks": [],
+      "proposed_mapping_override": {},
+      "ranked_action_window": [],
+      "ranked_action_window_detail": [],
+      "reasons": [
+        "action window is empty \u2014 no repair can be proposed"
+      ],
+      "repair_needed": false
+    },
+    "repair_success": false,
+    "repaired_evaluation": null,
+    "status": "repair_unavailable"
+  },
+  "decision": {
+    "action": "repair_only",
+    "learning_enabled": false,
+    "reason": "planner_high_risk",
+    "repair_enabled": true
+  },
+  "evaluation": {
+    "action_entropy": 0.0,
+    "collapse_count": 0,
+    "collision_ratio": 0.0,
+    "mapped_tasks": [],
+    "policy": null,
+    "ranked_action_window": [],
+    "ranked_action_window_detail": [],
+    "reasons": [
+      "planner produced no actions"
+    ],
+    "recommendations": [
+      "inspect portfolio state and mapping coverage"
+    ],
+    "risk_level": "high_risk",
+    "task_entropy": 0.0,
+    "top_k": 3,
+    "unique_tasks": 0
+  },
+  "inputs": {
+    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
+    "policy": null,
+    "portfolio_state": "governed_portfolio_cycle_artifacts/portfolio_state.json",
+    "top_k": 3
+  },
+  "status": "completed"
+}

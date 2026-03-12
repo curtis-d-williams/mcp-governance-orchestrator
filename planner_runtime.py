@@ -77,11 +77,15 @@ POLICY_TOTAL_ABS_CAP = 20.0
 # ---------------------------------------------------------------------------
 
 def load_effectiveness_ledger(path):
-    """Load ledger JSON and return {action_type: row_dict}.
+    """Load effectiveness ledger JSON.
+
+    Supports both:
+    - legacy planner format: {"action_types": [{"action_type": "...", ...}, ...]}
+    - current action ledger format: {"actions": {"task_name": {...}, ...}}
 
     Returns an empty dict when:
     - path is None
-    - file does not exist (fail-safe)
+    - file does not exist
     - file is unreadable or malformed
     Never raises.
     """
@@ -92,6 +96,11 @@ def load_effectiveness_ledger(path):
         return {}
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
+
+        actions = data.get("actions")
+        if isinstance(actions, dict):
+            return {"actions": actions}
+
         rows = data.get("action_types", [])
         return {
             row["action_type"]: row
@@ -560,7 +569,70 @@ def classify_risk(metrics, top_k):
     return "low_risk", reasons, recommendations
 
 
-def build_planner_evaluation(metrics, top_k):
+def compute_expected_success_signal(mapped_tasks, ledger):
+    """Return (expected_success_rate, historical_runs) from mapped tasks.
+
+    Supports both:
+    - current action ledger shape: {"actions": {task_name: {...}}}
+    - legacy planner ledger shape: {action_type: row_dict}
+
+    expected_success_rate is the fraction of unique matched tasks whose
+    historical record is favorable (success_count > failure_count).
+
+    Returns:
+        (None, 0) when no mapped task has matching history.
+    """
+    if isinstance((ledger or {}).get("actions"), dict):
+        actions = ledger.get("actions", {})
+    else:
+        actions = ledger or {}
+
+    seen = set()
+    favorable = 0
+    considered = 0
+    historical_runs = 0
+
+    for task in mapped_tasks or []:
+        if task is None or task in seen:
+            continue
+        seen.add(task)
+
+        entry = actions.get(task)
+        if not isinstance(entry, dict):
+            continue
+
+        total_runs = entry.get("total_runs", entry.get("times_executed", 0))
+        success_count = entry.get("success_count")
+        failure_count = entry.get("failure_count")
+
+        if success_count is None and failure_count is None:
+            effectiveness_score = entry.get("effectiveness_score")
+            if isinstance(effectiveness_score, (int, float)):
+                success_count = 1 if effectiveness_score > 0 else 0
+                failure_count = 0 if effectiveness_score > 0 else 1
+            else:
+                success_count = 0
+                failure_count = 0
+
+        if not isinstance(total_runs, int) or total_runs < 0:
+            total_runs = 0
+        if not isinstance(success_count, int) or success_count < 0:
+            success_count = 0
+        if not isinstance(failure_count, int) or failure_count < 0:
+            failure_count = 0
+
+        considered += 1
+        historical_runs += total_runs
+        if success_count > failure_count:
+            favorable += 1
+
+    if considered == 0:
+        return None, 0
+
+    return favorable / considered, historical_runs
+
+
+def build_planner_evaluation(metrics, top_k, expected_success_rate=None, historical_runs=0):
     """Attach risk classification to planner metrics."""
     risk_level, reasons, recommendations = classify_risk(metrics, top_k)
 
@@ -569,6 +641,8 @@ def build_planner_evaluation(metrics, top_k):
         "risk_level": risk_level,
         "reasons": reasons,
         "recommendations": recommendations,
+        "expected_success_rate": expected_success_rate,
+        "historical_runs": historical_runs,
     }
 
 
