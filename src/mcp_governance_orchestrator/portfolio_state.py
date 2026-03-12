@@ -214,7 +214,7 @@ def _compute_repo_state(signal: Dict[str, Any]) -> Dict[str, Any]:
             0.60,
             "missing postgres_data_access capability",
             task_args={
-                "artifact_kind": "mcp_server",
+                "artifact_kind": "data_connector",
                 "capability": "postgres_data_access",
             },
         ))
