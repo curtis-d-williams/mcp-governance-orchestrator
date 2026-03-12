@@ -55,6 +55,7 @@ _TOP_LEVEL_KEYS = {
     "generated_at",
     "summary",
     "repos",
+    "capability_gaps",
     "portfolio_recommendations",
 }
 
@@ -126,6 +127,9 @@ class TestTopLevelSchema:
 
     def test_portfolio_recommendations_is_list(self):
         assert isinstance(_build()["portfolio_recommendations"], list)
+
+    def test_capability_gaps_is_list(self):
+        assert isinstance(_build()["capability_gaps"], list)
 
 
 # ---------------------------------------------------------------------------

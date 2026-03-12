@@ -9,7 +9,6 @@ from pathlib import Path
 import json
 
 from builder.artifact_registry import build_capability_artifact
-from builder.mcp_builder import build_mcp_server
 from src.mcp_governance_orchestrator.capability_registry import artifact_kind_for_capability
 
 
@@ -43,9 +42,8 @@ def _resolve_factory_build_request(first_run):
     Resolve a capability-artifact build request from planner output.
 
     Backward compatibility:
-    - legacy action_type == "build_mcp_server" dispatches to build_mcp_server(...)
-    - generic action_type == "build_capability_artifact" dispatches to
-      build_capability_artifact(...)
+    - legacy action_type == "build_mcp_server" normalizes to a capability request
+    - generic action_type == "build_capability_artifact" is the canonical form
     """
 
     selected_actions = first_run.get("selected_actions", [])
@@ -56,20 +54,18 @@ def _resolve_factory_build_request(first_run):
         [],
     )
 
-    should_build_generic = (
-        "build_capability_artifact" in selected_actions
-        or "build_capability_artifact" in ranked_action_window
-    )
-    should_build_legacy_mcp = (
-        "build_mcp_server" in selected_actions
-        or "build_mcp_server" in ranked_action_window
-    )
+    candidate_action_types = []
+    candidate_action_types.extend(selected_actions)
+    candidate_action_types.extend(ranked_action_window)
 
-    if not should_build_generic and not should_build_legacy_mcp:
+    has_build_request = any(
+        action_type in ("build_capability_artifact", "build_mcp_server")
+        for action_type in candidate_action_types
+    )
+    if not has_build_request:
         return None
 
     request = {
-        "dispatch": "legacy_mcp" if should_build_legacy_mcp else "generic",
         "artifact_kind": None,
         "capability": None,
     }
@@ -78,32 +74,25 @@ def _resolve_factory_build_request(first_run):
         action_type = action.get("action_type")
         args = action.get("task_binding", {}).get("args", {})
 
-        if action_type == "build_capability_artifact":
-            request["dispatch"] = "generic"
-            request["artifact_kind"] = args.get(
-                "artifact_kind",
-                request["artifact_kind"],
-            )
-            request["capability"] = args.get(
-                "capability",
-                request["capability"],
-            )
-            break
+        if action_type not in ("build_capability_artifact", "build_mcp_server"):
+            continue
 
         if action_type == "build_mcp_server":
-            request["dispatch"] = "legacy_mcp"
             request["artifact_kind"] = "mcp_server"
-            request["capability"] = args.get(
-                "capability",
-                request["capability"],
-            )
-            break
 
-    if request["dispatch"] == "legacy_mcp":
-        if request["capability"] is None:
-            request["capability"] = "github_repository_management"
+        request["artifact_kind"] = args.get(
+            "artifact_kind",
+            request["artifact_kind"],
+        )
+        request["capability"] = args.get(
+            "capability",
+            request["capability"],
+        )
+        break
+
+    if request["capability"] is None and "build_mcp_server" in candidate_action_types:
+        request["capability"] = "github_repository_management"
         request["artifact_kind"] = "mcp_server"
-        return request
 
     if request["capability"] is None:
         return None
@@ -117,6 +106,36 @@ def _resolve_factory_build_request(first_run):
         return None
 
     return request
+
+
+def _resolve_gap_synthesis_request(portfolio_state_path):
+    """
+    Resolve a capability-artifact build request from portfolio capability gaps.
+
+    This is the autonomous fallback when the planner does not emit an explicit
+    build request.
+    """
+    try:
+        state = json.loads(Path(portfolio_state_path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    capability_gaps = state.get("capability_gaps", [])
+    if not capability_gaps:
+        return None
+
+    capability = capability_gaps[0]
+    if not isinstance(capability, str):
+        return None
+
+    artifact_kind = artifact_kind_for_capability(capability)
+    if artifact_kind is None:
+        return None
+
+    return {
+        "artifact_kind": artifact_kind,
+        "capability": capability,
+    }
 
 
 def run_factory_cycle(
@@ -194,16 +213,14 @@ def run_factory_cycle(
 
             build_request = _resolve_factory_build_request(first_run)
 
+            if build_request is None:
+                build_request = _resolve_gap_synthesis_request(portfolio_state)
+
             if build_request is not None:
-                if build_request["dispatch"] == "legacy_mcp":
-                    builder_result = build_mcp_server(
-                        capability=build_request["capability"]
-                    )
-                else:
-                    builder_result = build_capability_artifact(
-                        artifact_kind=build_request["artifact_kind"],
-                        capability=build_request["capability"],
-                    )
+                builder_result = build_capability_artifact(
+                    artifact_kind=build_request["artifact_kind"],
+                    capability=build_request["capability"],
+                )
 
                 if isinstance(result, dict):
                     result["builder"] = builder_result

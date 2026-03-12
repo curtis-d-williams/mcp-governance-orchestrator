@@ -293,6 +293,14 @@ def build_portfolio_state(
 
     repos = [_compute_repo_state(sig) for sig in sorted_signals]
 
+    # Aggregate capability gaps across repos (deterministic order)
+    capability_gaps = sorted({
+        cap
+        for sig in sorted_signals
+        for cap in sig.get("missing_capabilities", [])
+        if isinstance(cap, str)
+    })
+
     # Portfolio-level recommendations: all actions from all repos, same sort.
     all_actions: List[Dict[str, Any]] = []
     for repo in repos:
@@ -324,5 +332,6 @@ def build_portfolio_state(
         "generated_at": generated_at,
         "summary": summary,
         "repos": repos,
+        "capability_gaps": capability_gaps,
         "portfolio_recommendations": portfolio_recommendations,
     }

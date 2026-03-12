@@ -266,11 +266,15 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
 
     called = {}
 
-    def _fake_builder(capability="github_repository_management"):
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
         called["builder_called"] = True
+        called["artifact_kind"] = artifact_kind
         called["capability"] = capability
+        called["kwargs"] = kwargs
         return {
             "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
             "generated_repo": "generated_mcp_github",
             "tools": [
                 "list_repositories",
@@ -279,7 +283,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
             ],
         }
 
-    monkeypatch.setattr(_pipeline, "build_mcp_server", _fake_builder)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
 
     output = tmp_path / "autonomous_factory_cycle.json"
     artifact = _mod.run_autonomous_factory_cycle(
@@ -290,9 +294,16 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
         output=str(output),
     )
 
-    assert called["builder_called"] is True
+    assert called == {
+        "builder_called": True,
+        "artifact_kind": "mcp_server",
+        "capability": "github_repository_management",
+        "kwargs": {},
+    }
     assert artifact["cycle_result"]["builder"] == {
         "status": "ok",
+        "artifact_kind": "mcp_server",
+        "capability": "github_repository_management",
         "generated_repo": "generated_mcp_github",
         "tools": [
             "list_repositories",
@@ -326,10 +337,10 @@ def test_run_autonomous_factory_cycle_records_builder_error(tmp_path, monkeypatc
     monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
     monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
 
-    def _failing_builder(capability="github_repository_management"):
+    def _failing_builder(*, artifact_kind, capability, **kwargs):
         raise RuntimeError("builder failed deterministically")
 
-    monkeypatch.setattr(_pipeline, "build_mcp_server", _failing_builder)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _failing_builder)
 
     output = tmp_path / "autonomous_factory_cycle.json"
     artifact = _mod.run_autonomous_factory_cycle(
@@ -372,11 +383,15 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
 
     called = {}
 
-    def _fake_builder(capability="github_repository_management"):
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
         called["builder_called"] = True
+        called["artifact_kind"] = artifact_kind
         called["capability"] = capability
+        called["kwargs"] = kwargs
         return {
             "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
             "generated_repo": "generated_mcp_github",
             "tools": [
                 "list_repositories",
@@ -385,7 +400,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
             ],
         }
 
-    monkeypatch.setattr(_pipeline, "build_mcp_server", _fake_builder)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
 
     output = tmp_path / "autonomous_factory_cycle.json"
     artifact = _mod.run_autonomous_factory_cycle(
@@ -396,8 +411,12 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
         output=str(output),
     )
 
-    assert called["builder_called"] is True
-    assert called["capability"] == "github_repository_management"
+    assert called == {
+        "builder_called": True,
+        "artifact_kind": "mcp_server",
+        "capability": "github_repository_management",
+        "kwargs": {},
+    }
     assert artifact["cycle_result"]["builder"]["status"] == "ok"
 
     written = _read_json(output)
@@ -440,11 +459,15 @@ def test_run_autonomous_factory_cycle_passes_capability_from_ranked_action_windo
 
     called = {}
 
-    def _fake_builder(capability="github_repository_management"):
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
         called["builder_called"] = True
+        called["artifact_kind"] = artifact_kind
         called["capability"] = capability
+        called["kwargs"] = kwargs
         return {
             "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
             "generated_repo": "generated_mcp_slack",
             "tools": [
                 "list_channels",
@@ -453,7 +476,7 @@ def test_run_autonomous_factory_cycle_passes_capability_from_ranked_action_windo
             ],
         }
 
-    monkeypatch.setattr(_pipeline, "build_mcp_server", _fake_builder)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
 
     output = tmp_path / "autonomous_factory_cycle.json"
     artifact = _mod.run_autonomous_factory_cycle(
@@ -464,8 +487,12 @@ def test_run_autonomous_factory_cycle_passes_capability_from_ranked_action_windo
         output=str(output),
     )
 
-    assert called["builder_called"] is True
-    assert called["capability"] == "slack_workspace_access"
+    assert called == {
+        "builder_called": True,
+        "artifact_kind": "mcp_server",
+        "capability": "slack_workspace_access",
+        "kwargs": {},
+    }
     assert artifact["cycle_result"]["builder"]["generated_repo"] == "generated_mcp_slack"
 
     written = _read_json(output)
