@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from builder.artifact_registry import register_builder
+from builder.spec_builder_support import require_capability_spec, default_generated_repo_name
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,13 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _write(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.rstrip() + "\n", encoding="utf-8")
-
-
-def _default_repo_name_for_capability(capability):
-    if capability == "slack_workspace_access":
-        return "generated_agent_adapter_slack"
-    suffix = capability.lower().replace(" ", "_")
-    return f"generated_agent_adapter_{suffix}"
 
 
 @register_builder("agent_adapter")
@@ -36,8 +30,10 @@ def build_agent_adapter(
     Generate a deterministic agent adapter repo for Slack-style access.
     """
 
+    spec = require_capability_spec(capability, "agent_adapter")
+
     if name is None:
-        name = _default_repo_name_for_capability(capability)
+        name = default_generated_repo_name(spec)
 
     root = REPO_ROOT / name
 
@@ -45,7 +41,7 @@ def build_agent_adapter(
         "name": name,
         "artifact_kind": "agent_adapter",
         "capability": capability,
-        "provider": "slack",
+        "provider": spec["provider"],
         "version": "0.1.0",
         "entrypoint": "slack_adapter.py",
     }
@@ -62,12 +58,12 @@ agent_adapter
 {capability}
 
 ## Provider
-slack
+{spec["provider"]}
 """
 
     adapter_py = f'''
 """
-Generated Slack adapter for capability: {capability}
+Generated {spec["title"]} adapter for capability: {capability}
 """
 
 
