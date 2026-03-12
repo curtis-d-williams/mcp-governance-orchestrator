@@ -143,6 +143,7 @@ def run_factory_cycle(
     *,
     portfolio_state,
     ledger,
+    capability_ledger=None,
     policy,
     top_k,
     output,
@@ -158,6 +159,7 @@ def run_factory_cycle(
         evaluation = evaluate_planner_config(
             portfolio_state_path=portfolio_state,
             ledger_path=ledger,
+            capability_ledger_path=capability_ledger,
             policy_path=policy,
             top_k=top_k,
             exploration_offset=0,
@@ -259,6 +261,7 @@ def run_factory_cycle(
         "inputs": {
             "portfolio_state": portfolio_state,
             "ledger": ledger,
+            "capability_ledger": capability_ledger,
             "policy": policy,
             "top_k": top_k,
         },

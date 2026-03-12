@@ -254,3 +254,91 @@ class TestApplyLearningAdjustments:
         # a_type sorts before z_type alphabetically
         assert result[0]["action_type"] == "a_type"
         assert result[1]["action_type"] == "z_type"
+
+
+    def test_capability_success_history_boosts_synthesis_action(self):
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.80,
+                "action_id": "aid-1",
+                "repo_id": "repo-1",
+                "args": {"capability": "snowflake_data_access"},
+            },
+            {
+                "action_type": "analyze_repo_insights",
+                "priority": 0.84,
+                "action_id": "aid-2",
+                "repo_id": "repo-2",
+            },
+        ]
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 4,
+                }
+            }
+        }
+
+        result = _apply_learning_adjustments(
+            actions,
+            {},
+            capability_ledger=capability_ledger,
+        )
+        assert result[0]["action_type"] == "build_capability_artifact"
+        assert result[1]["action_type"] == "analyze_repo_insights"
+
+    def test_capability_failure_history_deprioritizes_synthesis_action(self):
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.84,
+                "action_id": "aid-1",
+                "repo_id": "repo-1",
+                "args": {"capability": "snowflake_data_access"},
+            },
+            {
+                "action_type": "analyze_repo_insights",
+                "priority": 0.80,
+                "action_id": "aid-2",
+                "repo_id": "repo-2",
+            },
+        ]
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 0,
+                }
+            }
+        }
+
+        result = _apply_learning_adjustments(
+            actions,
+            {},
+            capability_ledger=capability_ledger,
+        )
+        assert result[0]["action_type"] == "analyze_repo_insights"
+        assert result[1]["action_type"] == "build_capability_artifact"
+
+    def test_non_synthesis_actions_ignore_capability_ledger(self):
+        actions = _make_actions([
+            ("type_b", 0.6),
+            ("type_a", 0.6),
+        ])
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 10,
+                    "successful_syntheses": 10,
+                }
+            }
+        }
+
+        result = _apply_learning_adjustments(
+            actions,
+            {},
+            capability_ledger=capability_ledger,
+        )
+        assert [a["action_type"] for a in result] == ["type_a", "type_b"]

@@ -80,6 +80,7 @@ def test_run_autonomous_factory_cycle_runs_repair_path_and_writes_artifact(tmp_p
     assert artifact["inputs"] == {
         "portfolio_state": "portfolio_state.json",
         "ledger": "action_effectiveness_ledger.json",
+        "capability_ledger": None,
         "policy": "planner_policy.json",
         "top_k": 4,
     }
@@ -564,3 +565,199 @@ def test_run_autonomous_factory_cycle_passes_capability_from_ranked_action_windo
 
     written = _read_json(output)
     assert written == artifact
+
+
+def test_run_autonomous_factory_cycle_records_capability_ledger_input(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "high_risk",
+        "reasons": ["persistent collision risk"],
+    }
+    repair_result = {
+        "repair_attempted": True,
+        "repair_success": False,
+        "status": "repair_no_improvement",
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_mapping_repair_cycle", lambda **kwargs: repair_result)
+    monkeypatch.setattr(
+        _mod,
+        "run_governed_loop",
+        lambda _args: (_ for _ in ()).throw(AssertionError("governed path should not run")),
+    )
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_ledger="capability_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=4,
+        output=str(output),
+    )
+
+    assert artifact["inputs"] == {
+        "portfolio_state": "portfolio_state.json",
+        "ledger": "action_effectiveness_ledger.json",
+        "capability_ledger": "capability_effectiveness_ledger.json",
+        "policy": "planner_policy.json",
+        "top_k": 4,
+    }
+
+
+def test_run_autonomous_factory_cycle_updates_capability_ledger_output(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    capability_ledger_output = tmp_path / "capability_effectiveness_ledger.json"
+    output = tmp_path / "autonomous_factory_cycle.json"
+
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_ledger_output=str(capability_ledger_output),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    persisted = _read_json(capability_ledger_output)
+
+    assert artifact["capability_effectiveness_ledger"] == {
+        "capabilities": {
+            "snowflake_data_access": {
+                "artifact_kind": "data_connector",
+                "failed_syntheses": 0,
+                "last_synthesis_source": "planner_request",
+                "last_synthesis_status": "ok",
+                "successful_syntheses": 1,
+                "total_syntheses": 1,
+            }
+        }
+    }
+    assert persisted == artifact["capability_effectiveness_ledger"]
+
+
+def test_run_autonomous_factory_cycle_updates_existing_capability_ledger_output(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    capability_ledger = tmp_path / "existing_capability_effectiveness_ledger.json"
+    capability_ledger.write_text(
+        json.dumps(
+            {
+                "capabilities": {
+                    "snowflake_data_access": {
+                        "artifact_kind": "data_connector",
+                        "failed_syntheses": 1,
+                        "last_synthesis_source": "portfolio_gap",
+                        "last_synthesis_status": "error",
+                        "successful_syntheses": 2,
+                        "total_syntheses": 3,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    persisted = _read_json(capability_ledger)
+    assert persisted["capabilities"]["snowflake_data_access"]["failed_syntheses"] == 1
+    assert persisted["capabilities"]["snowflake_data_access"]["successful_syntheses"] == 3
+    assert persisted["capabilities"]["snowflake_data_access"]["total_syntheses"] == 4
+    assert persisted["capabilities"]["snowflake_data_access"]["last_synthesis_status"] == "ok"
+    assert persisted["capabilities"]["snowflake_data_access"]["last_synthesis_source"] == "planner_request"

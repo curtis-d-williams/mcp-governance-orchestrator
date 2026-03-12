@@ -40,6 +40,7 @@ from planner_runtime import (
     compute_expected_success_signal,
     compute_planner_collision_risk,
     fetch_planner_actions,
+    load_capability_effectiveness_ledger,
     load_effectiveness_ledger,
     load_mapping_override,
     load_planner_policy,
@@ -63,9 +64,10 @@ build_evaluation = build_planner_evaluation
 
 def evaluate_planner_config(policy_path, top_k, portfolio_state_path, ledger_path,
                              mapping_override_path=None, output_path=None,
-                             exploration_offset=0):
+                             exploration_offset=0, capability_ledger_path=None):
     """Run collision-risk analysis and produce an operator evaluation."""
     ledger = load_effectiveness_ledger(ledger_path)
+    capability_ledger = load_capability_effectiveness_ledger(capability_ledger_path)
     signals = load_portfolio_signals(portfolio_state_path)
     policy = load_planner_policy(policy_path)
     mapping_override = load_mapping_override(mapping_override_path)
@@ -81,6 +83,7 @@ def evaluate_planner_config(policy_path, top_k, portfolio_state_path, ledger_pat
         active_mapping,
         exploration_offset=exploration_offset,
         mapping_override=mapping_override,
+        capability_ledger=capability_ledger,
     )
 
     expected_success_rate, historical_runs = compute_expected_success_signal(
@@ -140,6 +143,10 @@ def main(argv=None):
         help="Path to JSON file overriding the action→task mapping (optional).",
     )
     parser.add_argument(
+        "--capability-ledger", default=None, metavar="FILE",
+        help="Path to capability_effectiveness_ledger.json (optional).",
+    )
+    parser.add_argument(
         "--exploration-offset", type=int, default=0, metavar="INT",
         help="Start index into the action queue window (default: 0).",
     )
@@ -157,6 +164,7 @@ def main(argv=None):
         mapping_override_path=args.mapping_override,
         output_path=args.output,
         exploration_offset=args.exploration_offset,
+        capability_ledger_path=args.capability_ledger,
     )
 
 

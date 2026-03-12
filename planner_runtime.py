@@ -71,6 +71,12 @@ POLICY_WEIGHT_CLAMP = 5.0
 
 POLICY_TOTAL_ABS_CAP = 20.0
 
+# ---------------------------------------------------------------------------
+# v0.34: Capability synthesis reliability ranking constants
+# ---------------------------------------------------------------------------
+
+CAPABILITY_RELIABILITY_WEIGHT = 0.10
+
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -194,6 +200,42 @@ def load_portfolio_signals(portfolio_state_path):
                 totals[name] = totals.get(name, 0.0) + float(value)
                 counts[name] = counts.get(name, 0) + 1
         return {name: totals[name] / counts[name] for name in totals}
+    except Exception:
+        return {}
+
+
+def load_capability_effectiveness_ledger(path):
+    """Load capability effectiveness ledger JSON.
+
+    Expected schema:
+        {
+            "capabilities": {
+                "<capability_name>": {
+                    "total_syntheses": int,
+                    "successful_syntheses": int
+                }
+            }
+        }
+
+    Returns {} when:
+    - path is None
+    - file does not exist
+    - file is unreadable or malformed
+    - schema does not contain a valid "capabilities" object
+
+    Never raises.
+    """
+    if path is None:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        capabilities = data.get("capabilities")
+        if isinstance(capabilities, dict):
+            return {"capabilities": capabilities}
+        return {}
     except Exception:
         return {}
 
@@ -511,10 +553,67 @@ def _compute_task_reliability(task_name, ledger):
     return success / total
 
 
-def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None):
+
+def _compute_capability_reliability_adjustment(action, capability_ledger):
+    """Return a bounded ranking adjustment for capability synthesis actions.
+
+    Only applies to planner actions that request capability synthesis and carry
+    args.capability metadata.
+
+    Adjustment formula:
+        success_rate == 1.0  -> +0.05
+        success_rate == 0.5  ->  0.00
+        success_rate == 0.0  -> -0.05
+
+    Returns 0.0 when:
+        - capability_ledger is empty
+        - action is not a capability synthesis action
+        - capability metadata missing
+        - no historical data exists
+    """
+    if not capability_ledger:
+        return 0.0
+
+    action_type = action.get("action_type", "")
+    if action_type not in ("build_capability_artifact", "build_mcp_server"):
+        return 0.0
+
+    args = action.get("args", {})
+    if not isinstance(args, dict):
+        return 0.0
+
+    capability = args.get("capability")
+    if not isinstance(capability, str) or not capability:
+        return 0.0
+
+    caps = capability_ledger.get("capabilities")
+    if not isinstance(caps, dict):
+        return 0.0
+
+    row = caps.get(capability)
+    if not isinstance(row, dict):
+        return 0.0
+
+    total = row.get("total_syntheses", 0)
+    success = row.get("successful_syntheses", 0)
+
+    try:
+        total = float(total)
+        success = float(success)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if total <= 0:
+        return 0.0
+
+    success_rate = max(0.0, min(1.0, success / total))
+    return (success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT
+
+def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None,
+                                capability_ledger=None):
     """Re-sort actions by base_priority + learning_adjustment (deterministic).
 
-    Returns the original list unchanged when ledger is empty.
+    Returns the original list unchanged when both ledgers are empty.
     Tiebreaker order: action_type asc, action_id asc, repo_id asc.
 
     current_signals: optional {signal_name: float} portfolio signal averages
@@ -524,8 +623,12 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=No
     policy: optional {signal_name: weight} governance policy weights (v0.30).
         When absent or empty, policy_adjustment is zero and v0.29 behavior
         is preserved.
+
+    capability_ledger: optional {"capabilities": {...}} aggregated capability
+        synthesis history. When present, capability synthesis actions receive a
+        small bounded boost/penalty based on historical synthesis success.
     """
-    if not ledger:
+    if not ledger and not capability_ledger:
         return actions
 
     _signals = current_signals or {}
@@ -539,11 +642,13 @@ def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=No
             task_name = a.get("task_name")
 
         reliability = _compute_task_reliability(task_name, ledger)
-
         reliability_boost = reliability if reliability is not None else 0.0
+        capability_boost = _compute_capability_reliability_adjustment(
+            a, capability_ledger
+        )
 
         return (
-            -(bd.final_priority + reliability_boost * 0.05),
+            -(bd.final_priority + reliability_boost * 0.05 + capability_boost),
             bd.action_type,
             a.get("action_id", ""),
             a.get("repo_id", ""),
@@ -755,10 +860,10 @@ def fetch_planner_actions(portfolio_state_path, ledger_path=None):
 
 def compute_planner_collision_risk(actions, top_k, ledger, signals, policy,
                                    active_mapping, exploration_offset=0,
-                                   mapping_override=None):
+                                   mapping_override=None, capability_ledger=None):
     from scripts.claude_dynamic_planner_loop import resolve_task_for_action
 
-    ranked = _apply_learning_adjustments(actions, ledger, signals, policy)
+    ranked = _apply_learning_adjustments(actions, ledger, signals, policy, capability_ledger)
 
     start = max(0, min(exploration_offset, max(0, len(ranked) - top_k)))
     end = start + top_k
@@ -821,7 +926,8 @@ def build_planner_risk_summary(policy_path, top_k, metrics):
 
 
 def analyze_planner_configuration(policy_path, top_k, portfolio_state_path, ledger_path,
-                                  mapping_override=None, exploration_offset=0):
+                                  mapping_override=None, exploration_offset=0,
+                                  capability_ledger_path=None):
     """Return raw collision-risk summary for a planner configuration."""
     from scripts.claude_dynamic_planner_loop import (
         ACTION_TO_TASK,
@@ -829,6 +935,7 @@ def analyze_planner_configuration(policy_path, top_k, portfolio_state_path, ledg
     )
 
     ledger = load_effectiveness_ledger(ledger_path)
+    capability_ledger = load_capability_effectiveness_ledger(capability_ledger_path)
     signals = load_portfolio_signals(portfolio_state_path)
     policy = load_planner_policy(policy_path)
     active_mapping = resolve_action_to_task_mapping(ACTION_TO_TASK, mapping_override)
@@ -843,6 +950,7 @@ def analyze_planner_configuration(policy_path, top_k, portfolio_state_path, ledg
         active_mapping,
         exploration_offset=exploration_offset,
         mapping_override=mapping_override,
+        capability_ledger=capability_ledger,
     )
     return build_planner_risk_summary(policy_path, top_k, metrics)
 
