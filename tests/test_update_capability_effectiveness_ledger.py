@@ -51,10 +51,12 @@ def test_creates_new_capability_entry(tmp_path):
             "snowflake_data_access": {
                 "artifact_kind": "data_connector",
                 "failed_syntheses": 0,
+                "successful_evolved_syntheses": 0,
                 "successful_syntheses": 1,
                 "total_syntheses": 1,
                 "last_synthesis_source": "planner_request",
                 "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
             }
         }
     }

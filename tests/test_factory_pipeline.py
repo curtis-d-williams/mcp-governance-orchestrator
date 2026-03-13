@@ -230,6 +230,8 @@ def test_run_factory_cycle_records_capability_effectiveness_for_planner_requeste
                 "failed_syntheses": 0,
                 "last_synthesis_source": "planner_request",
                 "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
+                "successful_evolved_syntheses": 0,
                 "successful_syntheses": 1,
                 "total_syntheses": 1,
             }
@@ -309,6 +311,8 @@ def test_run_factory_cycle_records_capability_effectiveness_for_gap_synthesis(tm
                 "failed_syntheses": 0,
                 "last_synthesis_source": "portfolio_gap",
                 "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
+                "successful_evolved_syntheses": 0,
                 "successful_syntheses": 1,
                 "total_syntheses": 1,
             }

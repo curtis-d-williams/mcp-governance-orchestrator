@@ -244,6 +244,7 @@ def test_run_autonomous_factory_cycle_invokes_generic_capability_builder(tmp_pat
         "status": "ok",
         "source": "planner_request",
         "generated_repo": "generated_data_connector_snowflake",
+        "used_evolution": False,
     }
 
     written = _read_json(output)
@@ -325,6 +326,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
         "status": "ok",
         "source": "planner_request",
         "generated_repo": "generated_mcp_github",
+        "used_evolution": False,
     }
 
     written = _read_json(output)
@@ -435,6 +437,8 @@ def test_run_autonomous_factory_cycle_records_failed_capability_effectiveness_on
                 "failed_syntheses": 1,
                 "last_synthesis_source": "planner_request",
                 "last_synthesis_status": "error",
+                "last_synthesis_used_evolution": False,
+                "successful_evolved_syntheses": 0,
                 "successful_syntheses": 0,
                 "total_syntheses": 1,
             }
@@ -691,6 +695,8 @@ def test_run_autonomous_factory_cycle_updates_capability_ledger_output(tmp_path,
                 "failed_syntheses": 0,
                 "last_synthesis_source": "planner_request",
                 "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
+                "successful_evolved_syntheses": 0,
                 "successful_syntheses": 1,
                 "total_syntheses": 1,
             }

@@ -286,6 +286,22 @@ def run_factory_cycle(
                     if isinstance(result, dict):
                         result["capability_evolution_execution"] = evolution_execution
 
+                    builder_overrides = evolution_execution.get("builder_overrides", {})
+                    used_evolution = bool(builder_overrides)
+
+                    if builder_overrides:
+                        evolved_builder_result = build_capability_artifact(
+                            artifact_kind=build_request["artifact_kind"],
+                            capability=build_request["capability"],
+                            **builder_overrides,
+                        )
+
+                        if isinstance(result, dict):
+                            result["evolved_builder"] = evolved_builder_result
+                            result["builder"] = evolved_builder_result
+
+                        builder_result = evolved_builder_result
+
 
                 except Exception:
                     # Comparison is a learning signal only — never break the cycle
@@ -296,6 +312,7 @@ def run_factory_cycle(
                 "artifact_kind": build_request["artifact_kind"],
                 "status": "ok",
                 "source": synthesis_source,
+                "used_evolution": locals().get("used_evolution", False),
             }
             if isinstance(builder_result, dict):
                 synthesis_event["status"] = builder_result.get("status", "ok")

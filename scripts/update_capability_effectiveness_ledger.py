@@ -47,12 +47,14 @@ def update_capability_effectiveness_ledger(ledger_path, cycle_artifact_path, out
         incoming_caps,
         counter_fields=[
             "failed_syntheses",
+            "successful_evolved_syntheses",
             "successful_syntheses",
             "total_syntheses",
         ],
         last_fields=[
             "last_synthesis_source",
             "last_synthesis_status",
+            "last_synthesis_used_evolution",
         ],
     )
 
@@ -61,14 +63,21 @@ def update_capability_effectiveness_ledger(ledger_path, cycle_artifact_path, out
             "capability": capability,
             "artifact_kind": capabilities[capability].get("artifact_kind"),
             "failed_syntheses": capabilities[capability]["failed_syntheses"],
+            "successful_evolved_syntheses": capabilities[capability]["successful_evolved_syntheses"],
             "successful_syntheses": capabilities[capability]["successful_syntheses"],
             "total_syntheses": capabilities[capability]["total_syntheses"],
             "last_synthesis_source": capabilities[capability].get("last_synthesis_source"),
             "last_synthesis_status": capabilities[capability].get("last_synthesis_status"),
+            "last_synthesis_used_evolution": capabilities[capability].get("last_synthesis_used_evolution"),
         }
         for capability, incoming in sorted(incoming_caps.items())
         if isinstance(incoming, dict)
     ]
+
+    for entry in capabilities.values():
+        if isinstance(entry, dict):
+            entry.setdefault("last_synthesis_used_evolution", False)
+            entry.setdefault("successful_evolved_syntheses", 0)
 
     result_ledger = {
         "capabilities": capabilities
