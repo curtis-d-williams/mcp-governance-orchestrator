@@ -83,6 +83,7 @@ POLICY_TOTAL_ABS_CAP = 20.0
 CAPABILITY_RELIABILITY_WEIGHT = 0.10
 CAPABILITY_CONFIDENCE_THRESHOLD = 5.0
 CAPABILITY_EXPLORATION_WEIGHT = 0.005
+CAPABILITY_EVOLUTION_PENALTY_WEIGHT = 0.02
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -802,13 +803,33 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
     if history is None:
         return 0.0
 
-    _, total, success = history
+    capability, total, success = history
     if total <= 0:
         return 0.0
 
+    caps = capability_ledger.get("capabilities", {})
+    row = caps.get(capability, {}) if isinstance(caps, dict) else {}
+    evolved_success = row.get("successful_evolved_syntheses", 0)
+
+    try:
+        evolved_success = float(evolved_success)
+    except (TypeError, ValueError):
+        evolved_success = 0.0
+
+    evolved_success = max(0.0, min(evolved_success, success))
+
     success_rate = max(0.0, min(1.0, (success + 1.0) / (total + 2.0)))
     confidence = min(1.0, total / CAPABILITY_CONFIDENCE_THRESHOLD)
-    return confidence * ((success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT)
+    reliability_adjustment = confidence * (
+        (success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT
+    )
+
+    if success <= 0:
+        return reliability_adjustment
+
+    evolution_ratio = evolved_success / success
+    evolution_penalty = confidence * evolution_ratio * CAPABILITY_EVOLUTION_PENALTY_WEIGHT
+    return reliability_adjustment - evolution_penalty
 
 def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None,
                                 capability_ledger=None):

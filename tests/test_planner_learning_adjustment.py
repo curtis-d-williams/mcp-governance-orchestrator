@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from planner_runtime import (  # noqa: E402
+    CAPABILITY_EVOLUTION_PENALTY_WEIGHT,
     CAPABILITY_EXPLORATION_WEIGHT,
     EFFECTIVENESS_CLAMP,
     EFFECTIVENESS_WEIGHT,
@@ -504,6 +505,41 @@ class TestCapabilityReliabilityAdjustment:
 
         assert adj == pytest.approx(expected)
 
+    def test_evolved_successes_reduce_reliability_adjustment(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 5,
+                    "successful_evolved_syntheses": 5,
+                }
+            }
+        }
+
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+
+        success_rate = (6 / 7)
+        reliability = (success_rate - 0.5) * 0.10
+        expected = reliability - CAPABILITY_EVOLUTION_PENALTY_WEIGHT
+
+        assert adj == pytest.approx(expected)
+
+    def test_missing_evolved_success_history_preserves_existing_behavior(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 5, "successful_syntheses": 5}
+            }
+        }
+
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+
+        success_rate = (6 / 7)
+        expected = (success_rate - 0.5) * 0.10
+
+        assert adj == pytest.approx(expected)
+
     def test_confidence_cap_applied(self):
         action = self._action("cap_a")
         ledger = {
@@ -514,8 +550,6 @@ class TestCapabilityReliabilityAdjustment:
 
         adj = _compute_capability_reliability_adjustment(action, ledger)
 
-        # success_rate ≈ (101/102)
-        # confidence capped at 1.0
         success_rate = (101 / 102)
         expected = (success_rate - 0.5) * 0.10
 
