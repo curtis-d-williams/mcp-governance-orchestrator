@@ -80,5 +80,7 @@ def test_list_tools():
     return {
         "status": "ok",
         "generated_repo": str(root),
+        "artifact_kind": "mcp_server",
+        "capability": capability,
         "tools": tools,
     }

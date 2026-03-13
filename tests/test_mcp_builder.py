@@ -24,6 +24,8 @@ def test_build_mcp_server_generates_expected_repo_shape():
     assert result == {
         "status": "ok",
         "generated_repo": str(generated),
+        "artifact_kind": "mcp_server",
+        "capability": "github_repository_management",
         "tools": [
             "list_repositories",
             "get_repository",
