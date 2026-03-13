@@ -418,3 +418,121 @@ def test_run_factory_cycle_records_reference_comparison_gap_for_mcp_build(tmp_pa
     comparison = artifact["cycle_result"].get("reference_mcp_comparison")
     assert comparison is not None
     assert comparison["capability_gaps"][0]["capability"] == "github_repository_management"
+
+
+def test_run_factory_cycle_records_capability_evolution_execution_for_mcp_build(
+    tmp_path, monkeypatch
+):
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_mcp_server_github",
+            "tools": ["list_repositories"],
+        }
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        return {
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {
+                "coverage_ratio": 0.33,
+                "missing_tools": ["create_issue", "get_repository"],
+            },
+            "capability_surface": {
+                "coverage_ratio": 0.5,
+                "missing_enabled": ["supports_dynamic_toolsets"],
+            },
+            "testability": {"coverage_ratio": 0.25},
+        }
+
+    def fake_derive_capability_gaps_from_comparison(comparison):
+        return {
+            "capability_gaps": [
+                {
+                    "capability": "github_repository_management",
+                    "gap_source": "reference_mcp_comparison",
+                    "severity": 0.7,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+    monkeypatch.setattr(
+        _mod,
+        "derive_capability_gaps_from_comparison",
+        fake_derive_capability_gaps_from_comparison,
+        raising=False,
+    )
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert artifact["cycle_result"]["capability_evolution_execution"] == {
+        "builder_overrides": {
+            "tools": [
+                "list_repositories",
+                "create_issue",
+                "get_repository",
+            ]
+        },
+        "executable_actions": [
+            {"type": "add_tool", "tool": "create_issue"},
+            {"type": "add_tool", "tool": "get_repository"},
+        ],
+        "deferred_actions": [
+            {"type": "enable_feature", "feature": "supports_dynamic_toolsets"},
+            {"type": "increase_test_coverage"},
+        ],
+        "executed_action_count": 2,
+        "deferred_action_count": 2,
+    }
+
+    persisted = json.loads(output.read_text(encoding="utf-8"))
+    assert (
+        persisted["cycle_result"]["capability_evolution_execution"]
+        == artifact["cycle_result"]["capability_evolution_execution"]
+    )

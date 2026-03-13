@@ -23,6 +23,9 @@ from scripts.update_capability_gaps_from_mcp_comparison import (
 from src.mcp_governance_orchestrator.capability_evolution_planner import (
     plan_capability_evolution,
 )
+from src.mcp_governance_orchestrator.capability_evolution_executor import (
+    build_evolution_execution,
+)
 
 
 
@@ -273,6 +276,15 @@ def run_factory_cycle(
 
                     if isinstance(result, dict):
                         result["capability_evolution_plan"] = evolution_plan
+
+                    evolution_execution = build_evolution_execution(
+                        evolution_plan,
+                        artifact_kind=builder_result.get("artifact_kind"),
+                        current_tools=builder_result.get("tools", []),
+                    )
+
+                    if isinstance(result, dict):
+                        result["capability_evolution_execution"] = evolution_execution
 
 
                 except Exception:
