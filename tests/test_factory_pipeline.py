@@ -421,7 +421,11 @@ def test_run_factory_cycle_records_reference_comparison_gap_for_mcp_build(tmp_pa
 
     comparison = artifact["cycle_result"].get("reference_mcp_comparison")
     assert comparison is not None
-    assert comparison["capability_gaps"][0]["capability"] == "github_repository_management"
+    assert "tool_surface" in comparison
+
+    gaps = artifact["cycle_result"].get("reference_mcp_comparison_gaps")
+    assert gaps is not None
+    assert gaps["capability_gaps"][0]["capability"] == "github_repository_management"
 
 
 def test_run_factory_cycle_records_capability_evolution_execution_for_mcp_build(

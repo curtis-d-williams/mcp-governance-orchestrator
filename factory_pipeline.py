@@ -271,7 +271,8 @@ def run_factory_cycle(
                     )
 
                     if isinstance(result, dict):
-                        result["reference_mcp_comparison"] = gap_artifact
+                        result["reference_mcp_comparison"] = comparison
+                        result["reference_mcp_comparison_gaps"] = gap_artifact
                     evolution_plan = plan_capability_evolution(comparison)
 
                     if isinstance(result, dict):

@@ -8,12 +8,19 @@ capability evolution actions.
 
 from typing import Dict, Any, List
 
-
 def plan_capability_evolution(comparison: Dict[str, Any]) -> Dict[str, Any]:
     actions: List[Dict[str, Any]] = []
 
     tool_surface = comparison.get("tool_surface", {})
-    missing_tools = tool_surface.get("missing_tools", [])
+    missing_tools = sorted(tool_surface.get("missing_tools", []))
+
+    capability_surface = comparison.get("capability_surface", {})
+    missing_enabled = sorted(capability_surface.get("missing_enabled", []))
+
+    testability = comparison.get("testability", {})
+    coverage = testability.get("coverage_ratio")
+
+    # deterministic ordering
 
     for tool in missing_tools:
         actions.append(
@@ -23,9 +30,6 @@ def plan_capability_evolution(comparison: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-    capability_surface = comparison.get("capability_surface", {})
-    missing_enabled = capability_surface.get("missing_enabled", [])
-
     for feature in missing_enabled:
         actions.append(
             {
@@ -33,9 +37,6 @@ def plan_capability_evolution(comparison: Dict[str, Any]) -> Dict[str, Any]:
                 "feature": feature,
             }
         )
-
-    testability = comparison.get("testability", {})
-    coverage = testability.get("coverage_ratio")
 
     if coverage is not None and coverage < 0.8:
         actions.append(
