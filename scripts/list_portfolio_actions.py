@@ -148,6 +148,18 @@ def _collect_actions(
             entry["repo_id"] = rid
             collected.append(entry)
 
+    # ------------------------------------------------------------------
+    # Stage 2: portfolio capability-aware planning
+    # ------------------------------------------------------------------
+    # Detect portfolio-level capability gaps and synthesize planner actions.
+    try:
+        gap_records = analyze_portfolio_capability_gaps(state)
+        synthesized = build_capability_gap_actions(gap_records)
+        collected.extend(synthesized)
+    except Exception:
+        # Fail closed — planner should still function with repo actions only.
+        pass
+
     # Deterministic sort: priority desc, action_type, action_id, repo_id.
     collected.sort(
         key=lambda a: (
