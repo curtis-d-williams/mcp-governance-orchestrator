@@ -20,6 +20,11 @@ from scripts.update_capability_gaps_from_mcp_comparison import (
     derive_capability_gaps_from_comparison,
 )
 
+from src.mcp_governance_orchestrator.capability_evolution_planner import (
+    plan_capability_evolution,
+)
+
+
 
 def decide_action(evaluation):
     if not evaluation:
@@ -264,6 +269,11 @@ def run_factory_cycle(
 
                     if isinstance(result, dict):
                         result["reference_mcp_comparison"] = gap_artifact
+                    evolution_plan = plan_capability_evolution(comparison)
+
+                    if isinstance(result, dict):
+                        result["capability_evolution_plan"] = evolution_plan
+
 
                 except Exception:
                     # Comparison is a learning signal only — never break the cycle
