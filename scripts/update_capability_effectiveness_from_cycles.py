@@ -34,6 +34,42 @@ def _aggregate(cycles):
         if not isinstance(cycle, dict):
             continue
 
+        cycle_result = cycle.get("cycle_result") or {}
+        synthesis_event = cycle_result.get("synthesis_event") or {}
+
+        if isinstance(synthesis_event, dict) and synthesis_event:
+            capability = synthesis_event.get("capability")
+            artifact_kind = synthesis_event.get("artifact_kind")
+            status = synthesis_event.get("status")
+            source = synthesis_event.get("source")
+
+            if capability and artifact_kind and status and source:
+                cycle_capabilities = {
+                    capability: {
+                        "artifact_kind": artifact_kind,
+                        "failed_syntheses": 0 if status == "ok" else 1,
+                        "successful_syntheses": 1 if status == "ok" else 0,
+                        "total_syntheses": 1,
+                        "last_synthesis_source": source,
+                        "last_synthesis_status": status,
+                    }
+                }
+
+                capabilities = merge_counter_ledger(
+                    capabilities,
+                    cycle_capabilities,
+                    counter_fields=[
+                        "failed_syntheses",
+                        "successful_syntheses",
+                        "total_syntheses",
+                    ],
+                    last_fields=[
+                        "last_synthesis_source",
+                        "last_synthesis_status",
+                    ],
+                )
+                continue
+
         ledger = cycle.get("capability_effectiveness_ledger") or {}
         cycle_capabilities = ledger.get("capabilities") or {}
         if not isinstance(cycle_capabilities, dict):

@@ -36,6 +36,26 @@ def _cycle(capabilities=None):
     }
 
 
+def _event_cycle(
+    capability="snowflake_data_access",
+    artifact_kind="data_connector",
+    status="ok",
+    source="planner_request",
+    generated_repo="generated_data_connector_snowflake",
+):
+    return {
+        "cycle_result": {
+            "synthesis_event": {
+                "capability": capability,
+                "artifact_kind": artifact_kind,
+                "status": status,
+                "source": source,
+                "generated_repo": generated_repo,
+            }
+        }
+    }
+
+
 def _entry(
     artifact_kind="data_connector",
     total_syntheses=1,
@@ -136,6 +156,64 @@ class TestAggregateLogic:
         assert aggregated["snowflake_data_access"]["successful_syntheses"] == 0
         assert aggregated["snowflake_data_access"]["failed_syntheses"] == 0
         assert aggregated["snowflake_data_access"]["total_syntheses"] == 0
+
+
+    def test_prefers_synthesis_event_when_present(self):
+        aggregated = _aggregate([
+            {
+                "cycle_result": {
+                    "synthesis_event": {
+                        "capability": "snowflake_data_access",
+                        "artifact_kind": "data_connector",
+                        "status": "ok",
+                        "source": "planner_request",
+                        "generated_repo": "generated_data_connector_snowflake",
+                    }
+                },
+                "capability_effectiveness_ledger": {
+                    "capabilities": {
+                        "snowflake_data_access": _entry(
+                            successful_syntheses=99,
+                            total_syntheses=99,
+                        )
+                    }
+                },
+            }
+        ])
+        assert aggregated["snowflake_data_access"]["successful_syntheses"] == 1
+        assert aggregated["snowflake_data_access"]["failed_syntheses"] == 0
+        assert aggregated["snowflake_data_access"]["total_syntheses"] == 1
+        assert aggregated["snowflake_data_access"]["last_synthesis_source"] == "planner_request"
+        assert aggregated["snowflake_data_access"]["last_synthesis_status"] == "ok"
+
+    def test_aggregates_ok_synthesis_event(self):
+        aggregated = _aggregate([
+            _event_cycle(),
+        ])
+        assert aggregated["snowflake_data_access"] == {
+            "artifact_kind": "data_connector",
+            "failed_syntheses": 0,
+            "last_synthesis_source": "planner_request",
+            "last_synthesis_status": "ok",
+            "successful_syntheses": 1,
+            "total_syntheses": 1,
+        }
+
+    def test_aggregates_error_synthesis_event(self):
+        aggregated = _aggregate([
+            _event_cycle(status="error"),
+        ])
+        assert aggregated["snowflake_data_access"]["successful_syntheses"] == 0
+        assert aggregated["snowflake_data_access"]["failed_syntheses"] == 1
+        assert aggregated["snowflake_data_access"]["total_syntheses"] == 1
+        assert aggregated["snowflake_data_access"]["last_synthesis_status"] == "error"
+
+    def test_falls_back_to_legacy_capability_ledger_when_event_missing(self):
+        aggregated = _aggregate([
+            _cycle({"snowflake_data_access": _entry()}),
+        ])
+        assert aggregated["snowflake_data_access"]["successful_syntheses"] == 1
+        assert aggregated["snowflake_data_access"]["total_syntheses"] == 1
 
 
 class TestLedgerCreation:
