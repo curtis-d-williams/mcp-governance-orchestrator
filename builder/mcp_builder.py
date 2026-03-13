@@ -11,6 +11,7 @@ from pathlib import Path
 from builder.artifact_registry import register_builder
 from builder.spec_builder_support import require_capability_spec, default_generated_repo_name
 from builder.template_renderer import read_template, write_file, render_template
+from builder.result_contract import builder_result
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -77,10 +78,9 @@ def test_list_tools():
 """,
     )
 
-    return {
-        "status": "ok",
-        "generated_repo": str(root),
-        "artifact_kind": "mcp_server",
-        "capability": capability,
-        "tools": tools,
-    }
+    return builder_result(
+        generated_repo=str(root),
+        artifact_kind="mcp_server",
+        capability=capability,
+        tools=tools,
+    )

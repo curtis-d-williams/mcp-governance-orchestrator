@@ -5,6 +5,7 @@ from pathlib import Path
 
 from builder.spec_builder_support import require_capability_spec, default_generated_repo_name
 from builder.template_renderer import read_template, render_template, write_file
+from builder.result_contract import builder_result
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -50,9 +51,8 @@ def build_templated_artifact_family(
     write_file(root / source_filename_template.format(module_name=module_name), source_code)
     write_file(root / smoke_test_output_name, smoke_test)
 
-    return {
-        "status": "ok",
-        "generated_repo": str(root),
-        "artifact_kind": artifact_kind,
-        "capability": capability,
-    }
+    return builder_result(
+        generated_repo=str(root),
+        artifact_kind=artifact_kind,
+        capability=capability,
+    )
