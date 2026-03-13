@@ -15,6 +15,11 @@ from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
     record_normalized_synthesis_event,
 )
 
+from scripts.compare_mcp_servers import compare_mcp_servers
+from scripts.update_capability_gaps_from_mcp_comparison import (
+    update_capability_gaps_from_mcp_comparison,
+)
+
 
 def decide_action(evaluation):
     if not evaluation:
@@ -232,6 +237,37 @@ def run_factory_cycle(
 
             if isinstance(result, dict):
                 result["builder"] = builder_result
+
+            # ------------------------------------------------------------------
+            # Stage 5: MCP reference comparison learning
+            # ------------------------------------------------------------------
+            if (
+                isinstance(builder_result, dict)
+                and builder_result.get("status") == "ok"
+                and builder_result.get("artifact_kind") == "mcp_server"
+            ):
+                try:
+                    generated_repo = builder_result.get("generated_repo")
+                    capability = builder_result.get("capability")
+
+                    # Temporary deterministic reference repo name
+                    reference_repo = f"reference_mcp_{capability}"
+
+                    comparison = compare_mcp_servers(
+                        generated_repo,
+                        reference_repo,
+                    )
+
+                    gap_artifact = update_capability_gaps_from_mcp_comparison(
+                        comparison,
+                    )
+
+                    if isinstance(result, dict):
+                        result["reference_mcp_comparison"] = gap_artifact
+
+                except Exception:
+                    # Comparison is a learning signal only — never break the cycle
+                    pass
 
             synthesis_event = {
                 "capability": build_request["capability"],
