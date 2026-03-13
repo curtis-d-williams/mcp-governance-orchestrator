@@ -29,6 +29,7 @@ from planner_runtime import (  # noqa: E402
     _compute_capability_exploration_adjustment,
     _compute_capability_reliability_adjustment,
     _compute_priority_breakdown,
+    _extract_capability_history,
     compute_learning_adjustment,
     load_effectiveness_ledger,
 )
@@ -565,3 +566,38 @@ class TestCapabilityExplorationAdjustment:
         }
         adj = _compute_capability_exploration_adjustment(action, ledger)
         assert adj == pytest.approx(0.0)
+
+
+class TestExtractCapabilityHistory:
+    def _action(self, capability="cap_a", action_type="build_capability_artifact"):
+        return {
+            "action_type": action_type,
+            "priority": 0.8,
+            "action_id": "aid-cap",
+            "repo_id": "repo-cap",
+            "args": {"capability": capability},
+        }
+
+    def test_returns_none_for_non_capability_action(self):
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 1, "successful_syntheses": 1}
+            }
+        }
+        assert _extract_capability_history(self._action(action_type="analyze_repo_insights"), ledger) is None
+
+    def test_returns_parsed_non_negative_values(self):
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": "3", "successful_syntheses": "2"}
+            }
+        }
+        assert _extract_capability_history(self._action(), ledger) == ("cap_a", 3.0, 2.0)
+
+    def test_negative_values_are_clamped_to_zero(self):
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": -2, "successful_syntheses": -1}
+            }
+        }
+        assert _extract_capability_history(self._action(), ledger) == ("cap_a", 0.0, 0.0)

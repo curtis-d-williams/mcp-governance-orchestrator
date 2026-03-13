@@ -577,6 +577,55 @@ def _compute_task_reliability(task_name, ledger):
 
 
 
+def _extract_capability_history(action, capability_ledger):
+    """Return parsed capability history tuple or None.
+
+    Returns:
+        (capability_name, total_syntheses, successful_syntheses)
+        with numeric values coerced to non-negative floats.
+
+    Returns None when:
+        - capability_ledger is empty or malformed
+        - action is not a capability synthesis action
+        - args.capability is missing/invalid
+        - capability row is missing or malformed
+        - numeric fields are invalid
+    """
+    if not capability_ledger:
+        return None
+
+    action_type = action.get("action_type", "")
+    if action_type not in ("build_capability_artifact", "build_mcp_server"):
+        return None
+
+    args = action.get("args", {})
+    if not isinstance(args, dict):
+        return None
+
+    capability = args.get("capability")
+    if not isinstance(capability, str) or not capability:
+        return None
+
+    caps = capability_ledger.get("capabilities")
+    if not isinstance(caps, dict):
+        return None
+
+    row = caps.get(capability)
+    if not isinstance(row, dict):
+        return None
+
+    total = row.get("total_syntheses", 0)
+    success = row.get("successful_syntheses", 0)
+
+    try:
+        total = float(total)
+        success = float(success)
+    except (TypeError, ValueError):
+        return None
+
+    return capability, max(0.0, total), max(0.0, success)
+
+
 def _compute_capability_exploration_adjustment(action, capability_ledger):
     """Return a bounded exploration bonus for capability synthesis actions.
 
@@ -595,36 +644,11 @@ def _compute_capability_exploration_adjustment(action, capability_ledger):
         - capability metadata missing
         - capability row is malformed
     """
-    if not capability_ledger:
+    history = _extract_capability_history(action, capability_ledger)
+    if history is None:
         return 0.0
 
-    action_type = action.get("action_type", "")
-    if action_type not in ("build_capability_artifact", "build_mcp_server"):
-        return 0.0
-
-    args = action.get("args", {})
-    if not isinstance(args, dict):
-        return 0.0
-
-    capability = args.get("capability")
-    if not isinstance(capability, str) or not capability:
-        return 0.0
-
-    caps = capability_ledger.get("capabilities")
-    if not isinstance(caps, dict):
-        return 0.0
-
-    row = caps.get(capability)
-    if not isinstance(row, dict):
-        return 0.0
-
-    total = row.get("total_syntheses", 0)
-    try:
-        total = float(total)
-    except (TypeError, ValueError):
-        return 0.0
-
-    total = max(0.0, total)
+    _, total, _ = history
     confidence = min(1.0, total / CAPABILITY_CONFIDENCE_THRESHOLD)
     return (1.0 - confidence) * CAPABILITY_EXPLORATION_WEIGHT
 
@@ -652,38 +676,11 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
         - capability metadata missing
         - no historical data exists
     """
-    if not capability_ledger:
+    history = _extract_capability_history(action, capability_ledger)
+    if history is None:
         return 0.0
 
-    action_type = action.get("action_type", "")
-    if action_type not in ("build_capability_artifact", "build_mcp_server"):
-        return 0.0
-
-    args = action.get("args", {})
-    if not isinstance(args, dict):
-        return 0.0
-
-    capability = args.get("capability")
-    if not isinstance(capability, str) or not capability:
-        return 0.0
-
-    caps = capability_ledger.get("capabilities")
-    if not isinstance(caps, dict):
-        return 0.0
-
-    row = caps.get(capability)
-    if not isinstance(row, dict):
-        return 0.0
-
-    total = row.get("total_syntheses", 0)
-    success = row.get("successful_syntheses", 0)
-
-    try:
-        total = float(total)
-        success = float(success)
-    except (TypeError, ValueError):
-        return 0.0
-
+    _, total, success = history
     if total <= 0:
         return 0.0
 
