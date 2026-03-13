@@ -17,7 +17,7 @@ from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
 
 from scripts.compare_mcp_servers import compare_mcp_servers
 from scripts.update_capability_gaps_from_mcp_comparison import (
-    update_capability_gaps_from_mcp_comparison,
+    derive_capability_gaps_from_comparison,
 )
 
 
@@ -258,7 +258,7 @@ def run_factory_cycle(
                         reference_repo,
                     )
 
-                    gap_artifact = update_capability_gaps_from_mcp_comparison(
+                    gap_artifact = derive_capability_gaps_from_comparison(
                         comparison,
                     )
 
