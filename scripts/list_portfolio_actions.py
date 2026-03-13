@@ -26,6 +26,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from mcp_governance_orchestrator.portfolio_capability_analyzer import analyze_portfolio_capability_gaps
+from mcp_governance_orchestrator.action_registry import build_capability_gap_actions
+
 
 def _fail(msg: str) -> int:
     sys.stderr.write(f"error: {msg}\n")

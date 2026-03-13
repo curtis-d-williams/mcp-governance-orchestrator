@@ -1196,3 +1196,30 @@ class TestCollectActionsWithPreconditions:
         repo = _make_repo_with_signals("r", [a_lo, a_hi], artifact_completeness=0.5)
         result = _collect_actions(_make_state([repo]), None)
         assert [a["action_id"] for a in result] == ["hi", "lo"]
+
+
+class TestPortfolioLevelCapabilityGapSynthesis:
+    def test_capability_gap_synthesizes_build_mcp_server(self):
+        state = _make_state([])
+        state["capability_gaps"] = ["github_repository_management"]
+
+        actions = _collect_actions(state, None)
+
+        synthesized = [
+            a for a in actions
+            if a["action_type"] == "build_mcp_server"
+        ]
+        assert len(synthesized) == 1
+        assert synthesized[0]["action_id"] == "build-github_repository_management"
+        assert synthesized[0]["task_binding"]["task_id"] == "build_mcp_server"
+        assert synthesized[0]["task_binding"]["args"] == {
+            "capability": "github_repository_management",
+        }
+
+    def test_unknown_capability_gap_fails_closed(self):
+        state = _make_state([])
+        state["capability_gaps"] = ["unknown_capability"]
+
+        actions = _collect_actions(state, None)
+
+        assert actions == []
