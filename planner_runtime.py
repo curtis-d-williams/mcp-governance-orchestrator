@@ -24,6 +24,7 @@ Public API (all importable from scripts.planner_scoring):
 
 import json
 import math
+from collections.abc import Callable
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -384,6 +385,31 @@ def compute_exploration_bonus(action_type, ledger):
     return max(-EXPLORATION_CLAMP, min(EXPLORATION_CLAMP, bonus))
 
 
+@dataclass(frozen=True)
+class ScoringContext:
+    """Internal immutable context for declarative planner scoring."""
+
+    action: dict
+    action_type: str
+    base_priority: float
+    ledger: dict
+    current_signals: dict
+    policy: dict
+    capability_ledger: dict | None
+    confidence_factor: float
+    row: dict
+    effect_deltas: dict
+
+
+@dataclass(frozen=True)
+class ScoringSignal:
+    """Declarative scoring signal definition."""
+
+    component_field: str
+    evaluator: Callable
+    confidence_scaled: bool
+
+
 # ---------------------------------------------------------------------------
 # v0.32: PriorityBreakdown — single deterministic structure for all scoring
 # ---------------------------------------------------------------------------
@@ -436,75 +462,151 @@ class PriorityBreakdown:
             "final_priority": round(self.final_priority, 6),
         }
 
-
-def _compute_priority_breakdown(
-    action, ledger, current_signals, policy, capability_ledger=None
-):
-    """Build a PriorityBreakdown for a single action. Read-only; never raises.
-
-    Single canonical path for all priority arithmetic — used by both the
-    ranking sort key and the explain artifact builder.
-
-    Args:
-        action:          action dict with at least 'action_type' and 'priority'.
-        ledger:          {action_type: row_dict} from load_effectiveness_ledger.
-        current_signals: {signal_name: float} portfolio signal averages.
-        policy:          {signal_name: weight} from load_planner_policy.
-
-    Returns:
-        PriorityBreakdown instance with all components populated.
-    """
-    at = action.get("action_type", "")
-    base = float(action.get("priority", 0.0))
-    confidence = compute_confidence_factor(at, ledger)
-
-    row = ledger.get(at, {})
-    effectiveness_score = float(row.get("effectiveness_score", 0.0))
-    effectiveness_adj = min(
+def _compute_effectiveness_adjustment_raw(context):
+    """Return raw effectiveness adjustment before confidence scaling."""
+    effectiveness_score = float(context.row.get("effectiveness_score", 0.0))
+    return min(
         max(0.0, effectiveness_score * EFFECTIVENESS_WEIGHT),
         EFFECTIVENESS_CLAMP,
     )
-    effect_deltas = row.get("effect_deltas", {})
+
+
+def _compute_signal_delta_adjustment_raw(context):
+    """Return raw signal-impact adjustment before confidence scaling."""
     signal_impact = (
-        sum(abs(v) for v in effect_deltas.values()) if effect_deltas else 0.0
+        sum(abs(v) for v in context.effect_deltas.values())
+        if context.effect_deltas
+        else 0.0
     )
-    signal_delta_adj = min(
+    return min(
         max(0.0, signal_impact * SIGNAL_IMPACT_WEIGHT),
         SIGNAL_IMPACT_CLAMP,
     )
 
-    targeting_adj = compute_weak_signal_targeting_adjustment(at, ledger, current_signals)
-    policy_adj = compute_policy_adjustment(at, ledger, policy)
-    exploration = compute_exploration_bonus(at, ledger)
 
-    capability_adj = _compute_capability_reliability_adjustment(
-        action, capability_ledger
-    )
-    capability_exploration_adj = _compute_capability_exploration_adjustment(
-        action, capability_ledger
+def _compute_weak_signal_targeting_adjustment_raw(context):
+    """Return raw weak-signal targeting adjustment before confidence scaling."""
+    return compute_weak_signal_targeting_adjustment(
+        context.action_type, context.ledger, context.current_signals
     )
 
-    exploration_total = exploration + capability_exploration_adj
 
-    final = (
-        base
-        + confidence * (effectiveness_adj + signal_delta_adj + targeting_adj + policy_adj)
-        + capability_adj
-        + exploration_total
+def _compute_policy_adjustment_raw(context):
+    """Return raw policy adjustment before confidence scaling."""
+    return compute_policy_adjustment(
+        context.action_type, context.ledger, context.policy
     )
 
-    return PriorityBreakdown(
-        action_type=at,
-        base_priority=base,
-        effectiveness_component=confidence * effectiveness_adj,
-        signal_delta_component=confidence * signal_delta_adj,
-        weak_signal_targeting_component=confidence * targeting_adj,
-        policy_component=confidence * policy_adj,
-        capability_reliability_component=capability_adj,
-        confidence_factor=confidence,
-        exploration_component=exploration_total,
-        final_priority=final,
+
+def _compute_capability_reliability_adjustment_raw(context):
+    """Return raw capability reliability adjustment."""
+    return _compute_capability_reliability_adjustment(
+        context.action, context.capability_ledger
     )
+
+
+def _compute_exploration_adjustment_raw(context):
+    """Return combined exploration adjustment.
+
+    Preserves existing artifact semantics by keeping action exploration and
+    capability exploration collapsed into a single exploration_component.
+    """
+    action_exploration = compute_exploration_bonus(
+        context.action_type, context.ledger
+    )
+    capability_exploration = _compute_capability_exploration_adjustment(
+        context.action, context.capability_ledger
+    )
+    return action_exploration + capability_exploration
+
+
+SCORING_SIGNALS = (
+    ScoringSignal(
+        "effectiveness_component",
+        _compute_effectiveness_adjustment_raw,
+        True,
+    ),
+    ScoringSignal(
+        "signal_delta_component",
+        _compute_signal_delta_adjustment_raw,
+        True,
+    ),
+    ScoringSignal(
+        "weak_signal_targeting_component",
+        _compute_weak_signal_targeting_adjustment_raw,
+        True,
+    ),
+    ScoringSignal("policy_component", _compute_policy_adjustment_raw, True),
+    ScoringSignal(
+        "capability_reliability_component",
+        _compute_capability_reliability_adjustment_raw,
+        False,
+    ),
+    ScoringSignal("exploration_component", _compute_exploration_adjustment_raw, False),
+)
+
+def _compute_priority_breakdown(
+    action, ledger, current_signals, policy, capability_ledger=None
+):
+        """Build a PriorityBreakdown for a single action. Read-only; never raises.
+
+        Single canonical path for all priority arithmetic — used by both the
+        ranking sort key and the explain artifact builder.
+
+        Args:
+            action:          action dict with at least 'action_type' and 'priority'.
+            ledger:          {action_type: row_dict} from load_effectiveness_ledger.
+            current_signals: {signal_name: float} portfolio signal averages.
+            policy:          {signal_name: weight} from load_planner_policy.
+
+        Returns:
+            PriorityBreakdown instance with all components populated.
+        """
+        at = action.get("action_type", "")
+        base = float(action.get("priority", 0.0))
+        row = ledger.get(at, {})
+        effect_deltas = row.get("effect_deltas", {})
+        confidence = compute_confidence_factor(at, ledger)
+
+        context = ScoringContext(
+            action=action,
+            action_type=at,
+            base_priority=base,
+            ledger=ledger,
+            current_signals=current_signals,
+            policy=policy,
+            capability_ledger=capability_ledger,
+            confidence_factor=confidence,
+            row=row,
+            effect_deltas=effect_deltas,
+        )
+
+        components = {}
+        for signal in SCORING_SIGNALS:
+            raw_value = signal.evaluator(context)
+            component_value = (
+                confidence * raw_value if signal.confidence_scaled else raw_value
+            )
+            components[signal.component_field] = component_value
+
+        final = base + sum(components.values())
+
+        return PriorityBreakdown(
+            action_type=at,
+            base_priority=base,
+            effectiveness_component=components["effectiveness_component"],
+            signal_delta_component=components["signal_delta_component"],
+            weak_signal_targeting_component=components[
+                "weak_signal_targeting_component"
+            ],
+            policy_component=components["policy_component"],
+            capability_reliability_component=components[
+                "capability_reliability_component"
+            ],
+            confidence_factor=confidence,
+            exploration_component=components["exploration_component"],
+            final_priority=final,
+        )
 
 
 def _build_priority_breakdown(
