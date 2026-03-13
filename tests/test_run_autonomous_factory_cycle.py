@@ -238,6 +238,13 @@ def test_run_autonomous_factory_cycle_invokes_generic_capability_builder(tmp_pat
         "capability": "snowflake_data_access",
         "generated_repo": "generated_data_connector_snowflake",
     }
+    assert artifact["cycle_result"]["synthesis_event"] == {
+        "capability": "snowflake_data_access",
+        "artifact_kind": "data_connector",
+        "status": "ok",
+        "source": "planner_request",
+        "generated_repo": "generated_data_connector_snowflake",
+    }
 
     written = _read_json(output)
     assert written == artifact
@@ -312,6 +319,13 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
             "create_issue",
         ],
     }
+    assert artifact["cycle_result"]["synthesis_event"] == {
+        "capability": "github_repository_management",
+        "artifact_kind": "mcp_server",
+        "status": "ok",
+        "source": "planner_request",
+        "generated_repo": "generated_mcp_github",
+    }
 
     written = _read_json(output)
     assert written == artifact
@@ -353,6 +367,12 @@ def test_run_autonomous_factory_cycle_records_builder_error(tmp_path, monkeypatc
     )
 
     assert artifact["cycle_result"]["builder_error"] == "builder failed deterministically"
+    assert artifact["cycle_result"]["synthesis_event"] == {
+        "capability": "github_repository_management",
+        "artifact_kind": "mcp_server",
+        "status": "error",
+        "source": "planner_request",
+    }
 
     written = _read_json(output)
     assert written == artifact

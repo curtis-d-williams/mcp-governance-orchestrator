@@ -233,8 +233,21 @@ def run_factory_cycle(
                     result["builder"] = builder_result
 
                 synthesis_status = "ok"
+                synthesis_event = {
+                    "capability": build_request["capability"],
+                    "artifact_kind": build_request["artifact_kind"],
+                    "status": "ok",
+                    "source": synthesis_source,
+                }
                 if isinstance(builder_result, dict):
                     synthesis_status = builder_result.get("status", "ok")
+                    synthesis_event["status"] = synthesis_status
+                    generated_repo = builder_result.get("generated_repo")
+                    if generated_repo is not None:
+                        synthesis_event["generated_repo"] = generated_repo
+
+                if isinstance(result, dict):
+                    result["synthesis_event"] = synthesis_event
 
                 capability_effectiveness_ledger = record_synthesis_event(
                     capability_effectiveness_ledger,
@@ -248,6 +261,13 @@ def run_factory_cycle(
             if isinstance(result, dict):
                 result["builder_error"] = str(exc)
             if build_request is not None:
+                if isinstance(result, dict):
+                    result["synthesis_event"] = {
+                        "capability": build_request["capability"],
+                        "artifact_kind": build_request["artifact_kind"],
+                        "status": "error",
+                        "source": synthesis_source,
+                    }
                 capability_effectiveness_ledger = record_synthesis_event(
                     capability_effectiveness_ledger,
                     capability=build_request["capability"],
