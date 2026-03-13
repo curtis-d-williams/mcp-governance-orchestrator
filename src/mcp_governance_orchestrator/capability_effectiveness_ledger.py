@@ -22,3 +22,33 @@ def record_synthesis_event(ledger, *, capability, artifact_kind, synthesis_sourc
 
     capabilities[capability] = entry
     return {"capabilities": capabilities}
+
+
+def record_normalized_synthesis_event(ledger, synthesis_event):
+    """Update ledger using a normalized synthesis event.
+
+    Expected event schema:
+        {
+            "capability": str,
+            "artifact_kind": str,
+            "status": "ok" | "error",
+            "source": "planner_request" | "portfolio_gap",
+            ...
+        }
+    """
+
+    capability = synthesis_event.get("capability")
+    artifact_kind = synthesis_event.get("artifact_kind")
+    status = synthesis_event.get("status")
+    source = synthesis_event.get("source")
+
+    if not capability or not artifact_kind or not status or not source:
+        raise ValueError("Invalid synthesis_event structure")
+
+    return record_synthesis_event(
+        ledger,
+        capability=capability,
+        artifact_kind=artifact_kind,
+        synthesis_source=source,
+        synthesis_status=status,
+    )

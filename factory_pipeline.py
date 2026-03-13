@@ -10,7 +10,10 @@ import json
 
 from builder.artifact_registry import build_capability_artifact
 from src.mcp_governance_orchestrator.capability_registry import artifact_kind_for_capability
-from src.mcp_governance_orchestrator.capability_effectiveness_ledger import record_synthesis_event
+from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
+    record_synthesis_event,
+    record_normalized_synthesis_event,
+)
 
 
 def decide_action(evaluation):
@@ -249,12 +252,9 @@ def run_factory_cycle(
                 if isinstance(result, dict):
                     result["synthesis_event"] = synthesis_event
 
-                capability_effectiveness_ledger = record_synthesis_event(
+                capability_effectiveness_ledger = record_normalized_synthesis_event(
                     capability_effectiveness_ledger,
-                    capability=build_request["capability"],
-                    artifact_kind=build_request["artifact_kind"],
-                    synthesis_source=synthesis_source,
-                    synthesis_status=synthesis_status,
+                    synthesis_event,
                 )
 
         except Exception as exc:
@@ -268,12 +268,9 @@ def run_factory_cycle(
                         "status": "error",
                         "source": synthesis_source,
                     }
-                capability_effectiveness_ledger = record_synthesis_event(
+                capability_effectiveness_ledger = record_normalized_synthesis_event(
                     capability_effectiveness_ledger,
-                    capability=build_request["capability"],
-                    artifact_kind=build_request["artifact_kind"],
-                    synthesis_source=synthesis_source,
-                    synthesis_status="error",
+                    result["synthesis_event"],
                 )
 
     artifact = {
