@@ -19,12 +19,14 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from planner_runtime import (  # noqa: E402
+    CAPABILITY_EXPLORATION_WEIGHT,
     EFFECTIVENESS_CLAMP,
     EFFECTIVENESS_WEIGHT,
     SIGNAL_IMPACT_CLAMP,
     SIGNAL_IMPACT_WEIGHT,
     _apply_learning_adjustments,
     _build_priority_breakdown,
+    _compute_capability_exploration_adjustment,
     _compute_capability_reliability_adjustment,
     _compute_priority_breakdown,
     compute_learning_adjustment,
@@ -372,8 +374,11 @@ class TestApplyLearningAdjustments:
         )
 
         assert breakdown.capability_reliability_component == pytest.approx(0.02666666666666667)
+        assert breakdown.exploration_component == pytest.approx(0.051)
         assert breakdown.final_priority == pytest.approx(
-            0.80 + 0.02666666666666667 + breakdown.exploration_component
+            0.80
+            + 0.02666666666666667
+            + breakdown.exploration_component
         )
 
     def test_build_priority_breakdown_emits_capability_reliability_component(self):
@@ -510,3 +515,53 @@ class TestCapabilityReliabilityAdjustment:
         expected = (success_rate - 0.5) * 0.10
 
         assert adj == pytest.approx(expected)
+
+
+class TestCapabilityExplorationAdjustment:
+    def _action(self, capability):
+        return {
+            "action_type": "build_capability_artifact",
+            "priority": 0.8,
+            "action_id": "aid-exp",
+            "repo_id": "repo-exp",
+            "args": {"capability": capability},
+        }
+
+    def test_missing_ledger_returns_zero(self):
+        action = self._action("cap_a")
+        assert _compute_capability_exploration_adjustment(action, {}) == 0.0
+
+    def test_missing_capability_row_returns_zero(self):
+        action = self._action("cap_a")
+        ledger = {"capabilities": {}}
+        assert _compute_capability_exploration_adjustment(action, ledger) == 0.0
+
+    def test_unknown_capability_gets_full_exploration_bonus_when_row_exists_with_zero_total(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 0, "successful_syntheses": 0}
+            }
+        }
+        adj = _compute_capability_exploration_adjustment(action, ledger)
+        assert adj == pytest.approx(CAPABILITY_EXPLORATION_WEIGHT)
+
+    def test_low_history_gets_partial_exploration_bonus(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 1, "successful_syntheses": 1}
+            }
+        }
+        adj = _compute_capability_exploration_adjustment(action, ledger)
+        assert adj == pytest.approx((1.0 - 0.2) * CAPABILITY_EXPLORATION_WEIGHT)
+
+    def test_mature_capability_gets_no_exploration_bonus(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 5, "successful_syntheses": 5}
+            }
+        }
+        adj = _compute_capability_exploration_adjustment(action, ledger)
+        assert adj == pytest.approx(0.0)

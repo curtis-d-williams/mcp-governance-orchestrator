@@ -77,6 +77,7 @@ POLICY_TOTAL_ABS_CAP = 20.0
 
 CAPABILITY_RELIABILITY_WEIGHT = 0.10
 CAPABILITY_CONFIDENCE_THRESHOLD = 5.0
+CAPABILITY_EXPLORATION_WEIGHT = 0.005
 
 # ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
@@ -479,12 +480,17 @@ def _compute_priority_breakdown(
     capability_adj = _compute_capability_reliability_adjustment(
         action, capability_ledger
     )
-        
+    capability_exploration_adj = _compute_capability_exploration_adjustment(
+        action, capability_ledger
+    )
+
+    exploration_total = exploration + capability_exploration_adj
+
     final = (
         base
         + confidence * (effectiveness_adj + signal_delta_adj + targeting_adj + policy_adj)
         + capability_adj
-        + exploration
+        + exploration_total
     )
 
     return PriorityBreakdown(
@@ -496,7 +502,7 @@ def _compute_priority_breakdown(
         policy_component=confidence * policy_adj,
         capability_reliability_component=capability_adj,
         confidence_factor=confidence,
-        exploration_component=exploration,
+        exploration_component=exploration_total,
         final_priority=final,
     )
 
@@ -569,6 +575,58 @@ def _compute_task_reliability(task_name, ledger):
 
     return success / total
 
+
+
+def _compute_capability_exploration_adjustment(action, capability_ledger):
+    """Return a bounded exploration bonus for capability synthesis actions.
+
+    Applies only to capability synthesis actions carrying args.capability
+    metadata. The bonus is highest when a capability has no historical
+    syntheses and decays linearly to zero at
+    CAPABILITY_CONFIDENCE_THRESHOLD.
+
+    Formula:
+        confidence = min(1.0, total_syntheses / CAPABILITY_CONFIDENCE_THRESHOLD)
+        adjustment = (1.0 - confidence) * CAPABILITY_EXPLORATION_WEIGHT
+
+    Returns 0.0 when:
+        - capability_ledger is empty
+        - action is not a capability synthesis action
+        - capability metadata missing
+        - capability row is malformed
+    """
+    if not capability_ledger:
+        return 0.0
+
+    action_type = action.get("action_type", "")
+    if action_type not in ("build_capability_artifact", "build_mcp_server"):
+        return 0.0
+
+    args = action.get("args", {})
+    if not isinstance(args, dict):
+        return 0.0
+
+    capability = args.get("capability")
+    if not isinstance(capability, str) or not capability:
+        return 0.0
+
+    caps = capability_ledger.get("capabilities")
+    if not isinstance(caps, dict):
+        return 0.0
+
+    row = caps.get(capability)
+    if not isinstance(row, dict):
+        return 0.0
+
+    total = row.get("total_syntheses", 0)
+    try:
+        total = float(total)
+    except (TypeError, ValueError):
+        return 0.0
+
+    total = max(0.0, total)
+    confidence = min(1.0, total / CAPABILITY_CONFIDENCE_THRESHOLD)
+    return (1.0 - confidence) * CAPABILITY_EXPLORATION_WEIGHT
 
 
 def _compute_capability_reliability_adjustment(action, capability_ledger):
