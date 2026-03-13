@@ -25,6 +25,7 @@ from planner_runtime import (  # noqa: E402
     SIGNAL_IMPACT_WEIGHT,
     _apply_learning_adjustments,
     _build_priority_breakdown,
+    _compute_capability_reliability_adjustment,
     _compute_priority_breakdown,
     compute_learning_adjustment,
     load_effectiveness_ledger,
@@ -277,8 +278,8 @@ class TestApplyLearningAdjustments:
         capability_ledger = {
             "capabilities": {
                 "snowflake_data_access": {
-                    "total_syntheses": 4,
-                    "successful_syntheses": 4,
+                    "total_syntheses": 10,
+                    "successful_syntheses": 10,
                 }
             }
         }
@@ -310,7 +311,7 @@ class TestApplyLearningAdjustments:
         capability_ledger = {
             "capabilities": {
                 "snowflake_data_access": {
-                    "total_syntheses": 4,
+                    "total_syntheses": 10,
                     "successful_syntheses": 0,
                 }
             }
@@ -370,9 +371,9 @@ class TestApplyLearningAdjustments:
             capability_ledger,
         )
 
-        assert breakdown.capability_reliability_component == pytest.approx(0.04)
+        assert breakdown.capability_reliability_component == pytest.approx(0.02666666666666667)
         assert breakdown.final_priority == pytest.approx(
-            0.80 + 0.04 + breakdown.exploration_component
+            0.80 + 0.02666666666666667 + breakdown.exploration_component
         )
 
     def test_build_priority_breakdown_emits_capability_reliability_component(self):
@@ -404,7 +405,7 @@ class TestApplyLearningAdjustments:
 
         assert len(breakdown) == 1
         assert "capability_reliability_component" in breakdown[0]
-        assert breakdown[0]["capability_reliability_component"] == pytest.approx(-0.04)
+        assert breakdown[0]["capability_reliability_component"] == pytest.approx(-0.026667)
 
     def test_capability_success_history_with_low_sample_count_is_not_overweighted(self):
         actions = [
@@ -438,3 +439,74 @@ class TestApplyLearningAdjustments:
         )
         assert result[0]["action_type"] == "analyze_repo_insights"
         assert result[1]["action_type"] == "build_capability_artifact"
+
+
+# ---------------------------------------------------------------------------
+# Capability reliability helper stability (D3.3)
+# ---------------------------------------------------------------------------
+
+class TestCapabilityReliabilityAdjustment:
+    def _action(self, capability):
+        return {
+            "action_type": "build_capability_artifact",
+            "priority": 0.8,
+            "action_id": "aid-x",
+            "repo_id": "repo-x",
+            "args": {"capability": capability},
+        }
+
+    def test_missing_ledger_returns_zero(self):
+        action = self._action("cap_a")
+        assert _compute_capability_reliability_adjustment(action, {}) == 0.0
+
+    def test_missing_capability_row_returns_zero(self):
+        action = self._action("cap_a")
+        ledger = {"capabilities": {}}
+        assert _compute_capability_reliability_adjustment(action, ledger) == 0.0
+
+    def test_laplace_smoothing_positive_case(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 1, "successful_syntheses": 1}
+            }
+        }
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+
+        # success_rate = (1+1)/(1+2) = 2/3
+        # raw = (2/3 - 0.5) * 0.10 = ~0.0166667
+        # confidence = 1/5 = 0.2
+        expected = 0.2 * ((2/3 - 0.5) * 0.10)
+
+        assert adj == pytest.approx(expected)
+
+    def test_laplace_smoothing_negative_case(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 1, "successful_syntheses": 0}
+            }
+        }
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+
+        # success_rate = (0+1)/(1+2) = 1/3
+        expected = 0.2 * ((1/3 - 0.5) * 0.10)
+
+        assert adj == pytest.approx(expected)
+
+    def test_confidence_cap_applied(self):
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {"total_syntheses": 100, "successful_syntheses": 100}
+            }
+        }
+
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+
+        # success_rate ≈ (101/102)
+        # confidence capped at 1.0
+        success_rate = (101 / 102)
+        expected = (success_rate - 0.5) * 0.10
+
+        assert adj == pytest.approx(expected)

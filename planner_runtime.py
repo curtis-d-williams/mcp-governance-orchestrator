@@ -583,10 +583,10 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
         adjustment = confidence * raw_adjustment
 
     Examples:
-        total=1, success_rate=1.0  -> +0.01
-        total=5, success_rate=1.0  -> +0.05
-        total=1, success_rate=0.0  -> -0.01
-        total=5, success_rate=0.0  -> -0.05
+        total=1, success=1 -> smoothed success_rate=2/3  -> +0.003333...
+        total=5, success=5 -> smoothed success_rate=6/7  -> +0.035714...
+        total=1, success=0 -> smoothed success_rate=1/3  -> -0.003333...
+        total=5, success=0 -> smoothed success_rate=1/7  -> -0.035714...
 
     Returns 0.0 when:
         - capability_ledger is empty
@@ -629,7 +629,7 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
     if total <= 0:
         return 0.0
 
-    success_rate = max(0.0, min(1.0, success / total))
+    success_rate = max(0.0, min(1.0, (success + 1.0) / (total + 2.0)))
     confidence = min(1.0, total / CAPABILITY_CONFIDENCE_THRESHOLD)
     return confidence * ((success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT)
 
