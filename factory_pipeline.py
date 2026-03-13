@@ -173,6 +173,9 @@ def run_factory_cycle(
     decision = decide_action(evaluation)
 
     result = None
+    capability_effectiveness_ledger = {"capabilities": {}}
+    build_request = None
+    synthesis_source = None
 
     if decision["action"] == "repair_only":
         result = run_mapping_repair_cycle(
@@ -209,69 +212,63 @@ def run_factory_cycle(
 
         result = run_governed_loop(args)
 
-        # ------------------------------------------------------------------
-        # Builder dispatch (factory artifact generation)
-        # ------------------------------------------------------------------
-
-        capability_effectiveness_ledger = {"capabilities": {}}
-
-        try:
-            runs = result.get("result", {}).get("evaluation_summary", {}).get("runs", [])
-            first_run = runs[0] if runs else {}
-
-            build_request = _resolve_factory_build_request(first_run)
+        runs = result.get("result", {}).get("evaluation_summary", {}).get("runs", [])
+        first_run = runs[0] if runs else {}
+        build_request = _resolve_factory_build_request(first_run)
+        if build_request is not None:
             synthesis_source = "planner_request"
 
-            if build_request is None:
-                build_request = _resolve_gap_synthesis_request(portfolio_state)
-                synthesis_source = "portfolio_gap"
+    if build_request is None:
+        build_request = _resolve_gap_synthesis_request(portfolio_state)
+        if build_request is not None:
+            synthesis_source = "portfolio_gap"
 
-            if build_request is not None:
-                builder_result = build_capability_artifact(
-                    artifact_kind=build_request["artifact_kind"],
-                    capability=build_request["capability"],
-                )
+    try:
+        if build_request is not None:
+            builder_result = build_capability_artifact(
+                artifact_kind=build_request["artifact_kind"],
+                capability=build_request["capability"],
+            )
 
-                if isinstance(result, dict):
-                    result["builder"] = builder_result
-
-                synthesis_status = "ok"
-                synthesis_event = {
-                    "capability": build_request["capability"],
-                    "artifact_kind": build_request["artifact_kind"],
-                    "status": "ok",
-                    "source": synthesis_source,
-                }
-                if isinstance(builder_result, dict):
-                    synthesis_status = builder_result.get("status", "ok")
-                    synthesis_event["status"] = synthesis_status
-                    generated_repo = builder_result.get("generated_repo")
-                    if generated_repo is not None:
-                        synthesis_event["generated_repo"] = generated_repo
-
-                if isinstance(result, dict):
-                    result["synthesis_event"] = synthesis_event
-
-                capability_effectiveness_ledger = record_normalized_synthesis_event(
-                    capability_effectiveness_ledger,
-                    synthesis_event,
-                )
-
-        except Exception as exc:
             if isinstance(result, dict):
-                result["builder_error"] = str(exc)
-            if build_request is not None:
-                if isinstance(result, dict):
-                    result["synthesis_event"] = {
-                        "capability": build_request["capability"],
-                        "artifact_kind": build_request["artifact_kind"],
-                        "status": "error",
-                        "source": synthesis_source,
-                    }
-                capability_effectiveness_ledger = record_normalized_synthesis_event(
-                    capability_effectiveness_ledger,
-                    result["synthesis_event"],
-                )
+                result["builder"] = builder_result
+
+            synthesis_event = {
+                "capability": build_request["capability"],
+                "artifact_kind": build_request["artifact_kind"],
+                "status": "ok",
+                "source": synthesis_source,
+            }
+            if isinstance(builder_result, dict):
+                synthesis_event["status"] = builder_result.get("status", "ok")
+                generated_repo = builder_result.get("generated_repo")
+                if generated_repo is not None:
+                    synthesis_event["generated_repo"] = generated_repo
+
+            if isinstance(result, dict):
+                result["synthesis_event"] = synthesis_event
+
+            capability_effectiveness_ledger = record_normalized_synthesis_event(
+                capability_effectiveness_ledger,
+                synthesis_event,
+            )
+
+    except Exception as exc:
+        if isinstance(result, dict):
+            result["builder_error"] = str(exc)
+        if build_request is not None:
+            synthesis_event = {
+                "capability": build_request["capability"],
+                "artifact_kind": build_request["artifact_kind"],
+                "status": "error",
+                "source": synthesis_source,
+            }
+            if isinstance(result, dict):
+                result["synthesis_event"] = synthesis_event
+            capability_effectiveness_ledger = record_normalized_synthesis_event(
+                capability_effectiveness_ledger,
+                synthesis_event,
+            )
 
     artifact = {
         "decision": decision,
