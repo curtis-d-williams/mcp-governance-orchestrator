@@ -30,6 +30,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.mcp_governance_orchestrator.planner_telemetry.scoring import (
+    PlannerScoringTelemetry,
+)
+
 # ---------------------------------------------------------------------------
 # v0.26: Planner learning adjustment constants
 # ---------------------------------------------------------------------------
@@ -546,7 +550,7 @@ SCORING_SIGNALS = (
 )
 
 def _compute_priority_breakdown(
-    action, ledger, current_signals, policy, capability_ledger=None
+    action, ledger, current_signals, policy, capability_ledger=None, telemetry=None
 ):
         """Build a PriorityBreakdown for a single action. Read-only; never raises.
 
@@ -558,6 +562,7 @@ def _compute_priority_breakdown(
             ledger:          {action_type: row_dict} from load_effectiveness_ledger.
             current_signals: {signal_name: float} portfolio signal averages.
             policy:          {signal_name: weight} from load_planner_policy.
+            telemetry:       optional PlannerScoringTelemetry collector.
 
         Returns:
             PriorityBreakdown instance with all components populated.
@@ -581,6 +586,14 @@ def _compute_priority_breakdown(
             effect_deltas=effect_deltas,
         )
 
+        telemetry_record = None
+        if telemetry is not None:
+            telemetry_record = telemetry.start_action(
+                action_type=at,
+                base_priority=base,
+                confidence_factor=confidence,
+            )
+
         components = {}
         for signal in SCORING_SIGNALS:
             raw_value = signal.evaluator(context)
@@ -588,6 +601,13 @@ def _compute_priority_breakdown(
                 confidence * raw_value if signal.confidence_scaled else raw_value
             )
             components[signal.component_field] = component_value
+            if telemetry_record is not None:
+                telemetry_record.add(
+                    component_field=signal.component_field,
+                    raw_value=raw_value,
+                    scaled_value=component_value,
+                    confidence_scaled=signal.confidence_scaled,
+                )
 
         final = base + sum(components.values())
 
@@ -1162,3 +1182,29 @@ def evaluate_planner_configuration(policy_path, top_k, portfolio_state_path, led
     evaluation["policy"] = policy_path
     evaluation["top_k"] = top_k
     return evaluation
+
+
+def _build_scoring_metrics(
+    actions, ledger, current_signals, policy, capability_ledger=None
+):
+    """Return deterministic planner scoring telemetry for a list of actions.
+
+    Read-only with respect to ranking and artifacts. This helper mirrors the
+    same scoring path as _build_priority_breakdown but captures raw and scaled
+    per-signal contributions for introspection.
+    """
+    _signals = current_signals or {}
+    _policy = policy or {}
+    telemetry = PlannerScoringTelemetry()
+
+    for action in actions:
+        _compute_priority_breakdown(
+            action,
+            ledger,
+            _signals,
+            _policy,
+            capability_ledger=capability_ledger,
+            telemetry=telemetry,
+        )
+
+    return telemetry.to_dict()

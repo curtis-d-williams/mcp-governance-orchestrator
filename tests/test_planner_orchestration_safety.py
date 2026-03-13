@@ -414,6 +414,15 @@ class TestWriteExplainArtifact:
         data = json.loads((tmp_path / "planner_priority_breakdown.json").read_text())
         assert data == []
 
+    def test_writes_scoring_metrics_artifact(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with unittest.mock.patch.object(_mod, "log"):
+            _mod.write_explain_artifact([], {}, {}, {})
+        artifact = tmp_path / "planner_scoring_metrics.json"
+        assert artifact.exists()
+        data = json.loads(artifact.read_text(encoding="utf-8"))
+        assert data == {"actions": []}
+
     def test_schema_fields_present(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         actions = [_action("refresh_repo_health")]

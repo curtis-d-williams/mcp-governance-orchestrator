@@ -42,6 +42,7 @@ from scripts.planner_scoring import (  # noqa: F401
     PriorityBreakdown,
     _apply_learning_adjustments,
     _build_priority_breakdown,
+    _build_scoring_metrics,
     _compute_priority_breakdown,
     compute_confidence_factor,
     compute_exploration_bonus,
@@ -410,7 +411,7 @@ def run_selected_actions(tasks, portfolio_state_output):
 
 
 def write_explain_artifact(explain_actions, ledger, signals, policy):
-    """Write planner_priority_breakdown.json for --explain mode.
+    """Write explain-mode planner scoring artifacts.
 
     Read-only with respect to ranking — does not affect planner behavior.
     """
@@ -418,7 +419,17 @@ def write_explain_artifact(explain_actions, ledger, signals, policy):
     Path("planner_priority_breakdown.json").write_text(
         json.dumps(breakdown, indent=2) + "\n", encoding="utf-8"
     )
+
+    scoring_metrics = _build_scoring_metrics(explain_actions, ledger, signals, policy)
+    Path("planner_scoring_metrics.json").write_text(
+        json.dumps(scoring_metrics, indent=2) + "\n", encoding="utf-8"
+    )
+
     log(f"Explain mode: wrote planner_priority_breakdown.json ({len(breakdown)} entries)")
+    log(
+        "Explain mode: wrote planner_scoring_metrics.json "
+        f"({len(scoring_metrics.get('actions', []))} entries)"
+    )
 
 
 # ---------------------------------------------------------------------------

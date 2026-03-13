@@ -13,6 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from src.mcp_governance_orchestrator.planner_telemetry.scoring import (
+    PlannerScoringTelemetry,
+)
+
 # Ensure the repo root is on sys.path so scripts package is importable.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -601,3 +605,50 @@ class TestExtractCapabilityHistory:
             }
         }
         assert _extract_capability_history(self._action(), ledger) == ("cap_a", 0.0, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Planner scoring telemetry
+# ---------------------------------------------------------------------------
+
+class TestPlannerScoringTelemetry:
+    def test_collects_signal_contributions(self):
+        actions = [
+            {
+                "action_type": "refresh_repo_health",
+                "priority": 1.0,
+                "action_id": "a1",
+                "repo_id": "r1",
+            }
+        ]
+
+        ledger = {
+            "refresh_repo_health": {
+                "effectiveness_score": 1.0,
+                "effect_deltas": {"artifact_completeness": 0.5},
+                "times_executed": 0,
+            }
+        }
+
+        telemetry = PlannerScoringTelemetry()
+
+        breakdown = _compute_priority_breakdown(
+            actions[0],
+            ledger,
+            current_signals={},
+            policy={},
+            capability_ledger=None,
+            telemetry=telemetry,
+        )
+
+        assert breakdown.action_type == "refresh_repo_health"
+
+        data = telemetry.to_dict()
+
+        assert "actions" in data
+        assert len(data["actions"]) == 1
+
+        record = data["actions"][0]
+
+        assert record["action_type"] == "refresh_repo_health"
+        assert len(record["signal_contributions"]) == 6

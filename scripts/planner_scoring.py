@@ -16,6 +16,7 @@ from planner_runtime import (
     PriorityBreakdown,
     _apply_learning_adjustments,
     _build_priority_breakdown,
+    _build_scoring_metrics,
     _compute_priority_breakdown,
     compute_confidence_factor,
     compute_exploration_bonus,
