@@ -7,6 +7,7 @@ Usage:
         --report  <tier3_portfolio_report.csv> \
         --aggregate <tier3_multi_run_aggregate.json> \
         --output  <artifacts/portfolio_state.json> \
+        [--comparison-gap-artifact <comparison_gap_artifact.json>] \
         [--generated-at <string>]
 
 Fail-closed on malformed or missing required inputs.
@@ -27,6 +28,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from mcp_governance_orchestrator.capability_spec_registry import get_capability_spec  # noqa: E402
 from mcp_governance_orchestrator.portfolio_state import build_portfolio_state  # noqa: E402
 
 
@@ -131,6 +133,37 @@ def _read_aggregate(path: Path) -> Dict[str, List[Dict[str, Any]]]:
 
 
 # ---------------------------------------------------------------------------
+# Optional comparison-gap artifact helpers
+# ---------------------------------------------------------------------------
+
+def _read_comparison_gap_artifact(path: Path) -> List[str]:
+    """Return sorted canonical capabilities from an optional gap artifact.
+
+    Unknown or malformed capabilities are ignored.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return []
+
+    gaps = raw.get("capability_gaps", [])
+    if not isinstance(gaps, list):
+        return []
+
+    capabilities = set()
+    for entry in gaps:
+        if not isinstance(entry, dict):
+            continue
+        capability = entry.get("capability")
+        if not isinstance(capability, str) or not capability:
+            continue
+        if not isinstance(get_capability_spec(capability), dict):
+            continue
+        capabilities.add(capability)
+
+    return sorted(capabilities)
+
+
+# ---------------------------------------------------------------------------
 # Signal builder
 # ---------------------------------------------------------------------------
 
@@ -223,6 +256,8 @@ def main(argv: List[str] | None = None) -> int:
                         help="Path to tier3_multi_run_aggregate.json.")
     parser.add_argument("--output", required=True, metavar="JSON",
                         help="Destination path for portfolio_state.json.")
+    parser.add_argument("--comparison-gap-artifact", default=None, metavar="JSON",
+                        help="Optional capability-gap artifact derived from MCP comparison.")
     parser.add_argument("--generated-at", default="", metavar="STRING",
                         help="Value for generated_at field. Defaults to empty string.")
     args = parser.parse_args(argv)
@@ -230,6 +265,11 @@ def main(argv: List[str] | None = None) -> int:
     report_path = Path(args.report)
     agg_path = Path(args.aggregate)
     output_path = Path(args.output)
+    comparison_gap_artifact_path = (
+        Path(args.comparison_gap_artifact)
+        if args.comparison_gap_artifact is not None
+        else None
+    )
     generated_at: str = args.generated_at
 
     # Fail closed on missing inputs.
@@ -237,6 +277,13 @@ def main(argv: List[str] | None = None) -> int:
         return _fail(f"report file not found: {report_path}")
     if not agg_path.exists():
         return _fail(f"aggregate file not found: {agg_path}")
+    if (
+        comparison_gap_artifact_path is not None
+        and not comparison_gap_artifact_path.exists()
+    ):
+        return _fail(
+            f"comparison gap artifact file not found: {comparison_gap_artifact_path}"
+        )
 
     # Read CSV.
     try:
@@ -249,6 +296,16 @@ def main(argv: List[str] | None = None) -> int:
         agg_data = _read_aggregate(agg_path)
     except Exception as exc:
         return _fail(f"failed to read aggregate JSON: {exc}")
+
+    # Read optional comparison-gap artifact.
+    try:
+        comparison_gap_capabilities = (
+            _read_comparison_gap_artifact(comparison_gap_artifact_path)
+            if comparison_gap_artifact_path is not None
+            else []
+        )
+    except Exception as exc:
+        return _fail(f"failed to read comparison gap artifact: {exc}")
 
     # Union of repo IDs from both sources, sorted for determinism.
     all_repo_ids = sorted(set(csv_data) | set(agg_data))
@@ -264,6 +321,12 @@ def main(argv: List[str] | None = None) -> int:
         state = build_portfolio_state(signals, generated_at=generated_at)
     except ValueError as exc:
         return _fail(f"portfolio state build failed: {exc}")
+
+    if comparison_gap_capabilities:
+        merged = sorted(
+            set(state.get("capability_gaps", [])) | set(comparison_gap_capabilities)
+        )
+        state["capability_gaps"] = merged
 
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -392,3 +392,79 @@ class TestRealArtifacts:
         assert len(state["repos"]) >= 1
         ids = [r["repo_id"] for r in state["repos"]]
         assert ids == sorted(ids), "repos must be sorted by repo_id"
+
+
+class TestComparisonGapArtifactIntegration:
+    def test_optional_gap_artifact_populates_capability_gaps(self, tmp_path):
+        report, agg = _make_fixtures(tmp_path)
+
+        gap_artifact = tmp_path / "comparison_gaps.json"
+        gap_artifact.write_text(
+            json.dumps(
+                {
+                    "capability_gaps": [
+                        {
+                            "capability": "github_repository_management",
+                            "gap_source": "reference_mcp_comparison",
+                            "severity": 0.65,
+                        }
+                    ]
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        rc, output = _run_bridge(
+            tmp_path,
+            report,
+            agg,
+            ["--comparison-gap-artifact", str(gap_artifact)],
+        )
+
+        assert rc == 0
+        state = json.loads(output.read_text(encoding="utf-8"))
+        assert state["capability_gaps"] == ["github_repository_management"]
+
+    def test_missing_optional_gap_artifact_path_fails_closed(self, tmp_path):
+        report, agg = _make_fixtures(tmp_path)
+
+        rc, _ = _run_bridge(
+            tmp_path,
+            report,
+            agg,
+            ["--comparison-gap-artifact", str(tmp_path / "no_such_gap_artifact.json")],
+        )
+
+        assert rc != 0
+
+    def test_unknown_gap_capability_is_ignored(self, tmp_path):
+        report, agg = _make_fixtures(tmp_path)
+
+        gap_artifact = tmp_path / "comparison_gaps.json"
+        gap_artifact.write_text(
+            json.dumps(
+                {
+                    "capability_gaps": [
+                        {
+                            "capability": "unknown_capability",
+                            "gap_source": "reference_mcp_comparison",
+                            "severity": 0.90,
+                        }
+                    ]
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        rc, output = _run_bridge(
+            tmp_path,
+            report,
+            agg,
+            ["--comparison-gap-artifact", str(gap_artifact)],
+        )
+
+        assert rc == 0
+        state = json.loads(output.read_text(encoding="utf-8"))
+        assert state["capability_gaps"] == []
