@@ -1021,6 +1021,7 @@ def test_run_factory_cycle_skips_evolved_rebuild_when_prior_similarity_delta_is_
     assert artifact["cycle_result"]["capability_evolution_plan"]["action_count"] == 4
     assert artifact["cycle_result"]["capability_evolution_execution"]["executed_action_count"] == 4
     assert "evolved_builder" not in artifact["cycle_result"]
+    assert artifact["cycle_result"]["evolution_blocked_by_similarity_regression"] is True
     assert artifact["cycle_result"]["builder"]["generated_repo"] == "/tmp/generated_mcp_server_github"
     assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is False
 

@@ -186,6 +186,7 @@ def run_factory_cycle(
     decision = decide_action(evaluation)
 
     result = None
+    evolution_blocked_by_similarity_regression = False
     from planner_runtime import load_capability_effectiveness_ledger
 
     prior_capability_effectiveness_ledger = load_capability_effectiveness_ledger(capability_ledger)
@@ -369,6 +370,9 @@ def run_factory_cycle(
 
             if isinstance(result, dict):
                 result["synthesis_event"] = synthesis_event
+                result["evolution_blocked_by_similarity_regression"] = (
+                    evolution_blocked_by_similarity_regression
+                )
 
             capability_effectiveness_ledger = record_normalized_synthesis_event(
                 capability_effectiveness_ledger,
