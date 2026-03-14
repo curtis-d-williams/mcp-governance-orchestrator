@@ -186,6 +186,12 @@ def run_factory_cycle(
     decision = decide_action(evaluation)
 
     result = None
+    from planner_runtime import load_capability_effectiveness_ledger
+
+    prior_capability_effectiveness_ledger = load_capability_effectiveness_ledger(capability_ledger)
+    if not prior_capability_effectiveness_ledger:
+        prior_capability_effectiveness_ledger = {"capabilities": {}}
+
     capability_effectiveness_ledger = {"capabilities": {}}
     build_request = None
     synthesis_source = None
@@ -288,9 +294,21 @@ def run_factory_cycle(
                         result["capability_evolution_execution"] = evolution_execution
 
                     builder_overrides = evolution_execution.get("builder_overrides", {})
-                    used_evolution = bool(builder_overrides)
+                    prior_similarity_delta = None
+                    if build_request is not None:
+                        prior_row = prior_capability_effectiveness_ledger.get("capabilities", {}).get(
+                            build_request["capability"],
+                            {},
+                        )
+                        if isinstance(prior_row, dict):
+                            prior_similarity_delta = prior_row.get("similarity_delta")
 
-                    if builder_overrides:
+                    evolution_blocked_by_similarity_regression = (
+                        prior_similarity_delta is not None and float(prior_similarity_delta) < 0
+                    )
+                    used_evolution = bool(builder_overrides) and not evolution_blocked_by_similarity_regression
+
+                    if builder_overrides and not evolution_blocked_by_similarity_regression:
                         evolved_builder_result = build_capability_artifact(
                             artifact_kind=build_request["artifact_kind"],
                             capability=build_request["capability"],
@@ -310,7 +328,7 @@ def run_factory_cycle(
 
             prior_similarity_score = None
             if build_request is not None:
-                prior_row = capability_effectiveness_ledger.get("capabilities", {}).get(
+                prior_row = prior_capability_effectiveness_ledger.get("capabilities", {}).get(
                     build_request["capability"],
                     {},
                 )
