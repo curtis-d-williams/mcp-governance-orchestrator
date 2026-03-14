@@ -308,6 +308,28 @@ def run_factory_cycle(
                     # Comparison is a learning signal only — never break the cycle
                     pass
 
+            prior_similarity_score = None
+            if build_request is not None:
+                prior_row = capability_effectiveness_ledger.get("capabilities", {}).get(
+                    build_request["capability"],
+                    {},
+                )
+                if isinstance(prior_row, dict):
+                    prior_similarity_score = prior_row.get("similarity_score")
+
+            similarity_score = None
+            similarity_delta = None
+            comparison_artifact = result.get("reference_mcp_comparison") if isinstance(result, dict) else None
+            if isinstance(comparison_artifact, dict):
+                similarity = comparison_artifact.get("similarity", {})
+                if isinstance(similarity, dict):
+                    similarity_score = similarity.get("overall_score")
+                    if similarity_score is not None and prior_similarity_score is not None:
+                        similarity_delta = round(
+                            float(similarity_score) - float(prior_similarity_score),
+                            2,
+                        )
+
             synthesis_event = {
                 "capability": build_request["capability"],
                 "artifact_kind": build_request["artifact_kind"],
@@ -315,6 +337,12 @@ def run_factory_cycle(
                 "source": synthesis_source,
                 "used_evolution": locals().get("used_evolution", False),
             }
+            if similarity_score is not None:
+                synthesis_event["similarity_score"] = similarity_score
+            if prior_similarity_score is not None:
+                synthesis_event["previous_similarity_score"] = prior_similarity_score
+            if similarity_delta is not None:
+                synthesis_event["similarity_delta"] = similarity_delta
             if isinstance(builder_result, dict):
                 synthesis_event["status"] = builder_result.get("status", "ok")
                 generated_repo = builder_result.get("generated_repo")

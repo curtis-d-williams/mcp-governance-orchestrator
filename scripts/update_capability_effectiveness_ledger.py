@@ -55,6 +55,9 @@ def update_capability_effectiveness_ledger(ledger_path, cycle_artifact_path, out
             "last_synthesis_source",
             "last_synthesis_status",
             "last_synthesis_used_evolution",
+            "similarity_score",
+            "previous_similarity_score",
+            "similarity_delta",
         ],
     )
 
