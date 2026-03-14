@@ -54,5 +54,8 @@ def test_get_reference_artifact_path_returns_expected_path():
         get_reference_artifact_path("github_repository_management")
         == "reference_mcp_github_repository_management"
     )
-    assert get_reference_artifact_path("snowflake_data_access") is None
+    assert (
+        get_reference_artifact_path("snowflake_data_access")
+        == "reference_mcp_snowflake_data_access"
+    )
     assert get_reference_artifact_path("unknown_capability") is None
