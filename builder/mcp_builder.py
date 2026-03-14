@@ -74,12 +74,12 @@ def {tool}():
     # Smoke test
     write_file(
         root / "tests" / "test_server_smoke.py",
-        """
+        f"""
 import server
 
 def test_list_tools():
     tools = server.list_tools()
-    assert isinstance(tools, list)
+    assert tools == {tools_json}
 """,
     )
 
