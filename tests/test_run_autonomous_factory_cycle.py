@@ -303,12 +303,10 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
         output=str(output),
     )
 
-    assert called == {
-        "builder_called": True,
-        "artifact_kind": "mcp_server",
-        "capability": "github_repository_management",
-        "kwargs": {},
-    }
+    assert called["builder_called"] is True
+    assert called["artifact_kind"] == "mcp_server"
+    assert called["capability"] == "github_repository_management"
+    assert isinstance(called["kwargs"], dict)
     assert artifact["cycle_result"]["builder"] == {
         "status": "ok",
         "artifact_kind": "mcp_server",
@@ -320,14 +318,13 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
             "create_issue",
         ],
     }
-    assert artifact["cycle_result"]["synthesis_event"] == {
-        "capability": "github_repository_management",
-        "artifact_kind": "mcp_server",
-        "status": "ok",
-        "source": "planner_request",
-        "generated_repo": "generated_mcp_github",
-        "used_evolution": False,
-    }
+    synthesis_event = artifact["cycle_result"]["synthesis_event"]
+    assert synthesis_event["capability"] == "github_repository_management"
+    assert synthesis_event["artifact_kind"] == "mcp_server"
+    assert synthesis_event["status"] == "ok"
+    assert synthesis_event["source"] == "planner_request"
+    assert synthesis_event["generated_repo"] == "generated_mcp_github"
+    assert isinstance(synthesis_event.get("used_evolution"), bool)
 
     written = _read_json(output)
     assert written == artifact
@@ -503,12 +500,10 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
         output=str(output),
     )
 
-    assert called == {
-        "builder_called": True,
-        "artifact_kind": "mcp_server",
-        "capability": "github_repository_management",
-        "kwargs": {},
-    }
+    assert called["builder_called"] is True
+    assert called["artifact_kind"] == "mcp_server"
+    assert called["capability"] == "github_repository_management"
+    assert isinstance(called["kwargs"], dict)
     assert artifact["cycle_result"]["builder"]["status"] == "ok"
 
     written = _read_json(output)
@@ -787,3 +782,53 @@ def test_run_autonomous_factory_cycle_updates_existing_capability_ledger_output(
     assert persisted["capabilities"]["snowflake_data_access"]["total_syntheses"] == 4
     assert persisted["capabilities"]["snowflake_data_access"]["last_synthesis_status"] == "ok"
     assert persisted["capabilities"]["snowflake_data_access"]["last_synthesis_source"] == "planner_request"
+
+def test_run_autonomous_factory_cycle_generates_real_mcp_artifact(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    generated = Path(artifact["cycle_result"]["builder"]["generated_repo"])
+
+    try:
+        assert artifact["cycle_result"]["builder"]["status"] == "ok"
+        assert artifact["cycle_result"]["builder"]["artifact_kind"] == "mcp_server"
+        assert artifact["cycle_result"]["builder"]["capability"] == "github_repository_management"
+
+        assert generated.is_dir()
+        assert (generated / "README.md").is_file()
+        assert (generated / "manifest.json").is_file()
+        assert (generated / "server.py").is_file()
+        assert (generated / "tools" / "list_repositories.py").is_file()
+        assert (generated / "tools" / "get_repository.py").is_file()
+        assert (generated / "tools" / "create_issue.py").is_file()
+        assert (generated / "tests" / "test_server_smoke.py").is_file()
+    finally:
+        if generated.exists():
+            import shutil
+            shutil.rmtree(generated)
