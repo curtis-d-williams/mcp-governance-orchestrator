@@ -44,6 +44,7 @@ def build_mcp_server(
     root = REPO_ROOT / name
 
     tools_json = json.dumps(tools, indent=2)
+    features_json = json.dumps(features, indent=2)
     tool_imports = "\n".join(
         f"from tools.{tool} import {tool} as _{tool}" for tool in tools
     )
@@ -56,7 +57,9 @@ def build_mcp_server(
         "name": name,
         "capability": capability,
         "tools": "\n".join(f"- {t}" for t in tools),
+        "features": "\n".join(f"- {f}" for f in features),
         "tools_json": tools_json,
+        "features_json": features_json,
         "tool_imports": tool_imports,
         "tool_wrappers": tool_wrappers,
     }

@@ -55,6 +55,7 @@ def test_build_mcp_server_generates_expected_repo_shape():
             "get_repository",
             "create_issue",
         ],
+        "features": [],
     }
 
     shutil.rmtree(generated)
@@ -133,6 +134,45 @@ def test_build_mcp_server_generates_callable_wrappers_for_dynamic_tools():
         assert "from tools.get_me import get_me as _get_me" in server_text
         assert "def get_me():" in server_text
         assert "return _get_me()" in server_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
+
+def test_build_mcp_server_renders_enabled_features_in_manifest():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        _mod.build_mcp_server(
+            features=["supports_dynamic_toolsets"],
+        )
+
+        manifest = json.loads((generated / "manifest.json").read_text(encoding="utf-8"))
+
+        assert manifest["features"] == ["supports_dynamic_toolsets"]
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
+
+def test_build_mcp_server_renders_enabled_features_in_readme():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        _mod.build_mcp_server(
+            features=["supports_dynamic_toolsets"],
+        )
+
+        readme = (generated / "README.md").read_text(encoding="utf-8")
+
+        assert "Features:" in readme
+        assert "- supports_dynamic_toolsets" in readme
     finally:
         if generated.exists():
             shutil.rmtree(generated)

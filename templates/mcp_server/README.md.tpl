@@ -7,3 +7,6 @@ Capability:
 
 Tools:
 {{tools}}
+
+Features:
+{{features}}
