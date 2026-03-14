@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from .capability_registry import get_builder_action
+
 
 def build_capability_gap_actions(
     gap_records: List[Dict[str, Any]],
@@ -19,8 +21,10 @@ def build_capability_gap_actions(
     """Return canonical planner actions for capability gap records.
 
     Mapping:
-    - mcp_server      -> build_mcp_server
-    - all other kinds -> build_capability_artifact
+    - prefer registry builder_action when available
+    - otherwise fall back to:
+      - mcp_server      -> build_mcp_server
+      - all other kinds -> build_capability_artifact
 
     Args:
         gap_records: Normalized records from portfolio_capability_analyzer.
@@ -47,11 +51,14 @@ def build_capability_gap_actions(
         if not isinstance(artifact_kind, str) or not artifact_kind:
             continue
 
-        action_type = (
-            "build_mcp_server"
-            if artifact_kind == "mcp_server"
-            else "build_capability_artifact"
-        )
+        action_type = get_builder_action(capability)
+        if not isinstance(action_type, str) or not action_type:
+            action_type = (
+                "build_mcp_server"
+                if artifact_kind == "mcp_server"
+                else "build_capability_artifact"
+            )
+
         task_args = {"capability": capability}
         if action_type == "build_capability_artifact":
             task_args["artifact_kind"] = artifact_kind
@@ -75,7 +82,7 @@ def build_capability_gap_actions(
     actions.sort(
         key=lambda a: (
             -a.get("priority", 0.0),
-            a.get("action_type", ""),
+            0 if a.get("action_type") == "build_mcp_server" else 1,
             a.get("action_id", ""),
             a.get("repo_id", ""),
         )
