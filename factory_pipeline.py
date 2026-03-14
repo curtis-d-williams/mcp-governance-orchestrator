@@ -9,7 +9,10 @@ from pathlib import Path
 import json
 
 from builder.artifact_registry import build_capability_artifact
-from src.mcp_governance_orchestrator.capability_registry import artifact_kind_for_capability
+from src.mcp_governance_orchestrator.capability_registry import (
+    artifact_kind_for_capability,
+    get_reference_artifact_path,
+)
 from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
     record_synthesis_event,
     record_normalized_synthesis_event,
@@ -265,8 +268,11 @@ def run_factory_cycle(
                     generated_repo = builder_result.get("generated_repo")
                     capability = builder_result.get("capability")
 
-                    # Temporary deterministic reference repo name
-                    reference_repo = f"reference_mcp_{capability}"
+                    reference_repo = get_reference_artifact_path(capability)
+                    if not isinstance(reference_repo, str) or not reference_repo:
+                        raise ValueError(
+                            f"missing reference artifact path for capability: {capability}"
+                        )
 
                     comparison = compare_mcp_servers(
                         generated_repo,
@@ -373,6 +379,19 @@ def run_factory_cycle(
                 result["evolution_blocked_by_similarity_regression"] = (
                     evolution_blocked_by_similarity_regression
                 )
+                if evolution_blocked_by_similarity_regression:
+                    result["evolution_regression_signal"] = {
+                        "prior_similarity_delta": prior_similarity_delta
+                    }
+                if similarity_score is not None:
+                    similarity_progression = {
+                        "current_score": similarity_score,
+                    }
+                    if prior_similarity_score is not None:
+                        similarity_progression["previous_score"] = prior_similarity_score
+                    if similarity_delta is not None:
+                        similarity_progression["delta"] = similarity_delta
+                    result["similarity_progression"] = similarity_progression
 
             capability_effectiveness_ledger = record_normalized_synthesis_event(
                 capability_effectiveness_ledger,
