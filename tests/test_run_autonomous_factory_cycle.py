@@ -832,3 +832,94 @@ def test_run_autonomous_factory_cycle_generates_real_mcp_artifact(tmp_path, monk
         if generated.exists():
             import shutil
             shutil.rmtree(generated)
+
+def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_missing_tool(
+    tmp_path, monkeypatch
+):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        return {
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {
+                "coverage_ratio": 0.75,
+                "missing_tools": ["get_me"],
+            },
+            "capability_surface": {
+                "coverage_ratio": 1.0,
+                "missing_enabled": [],
+            },
+            "testability": {"coverage_ratio": 1.0},
+        }
+
+    def fake_derive_capability_gaps_from_comparison(comparison):
+        return {
+            "capability_gaps": [
+                {
+                    "capability": "github_repository_management",
+                    "gap_source": "reference_mcp_comparison",
+                    "severity": 0.25,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(_pipeline, "compare_mcp_servers", fake_compare_mcp_servers)
+    monkeypatch.setattr(
+        _pipeline,
+        "derive_capability_gaps_from_comparison",
+        fake_derive_capability_gaps_from_comparison,
+    )
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    generated = Path(artifact["cycle_result"]["builder"]["generated_repo"])
+
+    try:
+        builder_result = artifact["cycle_result"]["builder"]
+        assert builder_result["status"] == "ok"
+        assert builder_result["artifact_kind"] == "mcp_server"
+        assert builder_result["capability"] == "github_repository_management"
+        assert "get_me" in builder_result["tools"]
+
+        assert "evolved_builder" in artifact["cycle_result"]
+        assert artifact["cycle_result"]["evolved_builder"] == builder_result
+
+        assert generated.is_dir()
+        assert (generated / "tools" / "get_me.py").is_file()
+
+        server_text = (generated / "server.py").read_text(encoding="utf-8")
+        assert "from tools.get_me import get_me as _get_me" in server_text
+        assert "def get_me():" in server_text
+        assert "return _get_me()" in server_text
+
+        manifest = json.loads((generated / "manifest.json").read_text(encoding="utf-8"))
+        assert "get_me" in manifest["tools"]
+    finally:
+        if generated.exists():
+            import shutil
+            shutil.rmtree(generated)
