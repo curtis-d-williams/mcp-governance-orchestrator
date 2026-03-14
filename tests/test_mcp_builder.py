@@ -91,3 +91,22 @@ def test_build_mcp_server_rejects_non_mcp_capability():
     except ValueError as exc:
         assert "slack_workspace_access" in str(exc)
         assert "mcp_server" in str(exc)
+
+def test_build_mcp_server_exposes_callable_tool_functions():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        _mod.build_mcp_server()
+
+        server_text = (generated / "server.py").read_text(encoding="utf-8")
+
+        assert "def list_repositories():" in server_text
+        assert "def get_repository():" in server_text
+        assert "def create_issue():" in server_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
