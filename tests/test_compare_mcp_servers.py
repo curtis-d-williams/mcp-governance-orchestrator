@@ -322,3 +322,27 @@ class TestDeterminism:
         r2 = compare_mcp_servers(gen, ref)
 
         assert r1 == r2
+
+
+class TestSimilaritySummary:
+
+    def test_similarity_summary_scores_are_computed_deterministically(self, tmp_path):
+        gen = tmp_path / "gen"
+        ref = tmp_path / "ref"
+
+        _write_generated_repo(gen, "gen", "github_repository_management", ["get_me"])
+        _write_reference_fixture(ref)
+
+        tests_dir = gen / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_example.py").write_text("def test_x(): pass", encoding="utf-8")
+
+        result = compare_mcp_servers(gen, ref)
+
+        assert result["similarity"] == {
+            "tool_surface_score": 0.33,
+            "capability_surface_score": 0.14,
+            "testability_score": 0.5,
+            "structural_score": 1.0,
+            "overall_score": 0.37,
+        }

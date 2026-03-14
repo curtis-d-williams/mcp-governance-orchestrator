@@ -190,26 +190,75 @@ def _compare_testability(generated_root, reference_inspection):
     }
 
 
+def _round_score(value):
+    """Return a deterministic score rounded to 2 decimals."""
+    return round(float(value), 2)
+
+
+def _build_similarity_summary(tool_surface, structure, capability_surface, testability):
+    """Build deterministic aggregate similarity scores from comparison dimensions."""
+    tool_surface_score = _round_score(tool_surface.get("coverage_ratio", 0.0))
+    capability_surface_score = _round_score(
+        capability_surface.get("coverage_ratio", 0.0)
+    )
+    testability_score = _round_score(testability.get("coverage_ratio", 0.0))
+
+    structural_components = [
+        1.0 if structure.get("protocol_match") else 0.0,
+        1.0 if structure.get("capability_declared") else 0.0,
+        1.0 if structure.get("version_match") else 0.0,
+    ]
+    structural_score = _round_score(
+        sum(structural_components) / len(structural_components)
+    )
+
+    overall_score = _round_score(
+        0.4 * tool_surface_score
+        + 0.3 * capability_surface_score
+        + 0.2 * testability_score
+        + 0.1 * structural_score
+    )
+
+    return {
+        "tool_surface_score": tool_surface_score,
+        "capability_surface_score": capability_surface_score,
+        "testability_score": testability_score,
+        "structural_score": structural_score,
+        "overall_score": overall_score,
+    }
+
+
 def compare_mcp_servers(generated_path, reference_path, output_path=None):
     """Compare a generated MCP repo against a normalized reference MCP repo."""
     generated_root = Path(generated_path)
     generated_manifest = _load_manifest(generated_root)
     reference_inspection = inspect_reference_mcp(reference_path)
 
+    tool_surface = _compare_tool_surface(
+        generated_manifest, reference_inspection
+    )
+    structure = _compare_structure(
+        generated_manifest, reference_inspection
+    )
+    capability_surface = _compare_capability_surface(
+        generated_root, reference_inspection
+    )
+    testability = _compare_testability(
+        generated_root, reference_inspection
+    )
+
     result = {
         "generated": str(generated_root),
         "reference": str(Path(reference_path)),
-        "tool_surface": _compare_tool_surface(
-            generated_manifest, reference_inspection
-        ),
-        "structure": _compare_structure(
-            generated_manifest, reference_inspection
-        ),
-        "capability_surface": _compare_capability_surface(
-            generated_root, reference_inspection
-        ),
-        "testability": _compare_testability(
-            generated_root, reference_inspection
+        "tool_surface": tool_surface,
+        "structure": structure,
+        "capability_surface": capability_surface,
+        "testability": testability,
+        "similarity": _build_similarity_summary(
+            tool_surface,
+            structure,
+            capability_surface,
+            testability,
         ),
     }
 
