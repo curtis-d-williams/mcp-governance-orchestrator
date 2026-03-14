@@ -110,3 +110,29 @@ def test_build_mcp_server_exposes_callable_tool_functions():
     finally:
         if generated.exists():
             shutil.rmtree(generated)
+
+def test_build_mcp_server_generates_callable_wrappers_for_dynamic_tools():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        _mod.build_mcp_server(
+            tools=[
+                "list_repositories",
+                "get_repository",
+                "create_issue",
+                "get_me",
+            ]
+        )
+
+        server_text = (generated / "server.py").read_text(encoding="utf-8")
+
+        assert "from tools.get_me import get_me as _get_me" in server_text
+        assert "def get_me():" in server_text
+        assert "return _get_me()" in server_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)

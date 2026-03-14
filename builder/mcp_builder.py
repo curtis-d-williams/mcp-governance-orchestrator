@@ -44,12 +44,21 @@ def build_mcp_server(
     root = REPO_ROOT / name
 
     tools_json = json.dumps(tools, indent=2)
+    tool_imports = "\n".join(
+        f"from tools.{tool} import {tool} as _{tool}" for tool in tools
+    )
+    tool_wrappers = "\n\n".join(
+        f"def {tool}():\n    return _{tool}()"
+        for tool in tools
+    )
 
     variables = {
         "name": name,
         "capability": capability,
         "tools": "\n".join(f"- {t}" for t in tools),
         "tools_json": tools_json,
+        "tool_imports": tool_imports,
+        "tool_wrappers": tool_wrappers,
     }
 
     # Render core templates
