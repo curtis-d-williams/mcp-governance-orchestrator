@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import csv
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+
+from tests.cli_test_utils import run_script_cli
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _BRIDGE = str(_REPO_ROOT / "scripts" / "build_portfolio_state_from_artifacts.py")
@@ -45,13 +45,12 @@ def _write_agg(path: Path, items: list[dict]) -> None:
 def _run_bridge(tmp_path: Path, report: Path, agg: Path, extra: list[str] | None = None) -> tuple[int, Path]:
     """Run the bridge CLI and return (returncode, output_path)."""
     output = tmp_path / "portfolio_state.json"
-    cmd = [
-        sys.executable, _BRIDGE,
+    args = [
         "--report", str(report),
         "--aggregate", str(agg),
         "--output", str(output),
     ] + (extra or [])
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_script_cli(_BRIDGE, args)
     return result.returncode, output
 
 
@@ -312,13 +311,12 @@ class TestByteIdenticalOutput:
         out2 = tmp_path / "out2.json"
 
         cmd_base = [
-            sys.executable, _BRIDGE,
             "--report", str(report),
             "--aggregate", str(agg),
             "--generated-at", _TS,
         ]
-        r1 = subprocess.run(cmd_base + ["--output", str(out1)], capture_output=True, text=True)
-        r2 = subprocess.run(cmd_base + ["--output", str(out2)], capture_output=True, text=True)
+        r1 = run_script_cli(_BRIDGE, cmd_base + ["--output", str(out1)])
+        r2 = run_script_cli(_BRIDGE, cmd_base + ["--output", str(out2)])
 
         assert r1.returncode == 0
         assert r2.returncode == 0
@@ -343,13 +341,13 @@ class TestByteIdenticalOutput:
         report, agg = _make_fixtures(tmp_path)
         out1 = tmp_path / "out1.json"
         out2 = tmp_path / "out2.json"
-        r1 = subprocess.run(
-            [sys.executable, _BRIDGE, "--report", str(report), "--aggregate", str(agg), "--output", str(out1)],
-            capture_output=True, text=True,
+        r1 = run_script_cli(
+            _BRIDGE,
+            ["--report", str(report), "--aggregate", str(agg), "--output", str(out1)],
         )
-        r2 = subprocess.run(
-            [sys.executable, _BRIDGE, "--report", str(report), "--aggregate", str(agg), "--output", str(out2)],
-            capture_output=True, text=True,
+        r2 = run_script_cli(
+            _BRIDGE,
+            ["--report", str(report), "--aggregate", str(agg), "--output", str(out2)],
         )
         assert r1.returncode == 0
         assert r2.returncode == 0
@@ -375,16 +373,14 @@ class TestRealArtifacts:
     )
     def test_real_artifacts_produce_valid_state(self, tmp_path):
         output = tmp_path / "portfolio_state.json"
-        result = subprocess.run(
+        result = run_script_cli(
+            _BRIDGE,
             [
-                sys.executable, _BRIDGE,
                 "--report", str(self._REPORT),
                 "--aggregate", str(self._AGG),
                 "--output", str(output),
                 "--generated-at", _TS,
             ],
-            capture_output=True,
-            text=True,
         )
         assert result.returncode == 0, f"bridge failed: {result.stderr}"
         state = json.loads(output.read_text(encoding="utf-8"))

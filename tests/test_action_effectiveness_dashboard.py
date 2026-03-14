@@ -7,11 +7,11 @@ Deterministic: identical inputs produce identical outputs.
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+
+from tests.cli_test_utils import run_script_cli
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = str(_REPO_ROOT / "scripts" / "build_action_effectiveness_dashboard.py")
@@ -66,9 +66,9 @@ def _run_script(tmp_path: Path, ledger: dict) -> tuple[int, str, str, Path]:
     ledger_path = tmp_path / "ledger.json"
     out_path = tmp_path / "dashboard.html"
     ledger_path.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, _SCRIPT, "--input", str(ledger_path), "--output", str(out_path)],
-        capture_output=True, text=True, check=False,
+    result = run_script_cli(
+        _SCRIPT,
+        ["--input", str(ledger_path), "--output", str(out_path)],
     )
     return result.returncode, result.stdout, result.stderr, out_path
 
@@ -112,11 +112,12 @@ class TestHtmlGenerated:
 
     def test_fail_closed_on_missing_input(self, tmp_path):
         out = tmp_path / "dashboard.html"
-        result = subprocess.run(
-            [sys.executable, _SCRIPT,
-             "--input", str(tmp_path / "nonexistent.json"),
-             "--output", str(out)],
-            capture_output=True, text=True, check=False,
+        result = run_script_cli(
+            _SCRIPT,
+            [
+                "--input", str(tmp_path / "nonexistent.json"),
+                "--output", str(out),
+            ],
         )
         assert result.returncode != 0
         assert not out.exists()
@@ -166,10 +167,11 @@ class TestDeterministicRowOrder:
         out1 = tmp_path / "run1.html"
         out2 = tmp_path / "run2.html"
         for out in (out1, out2):
-            subprocess.run(
-                [sys.executable, _SCRIPT, "--input", str(ledger_path), "--output", str(out)],
-                check=True,
+            result = run_script_cli(
+                _SCRIPT,
+                ["--input", str(ledger_path), "--output", str(out)],
             )
+            assert result.returncode == 0, result.stderr
         assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
 
     def test_three_rows_all_distinct_scores_ordered(self, tmp_path):
@@ -331,8 +333,9 @@ class TestEffectDeltasRendering:
         out1 = tmp_path / "run1.html"
         out2 = tmp_path / "run2.html"
         for out in (out1, out2):
-            subprocess.run(
-                [sys.executable, _SCRIPT, "--input", str(ledger_path), "--output", str(out)],
-                check=True,
+            result = run_script_cli(
+                _SCRIPT,
+                ["--input", str(ledger_path), "--output", str(out)],
             )
+            assert result.returncode == 0, result.stderr
         assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")

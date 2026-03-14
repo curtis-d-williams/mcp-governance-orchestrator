@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.cli_test_utils import run_script_cli
+
 # ---------------------------------------------------------------------------
 # Load the script module by file path (scripts/ is not on pytest pythonpath).
 # ---------------------------------------------------------------------------
@@ -292,14 +294,12 @@ class TestPortfolioSignalImpact:
 # ---------------------------------------------------------------------------
 
 def _run_cli(tmp_path: Path, extra_args: list[str]) -> tuple[int, str, str, Path]:
-    """Run the script via subprocess and return (returncode, stdout, stderr, html_path)."""
+    """Run the script in-process and return (returncode, stdout, stderr, html_path)."""
     csv_file = _csv_empty(tmp_path)
     html_file = tmp_path / "cli_out.html"
-    result = subprocess.run(
-        [sys.executable, _SCRIPT_PATH,
-         "--csv", str(csv_file),
-         "--output", str(html_file)] + extra_args,
-        capture_output=True, text=True, check=False,
+    result = run_script_cli(
+        _SCRIPT_PATH,
+        ["--csv", str(csv_file), "--output", str(html_file), *extra_args],
     )
     return result.returncode, result.stdout, result.stderr, html_file
 

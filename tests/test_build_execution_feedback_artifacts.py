@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
+
+from tests.cli_test_utils import run_script_cli
 
 
 def _write_json(path: Path, payload) -> None:
@@ -72,10 +73,9 @@ def test_build_execution_feedback_artifacts_happy_path(tmp_path: Path):
     _write_json(after_path, _portfolio_state("repo-a", health_score=0.90, risk_level="low"))
     _write_json(actions_path, [{"action_type": "refresh_repo_health", "repo_id": "repo-a"}])
 
-    result = subprocess.run(
+    result = run_script_cli(
+        "scripts/build_execution_feedback_artifacts.py",
         [
-            "python3",
-            "scripts/build_execution_feedback_artifacts.py",
             "--before", str(before_path),
             "--after", str(after_path),
             "--executed-actions", str(actions_path),
@@ -83,9 +83,6 @@ def test_build_execution_feedback_artifacts_happy_path(tmp_path: Path):
             "--ledger-output", str(ledger_output),
             "--generated-at", "",
         ],
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -118,19 +115,15 @@ def test_build_execution_feedback_artifacts_fails_closed_on_bad_actions(tmp_path
     _write_json(after_path, _portfolio_state("repo-a", health_score=0.90, risk_level="low"))
     _write_json(actions_path, [{"repo_id": "repo-a"}])
 
-    result = subprocess.run(
+    result = run_script_cli(
+        "scripts/build_execution_feedback_artifacts.py",
         [
-            "python3",
-            "scripts/build_execution_feedback_artifacts.py",
             "--before", str(before_path),
             "--after", str(after_path),
             "--executed-actions", str(actions_path),
             "--evaluation-output", str(evaluation_output),
             "--ledger-output", str(ledger_output),
         ],
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 1

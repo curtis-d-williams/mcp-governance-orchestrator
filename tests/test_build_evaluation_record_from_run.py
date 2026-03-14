@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
+
+from tests.cli_test_utils import run_script_cli
 
 
 def _write_json(path: Path, payload) -> None:
@@ -67,18 +68,14 @@ def test_build_evaluation_record_from_run_happy_path(tmp_path: Path):
         ],
     )
 
-    result = subprocess.run(
+    result = run_script_cli(
+        "scripts/build_evaluation_record_from_run.py",
         [
-            "python3",
-            "scripts/build_evaluation_record_from_run.py",
             "--before", str(before_path),
             "--after", str(after_path),
             "--executed-actions", str(actions_path),
             "--output", str(output_path),
         ],
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -114,18 +111,14 @@ def test_build_evaluation_record_from_run_accepts_wrapped_executed_actions(tmp_p
         },
     )
 
-    result = subprocess.run(
+    result = run_script_cli(
+        "scripts/build_evaluation_record_from_run.py",
         [
-            "python3",
-            "scripts/build_evaluation_record_from_run.py",
             "--before", str(before_path),
             "--after", str(after_path),
             "--executed-actions", str(actions_path),
             "--output", str(output_path),
         ],
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -145,18 +138,14 @@ def test_build_evaluation_record_from_run_fails_closed_on_bad_actions(tmp_path: 
     _write_json(after_path, _portfolio_state(["repo-a"]))
     _write_json(actions_path, [{"repo_id": "repo-a"}])
 
-    result = subprocess.run(
+    result = run_script_cli(
+        "scripts/build_evaluation_record_from_run.py",
         [
-            "python3",
-            "scripts/build_evaluation_record_from_run.py",
             "--before", str(before_path),
             "--after", str(after_path),
             "--executed-actions", str(actions_path),
             "--output", str(output_path),
         ],
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 1

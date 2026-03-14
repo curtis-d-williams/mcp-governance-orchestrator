@@ -7,11 +7,11 @@ All tests are deterministic.
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+
+from tests.cli_test_utils import run_script_cli
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = str(_REPO_ROOT / "scripts" / "build_action_effect_attribution_dashboard.py")
@@ -60,11 +60,12 @@ def _run(tmp_path: Path, ledger: dict) -> tuple[int, str, str, Path]:
     ledger_path = tmp_path / "ledger.json"
     out_path = tmp_path / "dashboard.html"
     ledger_path.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, _SCRIPT,
-         "--input", str(ledger_path),
-         "--output", str(out_path)],
-        capture_output=True, text=True, check=False,
+    result = run_script_cli(
+        _SCRIPT,
+        [
+            "--input", str(ledger_path),
+            "--output", str(out_path),
+        ],
     )
     return result.returncode, result.stdout, result.stderr, out_path
 
@@ -150,11 +151,11 @@ class TestDeterministicOrdering:
         out1 = tmp_path / "run1.html"
         out2 = tmp_path / "run2.html"
         for out in (out1, out2):
-            r = subprocess.run(
-                [sys.executable, _SCRIPT,
-                 "--input", str(ledger_path), "--output", str(out)],
-                check=True,
+            r = run_script_cli(
+                _SCRIPT,
+                ["--input", str(ledger_path), "--output", str(out)],
             )
+            assert r.returncode == 0, r.stderr
         assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
 
 
@@ -253,11 +254,12 @@ class TestHtmlEscaping:
 class TestFailClosed:
     def test_missing_ledger_exits_nonzero(self, tmp_path):
         out = tmp_path / "dashboard.html"
-        result = subprocess.run(
-            [sys.executable, _SCRIPT,
-             "--input", str(tmp_path / "nonexistent.json"),
-             "--output", str(out)],
-            capture_output=True, text=True, check=False,
+        result = run_script_cli(
+            _SCRIPT,
+            [
+                "--input", str(tmp_path / "nonexistent.json"),
+                "--output", str(out),
+            ],
         )
         assert result.returncode != 0
         assert not out.exists()
@@ -266,10 +268,12 @@ class TestFailClosed:
         bad = tmp_path / "bad.json"
         bad.write_text("{not valid json", encoding="utf-8")
         out = tmp_path / "dashboard.html"
-        result = subprocess.run(
-            [sys.executable, _SCRIPT,
-             "--input", str(bad), "--output", str(out)],
-            capture_output=True, text=True, check=False,
+        result = run_script_cli(
+            _SCRIPT,
+            [
+                "--input", str(bad),
+                "--output", str(out),
+            ],
         )
         assert result.returncode != 0
 
@@ -277,10 +281,12 @@ class TestFailClosed:
         bad = tmp_path / "bad.json"
         bad.write_text(json.dumps({"schema_version": "v1"}), encoding="utf-8")
         out = tmp_path / "dashboard.html"
-        result = subprocess.run(
-            [sys.executable, _SCRIPT,
-             "--input", str(bad), "--output", str(out)],
-            capture_output=True, text=True, check=False,
+        result = run_script_cli(
+            _SCRIPT,
+            [
+                "--input", str(bad),
+                "--output", str(out),
+            ],
         )
         assert result.returncode != 0
 
@@ -288,10 +294,12 @@ class TestFailClosed:
         bad = tmp_path / "bad.json"
         bad.write_text(json.dumps({"action_types": "not-a-list"}), encoding="utf-8")
         out = tmp_path / "dashboard.html"
-        result = subprocess.run(
-            [sys.executable, _SCRIPT,
-             "--input", str(bad), "--output", str(out)],
-            capture_output=True, text=True, check=False,
+        result = run_script_cli(
+            _SCRIPT,
+            [
+                "--input", str(bad),
+                "--output", str(out),
+            ],
         )
         assert result.returncode != 0
 
@@ -419,11 +427,11 @@ class TestEffectDeltasRendering:
         out1 = tmp_path / "run1.html"
         out2 = tmp_path / "run2.html"
         for out in (out1, out2):
-            subprocess.run(
-                [sys.executable, _SCRIPT,
-                 "--input", str(ledger_path), "--output", str(out)],
-                check=True,
+            result = run_script_cli(
+                _SCRIPT,
+                ["--input", str(ledger_path), "--output", str(out)],
             )
+            assert result.returncode == 0, result.stderr
         assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
 
     def test_two_decimal_precision(self, tmp_path):

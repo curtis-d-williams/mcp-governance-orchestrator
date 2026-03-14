@@ -30,11 +30,12 @@ from __future__ import annotations
 
 import csv
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from tests.cli_test_utils import run_script_cli
 
 # ---------------------------------------------------------------------------
 # Locate modules
@@ -168,15 +169,14 @@ def _run_dashboard_cli(
     """Run the styled dashboard CLI and return (rc, stdout, stderr, html_path)."""
     csv_file = _write_empty_csv(tmp_path / "input.csv")
     html_file = tmp_path / "output.html"
-    cmd = [
-        sys.executable, _DASHBOARD_SCRIPT,
+    args = [
         "--csv", str(csv_file),
         "--output", str(html_file),
     ]
     if ledger is not None:
         ledger_file = _write_ledger(tmp_path / "ledger.json", ledger)
-        cmd += ["--ledger", str(ledger_file)]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        args += ["--ledger", str(ledger_file)]
+    result = run_script_cli(_DASHBOARD_SCRIPT, args)
     return result.returncode, result.stdout, result.stderr, html_file
 
 
@@ -271,13 +271,15 @@ class TestEndToEndCLIPipeline:
         out1 = tmp_path / "run1.html"
         out2 = tmp_path / "run2.html"
         for out in (out1, out2):
-            subprocess.run(
-                [sys.executable, _DASHBOARD_SCRIPT,
-                 "--csv", str(csv_file),
-                 "--output", str(out),
-                 "--ledger", str(ledger_file)],
-                check=True,
+            result = run_script_cli(
+                _DASHBOARD_SCRIPT,
+                [
+                    "--csv", str(csv_file),
+                    "--output", str(out),
+                    "--ledger", str(ledger_file),
+                ],
             )
+            assert result.returncode == 0, result.stderr
         assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
 
     def test_no_ledger_omits_signal_impact_section(self, tmp_path):

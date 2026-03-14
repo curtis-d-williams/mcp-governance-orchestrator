@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import csv
 import json
-import subprocess
 import sys
 from pathlib import Path
+
+from tests.cli_test_utils import run_script_cli
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = str(_REPO_ROOT / "scripts" / "capture_execution_feedback.py")
@@ -125,8 +126,7 @@ def _run_script(tmp_path: Path, before_source: Path, report: Path, agg: Path,
     after_out = tmp_path / "after_out.json"
     eval_out = tmp_path / "evaluation_records.json"
     ledger_out = tmp_path / "ledger.json"
-    cmd = [
-        sys.executable, _SCRIPT,
+    args = [
         "--before-source", str(before_source),
         "--report", str(report),
         "--aggregate", str(agg),
@@ -136,7 +136,7 @@ def _run_script(tmp_path: Path, before_source: Path, report: Path, agg: Path,
         "--evaluation-output", str(eval_out),
         "--ledger-output", str(ledger_out),
     ] + (extra or [])
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    result = run_script_cli(_SCRIPT, args)
     paths = {
         "before": before_out,
         "after": after_out,
@@ -439,19 +439,20 @@ class TestDeterministicOrdering:
 
         def _run_to(dest: Path):
             after_p = dest / "after.json"
-            cmd = [
-                sys.executable, _SCRIPT,
-                "--before-source", str(before_source),
-                "--report", str(report),
-                "--aggregate", str(agg),
-                "--executed-actions", str(executed),
-                "--before-output", str(dest / "before.json"),
-                "--after-output", str(after_p),
-                "--evaluation-output", str(dest / "eval.json"),
-                "--ledger-output", str(dest / "ledger.json"),
-                "--generated-at", _TS,
-            ]
-            r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            r = run_script_cli(
+                _SCRIPT,
+                [
+                    "--before-source", str(before_source),
+                    "--report", str(report),
+                    "--aggregate", str(agg),
+                    "--executed-actions", str(executed),
+                    "--before-output", str(dest / "before.json"),
+                    "--after-output", str(after_p),
+                    "--evaluation-output", str(dest / "eval.json"),
+                    "--ledger-output", str(dest / "ledger.json"),
+                    "--generated-at", _TS,
+                ],
+            )
             return r.returncode, after_p
 
         rc1, after1 = _run_to(out1)
