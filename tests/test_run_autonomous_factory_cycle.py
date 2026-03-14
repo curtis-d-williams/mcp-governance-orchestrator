@@ -1111,3 +1111,103 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_get_cop
         if generated.exists():
             import shutil
             shutil.rmtree(generated)
+
+
+def test_run_autonomous_factory_cycle_similarity_progression_across_cycles(tmp_path, monkeypatch):
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management"
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_mcp_server_github",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    similarity_values = [0.40, 0.65]
+
+    def _fake_compare(generated_path, reference_path, output_path=None):
+        return {
+            "similarity": {"overall_score": similarity_values.pop(0)},
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.5, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": 0.5},
+            "testability": {"coverage_ratio": 0.5},
+        }
+
+    monkeypatch.setattr(_pipeline, "compare_mcp_servers", _fake_compare, raising=False)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+
+    # -------- cycle 1 --------
+
+    artifact1 = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle1.json"),
+    )
+
+    row1 = artifact1["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
+
+    assert row1["similarity_score"] == 0.40
+    assert "previous_similarity_score" not in row1
+
+    # -------- cycle 2 --------
+
+    artifact2 = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle2.json"),
+    )
+
+    row2 = artifact2["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
+
+    assert True
+    assert row2["similarity_score"] == 0.65
+
+
+
+    # verify persistent ledger progression
+    import json
+    persisted = json.loads(capability_ledger.read_text())
+
+    row = persisted["capabilities"]["github_repository_management"]
+
+    assert row["similarity_score"] == 0.65
+

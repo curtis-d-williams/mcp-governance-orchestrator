@@ -705,3 +705,187 @@ def test_run_factory_cycle_rebuilds_mcp_artifact_with_evolution_overrides(tmp_pa
 
     persisted = json.loads(output.read_text(encoding="utf-8"))
     assert persisted["cycle_result"]["evolved_builder"] == artifact["cycle_result"]["evolved_builder"]
+
+def test_run_factory_cycle_records_similarity_progression(tmp_path, monkeypatch):
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_mcp_server_github",
+            "tools": ["list_repositories"],
+        }
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        return {
+            "similarity": {
+                "overall_score": 0.61,
+            },
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.61, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": 0.61},
+            "testability": {"coverage_ratio": 0.61},
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    row = artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
+
+    assert row["similarity_score"] == 0.61
+    assert "previous_similarity_score" not in row
+
+    persisted = json.loads(output.read_text(encoding="utf-8"))
+    persisted_row = persisted["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
+
+    assert persisted_row["similarity_score"] == 0.61
+
+
+
+def test_run_factory_cycle_records_similarity_progression_from_prior_ledger(tmp_path, monkeypatch):
+    prior_ledger = {
+        "capabilities": {
+            "github_repository_management": {
+                "artifact_kind": "mcp_server",
+                "failed_syntheses": 0,
+                "last_synthesis_source": "planner_request",
+                "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
+                "similarity_score": 0.37,
+                "successful_evolved_syntheses": 0,
+                "successful_syntheses": 1,
+                "total_syntheses": 1,
+            }
+        }
+    }
+
+    def fake_record_normalized_synthesis_event(ledger, synthesis_event):
+        from src.mcp_governance_orchestrator.capability_effectiveness_ledger import record_synthesis_event
+        return record_synthesis_event(
+            prior_ledger,
+            capability=synthesis_event["capability"],
+            artifact_kind=synthesis_event["artifact_kind"],
+            synthesis_source=synthesis_event["source"],
+            synthesis_status=synthesis_event["status"],
+            synthesis_used_evolution=synthesis_event.get("used_evolution", False),
+            similarity_score=synthesis_event.get("similarity_score"),
+            previous_similarity_score=prior_ledger["capabilities"]["github_repository_management"]["similarity_score"],
+            similarity_delta=round(
+                synthesis_event.get("similarity_score", 0)
+                - prior_ledger["capabilities"]["github_repository_management"]["similarity_score"],
+                2,
+            ),
+        )
+
+    monkeypatch.setattr(_mod, "record_normalized_synthesis_event", fake_record_normalized_synthesis_event)
+
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_mcp_server_github",
+        }
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        return {
+            "similarity": {"overall_score": 0.61},
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.61, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": 0.61},
+            "testability": {"coverage_ratio": 0.61},
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(AssertionError("repair path should not run")),
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    row = artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
+
+    assert row["previous_similarity_score"] == 0.37
+    assert row["similarity_score"] == 0.61
+    assert row["similarity_delta"] == 0.24
+

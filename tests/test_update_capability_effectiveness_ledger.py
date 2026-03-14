@@ -145,3 +145,40 @@ def test_deterministic_sorted_output(tmp_path):
     data = _read_json(ledger)
 
     assert list(data["capabilities"].keys()) == ["a_cap", "z_cap"]
+
+
+def test_similarity_fields_propagate_from_cycle(tmp_path):
+    ledger = tmp_path / "capability_ledger.json"
+    cycle = tmp_path / "cycle.json"
+
+    cycle.write_text(json.dumps({
+        "capability_effectiveness_ledger": {
+            "capabilities": {
+                "github_repository_management": {
+                    "artifact_kind": "mcp_server",
+                    "failed_syntheses": 0,
+                    "successful_syntheses": 1,
+                    "successful_evolved_syntheses": 0,
+                    "total_syntheses": 1,
+                    "last_synthesis_source": "planner_request",
+                    "last_synthesis_status": "ok",
+                    "last_synthesis_used_evolution": False,
+                    "similarity_score": 0.61,
+                    "previous_similarity_score": 0.37,
+                    "similarity_delta": 0.24,
+                }
+            }
+        }
+    }), encoding="utf-8")
+
+    update_capability_effectiveness_ledger(str(ledger), str(cycle))
+
+    result = _read_json(ledger)
+
+    row = result["capabilities"]["github_repository_management"]
+
+    assert row["similarity_score"] == 0.61
+    assert row["previous_similarity_score"] == 0.37
+    assert row["similarity_delta"] == 0.24
+
+
