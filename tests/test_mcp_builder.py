@@ -176,3 +176,25 @@ def test_build_mcp_server_renders_enabled_features_in_readme():
     finally:
         if generated.exists():
             shutil.rmtree(generated)
+
+def test_build_mcp_server_generates_additional_test_file_when_test_expansion_enabled():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        result = _mod.build_mcp_server(test_expansion=True)
+
+        assert result["test_expansion"] is True
+        assert (generated / "tests" / "test_server_smoke.py").is_file()
+        assert (generated / "tests" / "test_tools_basic.py").is_file()
+
+        test_text = (generated / "tests" / "test_tools_basic.py").read_text(
+            encoding="utf-8"
+        )
+        assert "def test_all_tools_callable():" in test_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
