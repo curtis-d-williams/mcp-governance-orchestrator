@@ -1,0 +1,39 @@
+{
+  "schema_version": "v1",
+  "portfolio_id": "portfolio-9fe5e9600343",
+  "generated_at": "",
+  "summary": {
+    "repo_count": 1,
+    "repos_healthy": 1,
+    "repos_degraded": 0,
+    "repos_failing": 0,
+    "repos_stale": 0,
+    "open_issues_total": 0,
+    "eligible_actions_total": 1,
+    "blocked_actions_total": 0
+  },
+  "repos": [
+    {
+      "repo_id": "mcp-governance-orchestrator",
+      "status": "healthy",
+      "health_score": 1.0,
+      "risk_level": "low",
+      "signals": {
+        "last_run_ok": true,
+        "artifact_completeness": 1.0,
+        "determinism_ok": true,
+        "recent_failures": 0,
+        "stale_runs": 0
+      },
+      "open_issues": [],
+      "recommended_actions": [],
+      "action_history": [],
+      "cooldowns": [],
+      "escalations": []
+    }
+  ],
+  "capability_gaps": [
+    "github_repository_management"
+  ],
+  "portfolio_recommendations": []
+}

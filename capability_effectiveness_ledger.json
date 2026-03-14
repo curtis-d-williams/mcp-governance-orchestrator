@@ -1,0 +1,12 @@
+{
+  "capabilities": {
+    "github_repository_management": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 0,
+      "last_synthesis_source": "portfolio_gap",
+      "last_synthesis_status": "ok",
+      "successful_syntheses": 7,
+      "total_syntheses": 7
+    }
+  }
+}

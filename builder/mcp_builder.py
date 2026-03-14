@@ -23,6 +23,8 @@ def build_mcp_server(
     name=None,
     capability="github_repository_management",
     tools=None,
+    features=None,
+    test_expansion=False,
 ):
     """
     Generate a deterministic MCP server repo.
@@ -35,6 +37,9 @@ def build_mcp_server(
 
     if tools is None:
         tools = spec.get("default_tools", ["health_check"])
+
+    if features is None:
+        features = []
 
     root = REPO_ROOT / name
 
@@ -78,9 +83,27 @@ def test_list_tools():
 """,
     )
 
+    # Deterministic optional test expansion
+    if test_expansion:
+        write_file(
+            root / "tests" / "test_tools_basic.py",
+            f"""
+import server
+
+def test_all_tools_callable():
+    tools = server.list_tools()
+    for tool in tools:
+        fn = getattr(server, tool)
+        result = fn()
+        assert isinstance(result, dict)
+""",
+        )
+
     return builder_result(
         generated_repo=str(root),
         artifact_kind="mcp_server",
         capability=capability,
         tools=tools,
+        features=features,
+        test_expansion=test_expansion,
     )

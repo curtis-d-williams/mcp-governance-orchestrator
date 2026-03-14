@@ -525,18 +525,21 @@ def test_run_factory_cycle_records_capability_evolution_execution_for_mcp_build(
                 "list_repositories",
                 "create_issue",
                 "get_repository",
-            ]
+            ],
+            "features": [
+                "supports_dynamic_toolsets",
+            ],
+            "test_expansion": True,
         },
         "executable_actions": [
             {"type": "add_tool", "tool": "create_issue"},
             {"type": "add_tool", "tool": "get_repository"},
-        ],
-        "deferred_actions": [
             {"type": "enable_feature", "feature": "supports_dynamic_toolsets"},
             {"type": "increase_test_coverage"},
         ],
-        "executed_action_count": 2,
-        "deferred_action_count": 2,
+        "deferred_actions": [],
+        "executed_action_count": 4,
+        "deferred_action_count": 0,
     }
 
     persisted = json.loads(output.read_text(encoding="utf-8"))

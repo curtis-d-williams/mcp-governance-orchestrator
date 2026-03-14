@@ -1,0 +1,23 @@
+{
+  "$schema": "https://example.com/server.schema.json",
+  "name": "example/reference-mcp",
+  "title": "Example",
+  "description": "Example reference MCP",
+  "repository": {
+    "url": "https://example.com/repo",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http"
+    }
+  ]
+}

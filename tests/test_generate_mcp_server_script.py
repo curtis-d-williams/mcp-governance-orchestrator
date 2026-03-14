@@ -37,6 +37,8 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
                 "get_repository",
                 "create_issue",
             ],
+            "features": [],
+            "test_expansion": False,
         }
 
         assert generated.is_dir()

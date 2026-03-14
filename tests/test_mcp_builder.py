@@ -31,6 +31,8 @@ def test_build_mcp_server_generates_expected_repo_shape():
             "get_repository",
             "create_issue",
         ],
+        "features": [],
+        "test_expansion": False,
     }
 
     assert generated.is_dir()

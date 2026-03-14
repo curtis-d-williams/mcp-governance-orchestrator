@@ -35,10 +35,8 @@ def build_evolution_execution(
 
     v1 support:
     - add_tool -> tools override for mcp_server artifacts
-
-    Deferred in v1:
-    - enable_feature
-    - increase_test_coverage
+    - enable_feature -> features override for mcp_server artifacts
+    - increase_test_coverage -> test_expansion override for mcp_server artifacts
     """
     current_tools = list(current_tools or [])
     actions = evolution_plan.get("evolution_actions", [])
@@ -47,6 +45,8 @@ def build_evolution_execution(
     deferred_actions: List[Dict[str, Any]] = []
 
     tools = list(current_tools)
+    features: List[str] = []
+    test_expansion = False
 
     for action in actions:
         if not isinstance(action, dict):
@@ -61,17 +61,32 @@ def build_evolution_execution(
                 executable_actions.append(action)
             continue
 
-        if action_type in ("enable_feature", "increase_test_coverage"):
-            deferred_actions.append(action)
+        if action_type == "enable_feature" and artifact_kind == "mcp_server":
+            feature = action.get("feature")
+            if isinstance(feature, str):
+                features.append(feature)
+                executable_actions.append(action)
+            continue
+
+        if action_type == "increase_test_coverage" and artifact_kind == "mcp_server":
+            test_expansion = True
+            executable_actions.append(action)
             continue
 
         deferred_actions.append(action)
 
     overrides: Dict[str, Any] = {}
     normalized_tools = _unique_preserve_order(tools)
+    normalized_features = _unique_preserve_order(features)
 
     if artifact_kind == "mcp_server" and normalized_tools != _unique_preserve_order(current_tools):
         overrides["tools"] = normalized_tools
+
+    if artifact_kind == "mcp_server" and normalized_features:
+        overrides["features"] = normalized_features
+
+    if artifact_kind == "mcp_server" and test_expansion:
+        overrides["test_expansion"] = True
 
     return {
         "builder_overrides": overrides,

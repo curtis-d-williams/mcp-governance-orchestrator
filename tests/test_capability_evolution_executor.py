@@ -27,19 +27,22 @@ def test_build_evolution_execution_builds_mcp_tool_overrides():
                 "list_repositories",
                 "get_repository",
                 "create_issue",
-            ]
+            ],
+            "features": [
+                "supports_feature_flags",
+            ],
+            "test_expansion": True,
         },
         "executable_actions": [
             {"type": "add_tool", "tool": "get_repository"},
             {"type": "add_tool", "tool": "create_issue"},
             {"type": "add_tool", "tool": "get_repository"},
-        ],
-        "deferred_actions": [
             {"type": "enable_feature", "feature": "supports_feature_flags"},
             {"type": "increase_test_coverage"},
         ],
-        "executed_action_count": 3,
-        "deferred_action_count": 2,
+        "deferred_actions": [],
+        "executed_action_count": 5,
+        "deferred_action_count": 0,
     }
 
 
