@@ -62,6 +62,22 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
                 "create_issue",
             ],
         }
+
+        server_text = (generated / "server.py").read_text(encoding="utf-8")
+        readme_text = (generated / "README.md").read_text(encoding="utf-8")
+        smoke_text = (generated / "tests" / "test_server_smoke.py").read_text(
+            encoding="utf-8"
+        )
+
+        for tool_name in (
+            "list_repositories",
+            "get_repository",
+            "create_issue",
+        ):
+            assert tool_name in server_text
+            assert tool_name in readme_text
+
+        assert "generated_mcp_github" in smoke_text or "server" in smoke_text
     finally:
         if generated.exists():
             shutil.rmtree(generated)
