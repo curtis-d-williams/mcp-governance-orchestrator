@@ -301,6 +301,11 @@ def run_factory_cycle(
                         result["capability_evolution_execution"] = evolution_execution
 
                     builder_overrides = evolution_execution.get("builder_overrides", {})
+                    evolution_execution_metadata = {
+                        "builder_overrides_present": bool(builder_overrides),
+                        "builder_override_keys": sorted(builder_overrides.keys()),
+                        "builder_overrides_applied": False,
+                    }
                     prior_similarity_delta = None
                     if build_request is not None:
                         prior_row = prior_capability_effectiveness_ledger.get("capabilities", {}).get(
@@ -316,6 +321,7 @@ def run_factory_cycle(
                     used_evolution = bool(builder_overrides) and not evolution_blocked_by_similarity_regression
 
                     if builder_overrides and not evolution_blocked_by_similarity_regression:
+                        evolution_execution_metadata["builder_overrides_applied"] = True
                         evolved_builder_result = build_capability_artifact(
                             artifact_kind=build_request["artifact_kind"],
                             capability=build_request["capability"],
@@ -376,6 +382,8 @@ def run_factory_cycle(
 
             if isinstance(result, dict):
                 result["synthesis_event"] = synthesis_event
+                if "evolution_execution_metadata" in locals():
+                    result["evolution_execution_metadata"] = evolution_execution_metadata
                 result["evolution_blocked_by_similarity_regression"] = (
                     evolution_blocked_by_similarity_regression
                 )

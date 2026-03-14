@@ -547,12 +547,105 @@ def test_run_factory_cycle_records_capability_evolution_execution_for_mcp_build(
         "executed_action_count": 4,
         "deferred_action_count": 0,
     }
+    assert artifact["cycle_result"]["evolution_execution_metadata"] == {
+        "builder_overrides_present": True,
+        "builder_override_keys": ["features", "test_expansion", "tools"],
+        "builder_overrides_applied": True,
+    }
 
     persisted = json.loads(output.read_text(encoding="utf-8"))
     assert (
         persisted["cycle_result"]["capability_evolution_execution"]
         == artifact["cycle_result"]["capability_evolution_execution"]
     )
+
+def test_run_factory_cycle_records_no_evolution_override_metadata_when_comparison_has_no_gaps(
+    tmp_path, monkeypatch
+):
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_mcp_server_github",
+            "tools": ["list_repositories"],
+        }
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        return {
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {
+                "coverage_ratio": 1.0,
+                "missing_tools": [],
+            },
+            "capability_surface": {
+                "coverage_ratio": 1.0,
+                "missing_enabled": [],
+            },
+            "testability": {"coverage_ratio": 1.0},
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(tmp_path / "factory_cycle_no_overrides.json"),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert artifact["cycle_result"]["capability_evolution_execution"] == {
+        "builder_overrides": {},
+        "executable_actions": [],
+        "deferred_actions": [],
+        "executed_action_count": 0,
+        "deferred_action_count": 0,
+    }
+    assert artifact["cycle_result"]["evolution_execution_metadata"] == {
+        "builder_overrides_present": False,
+        "builder_override_keys": [],
+        "builder_overrides_applied": False,
+    }
+    assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is False
+    assert "evolved_builder" not in artifact["cycle_result"]
+
 
 def test_run_factory_cycle_rebuilds_mcp_artifact_with_evolution_overrides(tmp_path, monkeypatch):
     build_calls = []
@@ -702,6 +795,11 @@ def test_run_factory_cycle_rebuilds_mcp_artifact_with_evolution_overrides(tmp_pa
         "test_expansion": True,
     }
     assert artifact["cycle_result"]["builder"] == artifact["cycle_result"]["evolved_builder"]
+    assert artifact["cycle_result"]["evolution_execution_metadata"] == {
+        "builder_overrides_present": True,
+        "builder_override_keys": ["features", "test_expansion", "tools"],
+        "builder_overrides_applied": True,
+    }
 
     persisted = json.loads(output.read_text(encoding="utf-8"))
     assert persisted["cycle_result"]["evolved_builder"] == artifact["cycle_result"]["evolved_builder"]
@@ -1029,6 +1127,11 @@ def test_run_factory_cycle_skips_evolved_rebuild_when_prior_similarity_delta_is_
 
     assert artifact["cycle_result"]["capability_evolution_plan"]["action_count"] == 4
     assert artifact["cycle_result"]["capability_evolution_execution"]["executed_action_count"] == 4
+    assert artifact["cycle_result"]["evolution_execution_metadata"] == {
+        "builder_overrides_present": True,
+        "builder_override_keys": ["features", "test_expansion", "tools"],
+        "builder_overrides_applied": False,
+    }
     assert "evolved_builder" not in artifact["cycle_result"]
     assert artifact["cycle_result"]["evolution_blocked_by_similarity_regression"] is True
     assert artifact["cycle_result"]["builder"]["generated_repo"] == "/tmp/generated_mcp_server_github"
