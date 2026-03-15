@@ -26,11 +26,11 @@ def test_build_mcp_server_generates_expected_repo_shape():
         "generated_repo": str(generated),
         "artifact_kind": "mcp_server",
         "capability": "github_repository_management",
-        "tools": [
-            "list_repositories",
-            "get_repository",
-            "create_issue",
-        ],
+        "tools": {
+            "list_repositories": {},
+            "get_repository": {"params": ["repo"]},
+            "create_issue": {"params": ["repo", "title", "body"]},
+        },
         "features": [],
         "test_expansion": False,
     }
@@ -50,11 +50,11 @@ def test_build_mcp_server_generates_expected_repo_shape():
         "capability": "github_repository_management",
         "protocol": "model-context-protocol",
         "version": "0.1.0",
-        "tools": [
-            "list_repositories",
-            "get_repository",
-            "create_issue",
-        ],
+        "tools": {
+            "list_repositories": {},
+            "get_repository": {"params": ["repo"]},
+            "create_issue": {"params": ["repo", "title", "body"]},
+        },
         "features": [],
     }
 
@@ -108,8 +108,8 @@ def test_build_mcp_server_exposes_callable_tool_functions():
         assert 'from fastmcp import FastMCP' in server_text
         assert 'mcp = FastMCP("generated_mcp_server_github")' in server_text
         assert '@mcp.tool()\ndef list_repositories():' in server_text
-        assert '@mcp.tool()\ndef get_repository():' in server_text
-        assert '@mcp.tool()\ndef create_issue():' in server_text
+        assert '@mcp.tool()\ndef get_repository(repo: str):' in server_text
+        assert '@mcp.tool()\ndef create_issue(repo: str, title: str, body: str):' in server_text
         assert 'def main():' in server_text
         assert 'if __name__ == "__main__":' in server_text
     finally:

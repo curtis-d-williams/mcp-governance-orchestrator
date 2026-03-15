@@ -32,11 +32,11 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
             "generated_repo": str(generated),
             "artifact_kind": "mcp_server",
             "capability": "github_repository_management",
-            "tools": [
-                "list_repositories",
-                "get_repository",
-                "create_issue",
-            ],
+            "tools": {
+                "list_repositories": {},
+                "get_repository": {"params": ["repo"]},
+                "create_issue": {"params": ["repo", "title", "body"]},
+            },
             "features": [],
             "test_expansion": False,
         }
@@ -56,11 +56,11 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
             "capability": "github_repository_management",
             "protocol": "model-context-protocol",
             "version": "0.1.0",
-            "tools": [
-                "list_repositories",
-                "get_repository",
-                "create_issue",
-            ],
+            "tools": {
+                "list_repositories": {},
+                "get_repository": {"params": ["repo"]},
+                "create_issue": {"params": ["repo", "title", "body"]},
+            },
             "features": [],
         }
 
