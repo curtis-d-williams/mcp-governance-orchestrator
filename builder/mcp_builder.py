@@ -7,6 +7,7 @@ MCP server repository.
 """
 
 import json
+import shutil
 from pathlib import Path
 from builder.artifact_registry import register_builder
 from builder.spec_builder_support import require_capability_spec, default_generated_repo_name
@@ -42,6 +43,9 @@ def build_mcp_server(
         features = []
 
     root = REPO_ROOT / name
+
+    if root.exists():
+        shutil.rmtree(root)
 
     tools_json = json.dumps(tools, indent=2)
     features_json = json.dumps(features, indent=2)
