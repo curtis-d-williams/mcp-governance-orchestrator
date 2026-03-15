@@ -69,3 +69,32 @@ def test_orders_known_capabilities_deterministically_by_capability_name():
             "artifact_kind": "data_connector",
         },
     ]
+
+
+def test_existing_capability_artifact_suppresses_gap_action():
+    state = {
+        "capability_gaps": ["github_repository_management"],
+        "capability_artifacts": {
+            "github_repository_management": {
+                "artifact_kind": "mcp_server",
+                "latest_artifact": "generated_mcp_server_github",
+                "revision": 2,
+            }
+        },
+    }
+
+    assert analyze_portfolio_capability_gaps(state) == []
+
+
+def test_capability_gap_generated_when_artifact_not_present():
+    state = {
+        "capability_gaps": ["github_repository_management"],
+        "capability_artifacts": {},
+    }
+
+    assert analyze_portfolio_capability_gaps(state) == [
+        {
+            "capability": "github_repository_management",
+            "artifact_kind": "mcp_server",
+        }
+    ]

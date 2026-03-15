@@ -464,3 +464,86 @@ class TestComparisonGapArtifactIntegration:
         assert rc == 0
         state = json.loads(output.read_text(encoding="utf-8"))
         assert state["capability_gaps"] == []
+
+
+class TestCapabilityArtifactRegistryIntegration:
+    def test_optional_artifact_registry_populates_capability_artifacts(self, tmp_path):
+        report, agg = _make_fixtures(tmp_path)
+
+        registry = tmp_path / "capability_artifact_registry.json"
+        registry.write_text(
+            json.dumps(
+                {
+                    "capabilities": {
+                        "github_repository_management": {
+                            "artifact_kind": "mcp_server",
+                            "history": [
+                                {
+                                    "artifact": "generated_mcp_server_github_v1",
+                                    "revision": 1,
+                                    "source": "portfolio_gap",
+                                    "status": "ok",
+                                    "used_evolution": False,
+                                },
+                                {
+                                    "artifact": "generated_mcp_server_github_v2",
+                                    "revision": 2,
+                                    "source": "planner_request",
+                                    "status": "ok",
+                                    "used_evolution": True,
+                                },
+                            ],
+                            "latest_artifact": "generated_mcp_server_github_v2",
+                            "revision": 2,
+                        }
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        rc, output = _run_bridge(
+            tmp_path,
+            report,
+            agg,
+            ["--capability-artifact-registry", str(registry)],
+        )
+
+        assert rc == 0
+        state = json.loads(output.read_text(encoding="utf-8"))
+        assert state["capability_artifacts"] == {
+            "github_repository_management": {
+                "artifact_kind": "mcp_server",
+                "latest_artifact": "generated_mcp_server_github_v2",
+                "revision": 2,
+            }
+        }
+
+    def test_missing_optional_artifact_registry_path_fails_closed(self, tmp_path):
+        report, agg = _make_fixtures(tmp_path)
+
+        rc, _ = _run_bridge(
+            tmp_path,
+            report,
+            agg,
+            ["--capability-artifact-registry", str(tmp_path / "no_such_registry.json")],
+        )
+
+        assert rc != 0
+
+    def test_invalid_optional_artifact_registry_fails_closed(self, tmp_path):
+        report, agg = _make_fixtures(tmp_path)
+
+        registry = tmp_path / "capability_artifact_registry.json"
+        registry.write_text('{"capabilities": []}\n', encoding="utf-8")
+
+        rc, _ = _run_bridge(
+            tmp_path,
+            report,
+            agg,
+            ["--capability-artifact-registry", str(registry)],
+        )
+
+        assert rc != 0

@@ -8,6 +8,7 @@ Usage:
         --aggregate <tier3_multi_run_aggregate.json> \
         --output  <artifacts/portfolio_state.json> \
         [--comparison-gap-artifact <comparison_gap_artifact.json>] \
+        [--capability-artifact-registry <capability_artifact_registry.json>] \
         [--generated-at <string>]
 
 Fail-closed on malformed or missing required inputs.
@@ -133,7 +134,7 @@ def _read_aggregate(path: Path) -> Dict[str, List[Dict[str, Any]]]:
 
 
 # ---------------------------------------------------------------------------
-# Optional comparison-gap artifact helpers
+# Optional comparison-gap / artifact-registry helpers
 # ---------------------------------------------------------------------------
 
 def _read_comparison_gap_artifact(path: Path) -> List[str]:
@@ -161,6 +162,58 @@ def _read_comparison_gap_artifact(path: Path) -> List[str]:
         capabilities.add(capability)
 
     return sorted(capabilities)
+
+
+def _read_capability_artifact_registry(path: Path) -> Dict[str, Dict[str, Any]]:
+    """Return deterministic capability_artifacts projection from registry JSON.
+
+    Shape:
+        {
+            "<capability>": {
+                "artifact_kind": "...",
+                "latest_artifact": "...",
+                "revision": 2,
+            }
+        }
+
+    Invalid registry structure fails closed via ValueError.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("capability artifact registry must be a JSON object")
+
+    capabilities = raw.get("capabilities")
+    if not isinstance(capabilities, dict):
+        raise ValueError("capability artifact registry must contain 'capabilities' as an object")
+
+    projected: Dict[str, Dict[str, Any]] = {}
+
+    for capability, row in sorted(capabilities.items()):
+        if not isinstance(capability, str) or not capability:
+            raise ValueError("capability artifact registry contains invalid capability key")
+        if not isinstance(row, dict):
+            raise ValueError("capability artifact registry row must be an object")
+        if not isinstance(get_capability_spec(capability), dict):
+            continue
+
+        artifact_kind = row.get("artifact_kind")
+        latest_artifact = row.get("latest_artifact")
+        revision = row.get("revision")
+
+        if not isinstance(artifact_kind, str) or not artifact_kind:
+            raise ValueError("capability artifact registry row missing valid artifact_kind")
+        if not isinstance(latest_artifact, str) or not latest_artifact:
+            raise ValueError("capability artifact registry row missing valid latest_artifact")
+        if not isinstance(revision, int) or revision < 0:
+            raise ValueError("capability artifact registry row missing valid revision")
+
+        projected[capability] = {
+            "artifact_kind": artifact_kind,
+            "latest_artifact": latest_artifact,
+            "revision": revision,
+        }
+
+    return projected
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +311,8 @@ def main(argv: List[str] | None = None) -> int:
                         help="Destination path for portfolio_state.json.")
     parser.add_argument("--comparison-gap-artifact", default=None, metavar="JSON",
                         help="Optional capability-gap artifact derived from MCP comparison.")
+    parser.add_argument("--capability-artifact-registry", default=None, metavar="JSON",
+                        help="Optional capability artifact registry.")
     parser.add_argument("--generated-at", default="", metavar="STRING",
                         help="Value for generated_at field. Defaults to empty string.")
     args = parser.parse_args(argv)
@@ -268,6 +323,11 @@ def main(argv: List[str] | None = None) -> int:
     comparison_gap_artifact_path = (
         Path(args.comparison_gap_artifact)
         if args.comparison_gap_artifact is not None
+        else None
+    )
+    capability_artifact_registry_path = (
+        Path(args.capability_artifact_registry)
+        if args.capability_artifact_registry is not None
         else None
     )
     generated_at: str = args.generated_at
@@ -283,6 +343,13 @@ def main(argv: List[str] | None = None) -> int:
     ):
         return _fail(
             f"comparison gap artifact file not found: {comparison_gap_artifact_path}"
+        )
+    if (
+        capability_artifact_registry_path is not None
+        and not capability_artifact_registry_path.exists()
+    ):
+        return _fail(
+            f"capability artifact registry file not found: {capability_artifact_registry_path}"
         )
 
     # Read CSV.
@@ -307,6 +374,16 @@ def main(argv: List[str] | None = None) -> int:
     except Exception as exc:
         return _fail(f"failed to read comparison gap artifact: {exc}")
 
+    # Read optional capability artifact registry.
+    try:
+        capability_artifacts = (
+            _read_capability_artifact_registry(capability_artifact_registry_path)
+            if capability_artifact_registry_path is not None
+            else {}
+        )
+    except Exception as exc:
+        return _fail(f"failed to read capability artifact registry: {exc}")
+
     # Union of repo IDs from both sources, sorted for determinism.
     all_repo_ids = sorted(set(csv_data) | set(agg_data))
     if not all_repo_ids:
@@ -327,6 +404,9 @@ def main(argv: List[str] | None = None) -> int:
             set(state.get("capability_gaps", [])) | set(comparison_gap_capabilities)
         )
         state["capability_gaps"] = merged
+
+    if capability_artifacts:
+        state["capability_artifacts"] = capability_artifacts
 
     # Track persistence of capability gaps across cycles.
     previous_cycles = state.get("capability_gap_cycles", {})

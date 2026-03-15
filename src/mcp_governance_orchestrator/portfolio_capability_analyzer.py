@@ -50,11 +50,17 @@ def analyze_portfolio_capability_gaps(state: Dict[str, Any]) -> List[Dict[str, A
         return []
 
     gap_cycles = state.get("capability_gap_cycles", {})
+    existing_artifacts = state.get("capability_artifacts", {})
+    if not isinstance(existing_artifacts, dict):
+        existing_artifacts = {}
 
     normalized: List[Dict[str, Any]] = []
 
     for capability in gaps:
         if not isinstance(capability, str) or not capability:
+            continue
+
+        if capability in existing_artifacts:
             continue
 
         cycles = int(gap_cycles.get(capability, PERSISTENCE_THRESHOLD))
