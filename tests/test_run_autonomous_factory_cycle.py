@@ -1224,3 +1224,180 @@ def test_run_autonomous_factory_cycle_similarity_progression_across_cycles(tmp_p
     assert row3["similarity_score"] == 0.78
     assert row3["similarity_delta"] == 0.13
 
+
+
+def test_run_autonomous_factory_cycle_updates_capability_artifact_registry_output(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    registry_output = tmp_path / "capability_artifact_registry.json"
+    output = tmp_path / "autonomous_factory_cycle.json"
+
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_artifact_registry_output=str(registry_output),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    persisted = _read_json(registry_output)
+
+    assert persisted == {
+        "capabilities": {
+            "snowflake_data_access": {
+                "artifact_kind": "data_connector",
+                "history": [
+                    {
+                        "artifact": "generated_data_connector_snowflake",
+                        "revision": 1,
+                        "source": "planner_request",
+                        "status": "ok",
+                        "used_evolution": False,
+                    }
+                ],
+                "latest_artifact": "generated_data_connector_snowflake",
+                "revision": 1,
+            }
+        }
+    }
+    assert artifact["cycle_result"]["synthesis_event"]["generated_repo"] == "generated_data_connector_snowflake"
+
+
+def test_run_autonomous_factory_cycle_updates_existing_capability_artifact_registry_output(tmp_path, monkeypatch):
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake_v2",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    registry = tmp_path / "capability_artifact_registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "capabilities": {
+                    "snowflake_data_access": {
+                        "artifact_kind": "data_connector",
+                        "history": [
+                            {
+                                "artifact": "generated_data_connector_snowflake_v1",
+                                "revision": 1,
+                                "source": "portfolio_gap",
+                                "status": "ok",
+                                "used_evolution": False,
+                            }
+                        ],
+                        "latest_artifact": "generated_data_connector_snowflake_v1",
+                        "revision": 1,
+                    }
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_artifact_registry_output=str(registry),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    persisted = _read_json(registry)
+    row = persisted["capabilities"]["snowflake_data_access"]
+
+    assert row["latest_artifact"] == "generated_data_connector_snowflake_v2"
+    assert row["revision"] == 2
+    assert len(row["history"]) == 2
+    assert row["history"][-1] == {
+        "artifact": "generated_data_connector_snowflake_v2",
+        "revision": 2,
+        "source": "planner_request",
+        "status": "ok",
+        "used_evolution": False,
+    }

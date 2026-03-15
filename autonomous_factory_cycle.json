@@ -1,14 +1,28 @@
 {
   "capability_effectiveness_ledger": {
-    "capabilities": {}
+    "capabilities": {
+      "github_repository_management": {
+        "artifact_kind": "mcp_server",
+        "failed_syntheses": 0,
+        "last_synthesis_source": "portfolio_gap",
+        "last_synthesis_status": "ok",
+        "last_synthesis_used_evolution": true,
+        "similarity_score": 0.34,
+        "successful_evolved_syntheses": 1,
+        "successful_syntheses": 1,
+        "total_syntheses": 1
+      }
+    }
   },
   "cycle_result": {
     "baseline_evaluation": {
       "action_entropy": 0.0,
       "collapse_count": 0,
       "collision_ratio": 0.0,
+      "expected_success_rate": null,
+      "historical_runs": 0,
       "mapped_tasks": [],
-      "policy": null,
+      "policy": "governed_portfolio_cycle_artifacts/_default_governance_policy.json",
       "ranked_action_window": [],
       "ranked_action_window_detail": [],
       "reasons": [
@@ -22,15 +36,619 @@
       "top_k": 3,
       "unique_tasks": 0
     },
+    "builder": {
+      "artifact_kind": "mcp_server",
+      "capability": "github_repository_management",
+      "features": [
+        "supports_dynamic_toolsets",
+        "supports_exclude_tools",
+        "supports_feature_flags",
+        "supports_lockdown_mode",
+        "supports_read_only",
+        "supports_scope_filtering"
+      ],
+      "generated_repo": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+      "status": "ok",
+      "test_expansion": false,
+      "tools": [
+        "list_repositories",
+        "get_repository",
+        "create_issue"
+      ]
+    },
+    "capability_evolution_execution": {
+      "builder_overrides": {
+        "features": [
+          "supports_dynamic_toolsets",
+          "supports_exclude_tools",
+          "supports_feature_flags",
+          "supports_lockdown_mode",
+          "supports_read_only",
+          "supports_scope_filtering"
+        ],
+        "test_expansion": true,
+        "tools": [
+          "list_repositories",
+          "get_repository",
+          "create_issue",
+          "create_pull_request",
+          "get_copilot_space",
+          "get_me"
+        ]
+      },
+      "deferred_action_count": 0,
+      "deferred_actions": [],
+      "executable_actions": [
+        {
+          "tool": "create_pull_request",
+          "type": "add_tool"
+        },
+        {
+          "tool": "get_copilot_space",
+          "type": "add_tool"
+        },
+        {
+          "tool": "get_me",
+          "type": "add_tool"
+        },
+        {
+          "feature": "supports_dynamic_toolsets",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_exclude_tools",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_feature_flags",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_lockdown_mode",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_read_only",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_scope_filtering",
+          "type": "enable_feature"
+        },
+        {
+          "type": "increase_test_coverage"
+        }
+      ],
+      "executed_action_count": 10
+    },
+    "capability_evolution_plan": {
+      "action_count": 10,
+      "evolution_actions": [
+        {
+          "tool": "create_pull_request",
+          "type": "add_tool"
+        },
+        {
+          "tool": "get_copilot_space",
+          "type": "add_tool"
+        },
+        {
+          "tool": "get_me",
+          "type": "add_tool"
+        },
+        {
+          "feature": "supports_dynamic_toolsets",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_exclude_tools",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_feature_flags",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_lockdown_mode",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_read_only",
+          "type": "enable_feature"
+        },
+        {
+          "feature": "supports_scope_filtering",
+          "type": "enable_feature"
+        },
+        {
+          "type": "increase_test_coverage"
+        }
+      ]
+    },
+    "evolution_blocked_by_similarity_regression": false,
+    "evolution_execution_metadata": {
+      "builder_override_keys": [
+        "features",
+        "test_expansion",
+        "tools"
+      ],
+      "builder_overrides_applied": true,
+      "builder_overrides_present": true
+    },
+    "evolution_iterations": [
+      {
+        "builder_result": {
+          "artifact_kind": "mcp_server",
+          "capability": "github_repository_management",
+          "features": [
+            "supports_dynamic_toolsets",
+            "supports_exclude_tools",
+            "supports_feature_flags",
+            "supports_lockdown_mode",
+            "supports_read_only",
+            "supports_scope_filtering"
+          ],
+          "generated_repo": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+          "status": "ok",
+          "test_expansion": true,
+          "tools": [
+            "list_repositories",
+            "get_repository",
+            "create_issue",
+            "create_pull_request",
+            "get_copilot_space",
+            "get_me"
+          ]
+        },
+        "comparison": {
+          "capability_surface": {
+            "coverage_ratio": 0.14285714285714285,
+            "generated": {
+              "supports_dynamic_toolsets": false,
+              "supports_exclude_tools": false,
+              "supports_explicit_tools": true,
+              "supports_feature_flags": false,
+              "supports_lockdown_mode": false,
+              "supports_read_only": false,
+              "supports_scope_filtering": false
+            },
+            "matching_enabled": [
+              "supports_explicit_tools"
+            ],
+            "matching_enabled_count": 1,
+            "missing_enabled": [
+              "supports_dynamic_toolsets",
+              "supports_exclude_tools",
+              "supports_feature_flags",
+              "supports_lockdown_mode",
+              "supports_read_only",
+              "supports_scope_filtering"
+            ],
+            "reference": {
+              "supports_dynamic_toolsets": true,
+              "supports_exclude_tools": true,
+              "supports_explicit_tools": true,
+              "supports_feature_flags": true,
+              "supports_lockdown_mode": true,
+              "supports_read_only": true,
+              "supports_scope_filtering": true
+            },
+            "reference_enabled_count": 7
+          },
+          "consistency": {
+            "documented_default_toolsets_match_registered_defaults": true,
+            "documented_tools_present": true,
+            "documented_toolsets_cover_registered_toolsets": true,
+            "registered_tools_present": true
+          },
+          "generated": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+          "reference": "reference_mcp_github_repository_management",
+          "similarity": {
+            "capability_surface_score": 0.14,
+            "overall_score": 0.74,
+            "structural_score": 1.0,
+            "testability_score": 1.0,
+            "tool_surface_score": 1.0
+          },
+          "structure": {
+            "capability_declared": true,
+            "generated_capability": "github_repository_management",
+            "generated_protocol": "model-context-protocol",
+            "generated_version": "0.1.0",
+            "protocol_match": true,
+            "reference_name": "example/reference-mcp",
+            "reference_schema": "https://example.com/server.schema.json",
+            "reference_transports": [
+              "stdio",
+              "streamable-http"
+            ],
+            "reference_version": "0.1.0",
+            "version_match": true
+          },
+          "testability": {
+            "coverage_ratio": 1.0,
+            "generated": {
+              "has_tests": true,
+              "test_file_count": 2,
+              "test_files": [
+                "tests/test_server_smoke.py",
+                "tests/test_tools_basic.py"
+              ]
+            },
+            "reference": {
+              "has_e2e_tests": true,
+              "has_server_tests": true,
+              "test_file_count": 2
+            }
+          },
+          "tool_surface": {
+            "coverage_ratio": 1.0,
+            "extra_tools": [
+              "create_issue",
+              "get_repository",
+              "list_repositories"
+            ],
+            "generated_tool_count": 6,
+            "generated_tools": [
+              "create_issue",
+              "create_pull_request",
+              "get_copilot_space",
+              "get_me",
+              "get_repository",
+              "list_repositories"
+            ],
+            "matching_tool_count": 3,
+            "matching_tools": [
+              "create_pull_request",
+              "get_copilot_space",
+              "get_me"
+            ],
+            "missing_tools": [],
+            "reference_tool_count": 3,
+            "reference_tools": [
+              "create_pull_request",
+              "get_copilot_space",
+              "get_me"
+            ],
+            "shared_tool_count": 3,
+            "shared_tool_metadata": {
+              "create_pull_request": {
+                "generated_present": true,
+                "reference_documented": true,
+                "reference_registered": true,
+                "reference_registered_function": "CreatePullRequest"
+              },
+              "get_copilot_space": {
+                "generated_present": true,
+                "reference_documented": true,
+                "reference_registered": false,
+                "reference_registered_function": null
+              },
+              "get_me": {
+                "generated_present": true,
+                "reference_documented": true,
+                "reference_registered": true,
+                "reference_registered_function": "GetMe"
+              }
+            },
+            "shared_tools": [
+              "create_pull_request",
+              "get_copilot_space",
+              "get_me"
+            ]
+          }
+        },
+        "iteration": 1,
+        "similarity_delta": 0.5,
+        "similarity_score": 0.74
+      },
+      {
+        "builder_result": {
+          "artifact_kind": "mcp_server",
+          "capability": "github_repository_management",
+          "features": [
+            "supports_dynamic_toolsets",
+            "supports_exclude_tools",
+            "supports_feature_flags",
+            "supports_lockdown_mode",
+            "supports_read_only",
+            "supports_scope_filtering"
+          ],
+          "generated_repo": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+          "status": "ok",
+          "test_expansion": false,
+          "tools": [
+            "list_repositories",
+            "get_repository",
+            "create_issue"
+          ]
+        },
+        "comparison": {
+          "capability_surface": {
+            "coverage_ratio": 0.14285714285714285,
+            "generated": {
+              "supports_dynamic_toolsets": false,
+              "supports_exclude_tools": false,
+              "supports_explicit_tools": true,
+              "supports_feature_flags": false,
+              "supports_lockdown_mode": false,
+              "supports_read_only": false,
+              "supports_scope_filtering": false
+            },
+            "matching_enabled": [
+              "supports_explicit_tools"
+            ],
+            "matching_enabled_count": 1,
+            "missing_enabled": [
+              "supports_dynamic_toolsets",
+              "supports_exclude_tools",
+              "supports_feature_flags",
+              "supports_lockdown_mode",
+              "supports_read_only",
+              "supports_scope_filtering"
+            ],
+            "reference": {
+              "supports_dynamic_toolsets": true,
+              "supports_exclude_tools": true,
+              "supports_explicit_tools": true,
+              "supports_feature_flags": true,
+              "supports_lockdown_mode": true,
+              "supports_read_only": true,
+              "supports_scope_filtering": true
+            },
+            "reference_enabled_count": 7
+          },
+          "consistency": {
+            "documented_default_toolsets_match_registered_defaults": true,
+            "documented_tools_present": true,
+            "documented_toolsets_cover_registered_toolsets": true,
+            "registered_tools_present": true
+          },
+          "generated": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+          "reference": "reference_mcp_github_repository_management",
+          "similarity": {
+            "capability_surface_score": 0.14,
+            "overall_score": 0.34,
+            "structural_score": 1.0,
+            "testability_score": 1.0,
+            "tool_surface_score": 0.0
+          },
+          "structure": {
+            "capability_declared": true,
+            "generated_capability": "github_repository_management",
+            "generated_protocol": "model-context-protocol",
+            "generated_version": "0.1.0",
+            "protocol_match": true,
+            "reference_name": "example/reference-mcp",
+            "reference_schema": "https://example.com/server.schema.json",
+            "reference_transports": [
+              "stdio",
+              "streamable-http"
+            ],
+            "reference_version": "0.1.0",
+            "version_match": true
+          },
+          "testability": {
+            "coverage_ratio": 1.0,
+            "generated": {
+              "has_tests": true,
+              "test_file_count": 2,
+              "test_files": [
+                "tests/test_server_smoke.py",
+                "tests/test_tools_basic.py"
+              ]
+            },
+            "reference": {
+              "has_e2e_tests": true,
+              "has_server_tests": true,
+              "test_file_count": 2
+            }
+          },
+          "tool_surface": {
+            "coverage_ratio": 0.0,
+            "extra_tools": [
+              "create_issue",
+              "get_repository",
+              "list_repositories"
+            ],
+            "generated_tool_count": 3,
+            "generated_tools": [
+              "create_issue",
+              "get_repository",
+              "list_repositories"
+            ],
+            "matching_tool_count": 0,
+            "matching_tools": [],
+            "missing_tools": [
+              "create_pull_request",
+              "get_copilot_space",
+              "get_me"
+            ],
+            "reference_tool_count": 3,
+            "reference_tools": [
+              "create_pull_request",
+              "get_copilot_space",
+              "get_me"
+            ],
+            "shared_tool_count": 0,
+            "shared_tool_metadata": {},
+            "shared_tools": []
+          }
+        },
+        "iteration": 2,
+        "similarity_delta": -0.4,
+        "similarity_score": 0.34
+      }
+    ],
+    "evolved_builder": {
+      "artifact_kind": "mcp_server",
+      "capability": "github_repository_management",
+      "features": [
+        "supports_dynamic_toolsets",
+        "supports_exclude_tools",
+        "supports_feature_flags",
+        "supports_lockdown_mode",
+        "supports_read_only",
+        "supports_scope_filtering"
+      ],
+      "generated_repo": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+      "status": "ok",
+      "test_expansion": false,
+      "tools": [
+        "list_repositories",
+        "get_repository",
+        "create_issue"
+      ]
+    },
     "inputs": {
       "exploration_offset": 0,
-      "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
-      "policy": null,
-      "portfolio_state": "governed_portfolio_cycle_artifacts/portfolio_state.json",
+      "ledger": "governed_portfolio_cycle_artifacts/action_effectiveness_ledger.json",
+      "policy": "governed_portfolio_cycle_artifacts/_default_governance_policy.json",
+      "portfolio_state": "portfolio_state_stage1_github.json",
       "top_k": 3
     },
     "override_artifact": {},
     "override_artifact_path": null,
+    "reference_mcp_comparison": {
+      "capability_surface": {
+        "coverage_ratio": 0.14285714285714285,
+        "generated": {
+          "supports_dynamic_toolsets": false,
+          "supports_exclude_tools": false,
+          "supports_explicit_tools": true,
+          "supports_feature_flags": false,
+          "supports_lockdown_mode": false,
+          "supports_read_only": false,
+          "supports_scope_filtering": false
+        },
+        "matching_enabled": [
+          "supports_explicit_tools"
+        ],
+        "matching_enabled_count": 1,
+        "missing_enabled": [
+          "supports_dynamic_toolsets",
+          "supports_exclude_tools",
+          "supports_feature_flags",
+          "supports_lockdown_mode",
+          "supports_read_only",
+          "supports_scope_filtering"
+        ],
+        "reference": {
+          "supports_dynamic_toolsets": true,
+          "supports_exclude_tools": true,
+          "supports_explicit_tools": true,
+          "supports_feature_flags": true,
+          "supports_lockdown_mode": true,
+          "supports_read_only": true,
+          "supports_scope_filtering": true
+        },
+        "reference_enabled_count": 7
+      },
+      "consistency": {
+        "documented_default_toolsets_match_registered_defaults": true,
+        "documented_tools_present": true,
+        "documented_toolsets_cover_registered_toolsets": true,
+        "registered_tools_present": true
+      },
+      "generated": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+      "reference": "reference_mcp_github_repository_management",
+      "similarity": {
+        "capability_surface_score": 0.14,
+        "overall_score": 0.34,
+        "structural_score": 1.0,
+        "testability_score": 1.0,
+        "tool_surface_score": 0.0
+      },
+      "structure": {
+        "capability_declared": true,
+        "generated_capability": "github_repository_management",
+        "generated_protocol": "model-context-protocol",
+        "generated_version": "0.1.0",
+        "protocol_match": true,
+        "reference_name": "example/reference-mcp",
+        "reference_schema": "https://example.com/server.schema.json",
+        "reference_transports": [
+          "stdio",
+          "streamable-http"
+        ],
+        "reference_version": "0.1.0",
+        "version_match": true
+      },
+      "testability": {
+        "coverage_ratio": 1.0,
+        "generated": {
+          "has_tests": true,
+          "test_file_count": 2,
+          "test_files": [
+            "tests/test_server_smoke.py",
+            "tests/test_tools_basic.py"
+          ]
+        },
+        "reference": {
+          "has_e2e_tests": true,
+          "has_server_tests": true,
+          "test_file_count": 2
+        }
+      },
+      "tool_surface": {
+        "coverage_ratio": 0.0,
+        "extra_tools": [
+          "create_issue",
+          "get_repository",
+          "list_repositories"
+        ],
+        "generated_tool_count": 3,
+        "generated_tools": [
+          "create_issue",
+          "get_repository",
+          "list_repositories"
+        ],
+        "matching_tool_count": 0,
+        "matching_tools": [],
+        "missing_tools": [
+          "create_pull_request",
+          "get_copilot_space",
+          "get_me"
+        ],
+        "reference_tool_count": 3,
+        "reference_tools": [
+          "create_pull_request",
+          "get_copilot_space",
+          "get_me"
+        ],
+        "shared_tool_count": 0,
+        "shared_tool_metadata": {},
+        "shared_tools": []
+      }
+    },
+    "reference_mcp_comparison_gaps": {
+      "capability_gaps": [
+        {
+          "capability": "github_repository_management",
+          "capability_coverage_ratio": 0.14285714285714285,
+          "gap_source": "reference_mcp_comparison",
+          "missing_enabled_capabilities": [
+            "supports_dynamic_toolsets",
+            "supports_exclude_tools",
+            "supports_feature_flags",
+            "supports_lockdown_mode",
+            "supports_read_only",
+            "supports_scope_filtering"
+          ],
+          "missing_enabled_capability_count": 6,
+          "missing_tool_count": 3,
+          "missing_tools": [
+            "create_pull_request",
+            "get_copilot_space",
+            "get_me"
+          ],
+          "severity": 0.86,
+          "testability_coverage_ratio": 0.5,
+          "tool_coverage_ratio": 0.0,
+          "toolset_coverage_ratio": 1.0
+        }
+      ]
+    },
     "repair_attempted": true,
     "repair_proposal": {
       "current_mapped_tasks": [],
@@ -44,7 +662,19 @@
     },
     "repair_success": false,
     "repaired_evaluation": null,
-    "status": "repair_unavailable"
+    "similarity_progression": {
+      "current_score": 0.34
+    },
+    "status": "repair_unavailable",
+    "synthesis_event": {
+      "artifact_kind": "mcp_server",
+      "capability": "github_repository_management",
+      "generated_repo": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+      "similarity_score": 0.34,
+      "source": "portfolio_gap",
+      "status": "ok",
+      "used_evolution": true
+    }
   },
   "decision": {
     "action": "repair_only",
@@ -56,8 +686,10 @@
     "action_entropy": 0.0,
     "collapse_count": 0,
     "collision_ratio": 0.0,
+    "expected_success_rate": null,
+    "historical_runs": 0,
     "mapped_tasks": [],
-    "policy": null,
+    "policy": "governed_portfolio_cycle_artifacts/_default_governance_policy.json",
     "ranked_action_window": [],
     "ranked_action_window_detail": [],
     "reasons": [
@@ -72,9 +704,10 @@
     "unique_tasks": 0
   },
   "inputs": {
-    "ledger": "experiments/action_effectiveness_ledger_synthetic_v2.json",
-    "policy": null,
-    "portfolio_state": "governed_portfolio_cycle_artifacts/portfolio_state.json",
+    "capability_ledger": "capability_effectiveness_ledger.json",
+    "ledger": "governed_portfolio_cycle_artifacts/action_effectiveness_ledger.json",
+    "policy": "governed_portfolio_cycle_artifacts/_default_governance_policy.json",
+    "portfolio_state": "portfolio_state_stage1_github.json",
     "top_k": 3
   },
   "status": "completed"

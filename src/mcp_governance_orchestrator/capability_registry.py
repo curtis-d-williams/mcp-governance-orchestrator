@@ -15,12 +15,15 @@ _CAPABILITY_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
     "slack_workspace_access": {
         "builder_action": "build_capability_artifact",
+        "reference_artifact_path": "reference_mcp_slack_workspace_access",
     },
     "snowflake_data_access": {
         "builder_action": "build_capability_artifact",
+        "reference_artifact_path": "reference_mcp_snowflake_data_access",
     },
     "postgres_data_access": {
         "builder_action": "build_capability_artifact",
+        "reference_artifact_path": "reference_mcp_postgres_data_access",
     },
 }
 

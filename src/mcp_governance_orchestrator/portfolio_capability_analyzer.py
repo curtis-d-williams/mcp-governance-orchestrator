@@ -17,6 +17,8 @@ from typing import Any, Dict, List
 
 from .capability_spec_registry import get_capability_spec
 
+PERSISTENCE_THRESHOLD = 3
+
 
 def analyze_portfolio_capability_gaps(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return normalized capability gap records.
@@ -47,10 +49,16 @@ def analyze_portfolio_capability_gaps(state: Dict[str, Any]) -> List[Dict[str, A
     if not isinstance(gaps, list):
         return []
 
+    gap_cycles = state.get("capability_gap_cycles", {})
+
     normalized: List[Dict[str, Any]] = []
 
     for capability in gaps:
         if not isinstance(capability, str) or not capability:
+            continue
+
+        cycles = int(gap_cycles.get(capability, PERSISTENCE_THRESHOLD))
+        if cycles < PERSISTENCE_THRESHOLD:
             continue
 
         spec = get_capability_spec(capability)

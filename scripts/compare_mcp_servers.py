@@ -65,6 +65,36 @@ def _collect_generated_test_surface(repo_root):
     }
 
 
+
+
+def _compare_toolsets(reference_inspection):
+    """Compare reference toolset surface (generated MCPs currently expose none)."""
+    tooling = reference_inspection.get("tooling", {})
+
+    reference_toolsets = sorted(
+        set(tooling.get("registered_toolsets", []))
+        | set(tooling.get("remote_only_toolsets", []))
+    )
+
+    default_toolsets = sorted(tooling.get("default_toolsets", []))
+    remote_only_toolsets = sorted(tooling.get("remote_only_toolsets", []))
+
+    matching_toolsets = []  # generated MCP servers do not currently expose toolsets
+    missing_toolsets = reference_toolsets
+
+    reference_count = len(reference_toolsets)
+    coverage_ratio = 0.0 if reference_count else 1.0
+
+    return {
+        "reference_toolsets": reference_toolsets,
+        "default_toolsets": default_toolsets,
+        "remote_only_toolsets": remote_only_toolsets,
+        "matching_toolsets": matching_toolsets,
+        "missing_toolsets": missing_toolsets,
+        "coverage_ratio": coverage_ratio,
+    }
+
+
 def _compare_tool_surface(generated_manifest, reference_inspection):
     """Compare generated tool list against documented reference tools."""
     generated_tools = set(_normalize_generated_tools(generated_manifest))
@@ -73,6 +103,25 @@ def _compare_tool_surface(generated_manifest, reference_inspection):
     matching_tools = sorted(generated_tools & reference_tools)
     missing_tools = sorted(reference_tools - generated_tools)
     extra_tools = sorted(generated_tools - reference_tools)
+
+    
+
+    # --- shared tool structural evidence ---
+    reference_tooling = reference_inspection.get("tooling", {})
+    normalized_registered = set(reference_tooling.get("normalized_registered_tools", []))
+    tool_metadata = reference_tooling.get("tool_metadata", {})
+
+    shared_tools = sorted(generated_tools & reference_tools)
+
+    shared_tool_metadata = {}
+    for tool in shared_tools:
+        meta = tool_metadata.get(tool, {})
+        shared_tool_metadata[tool] = {
+            "generated_present": True,
+            "reference_documented": tool in reference_tools,
+            "reference_registered": tool in normalized_registered,
+            "reference_registered_function": meta.get("registered_function"),
+        }
 
     reference_count = len(reference_tools)
     coverage_ratio = (
@@ -88,6 +137,9 @@ def _compare_tool_surface(generated_manifest, reference_inspection):
         "generated_tool_count": len(generated_tools),
         "reference_tool_count": len(reference_tools),
         "matching_tool_count": len(matching_tools),
+        "shared_tools": shared_tools,
+        "shared_tool_count": len(shared_tools),
+        "shared_tool_metadata": shared_tool_metadata,
         "coverage_ratio": coverage_ratio,
     }
 
@@ -252,6 +304,7 @@ def compare_mcp_servers(generated_path, reference_path, output_path=None):
         "reference": str(Path(reference_path)),
         "tool_surface": tool_surface,
         "structure": structure,
+        "consistency": reference_inspection.get("consistency", {}),
         "capability_surface": capability_surface,
         "testability": testability,
         "similarity": _build_similarity_summary(

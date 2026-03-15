@@ -39,6 +39,7 @@ def build_capability_gap_actions(
         return []
 
     actions: List[Dict[str, Any]] = []
+    _seen_capabilities = set()
 
     for record in gap_records:
         if not isinstance(record, dict):
@@ -46,6 +47,9 @@ def build_capability_gap_actions(
 
         capability = record.get("capability")
         artifact_kind = record.get("artifact_kind")
+
+        if capability in _seen_capabilities:
+            continue
         if not isinstance(capability, str) or not capability:
             continue
         if not isinstance(artifact_kind, str) or not artifact_kind:
@@ -62,6 +66,8 @@ def build_capability_gap_actions(
         task_args = {"capability": capability}
         if action_type == "build_capability_artifact":
             task_args["artifact_kind"] = artifact_kind
+
+        _seen_capabilities.add(capability)
 
         actions.append(
             {

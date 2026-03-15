@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PORTFOLIO_STATE = ROOT / "experiments" / "factory_demo" / "portfolio_state_missing_github.json"
 LEDGER = ROOT / "experiments" / "factory_demo" / "action_effectiveness_ledger.json"
 OUTPUT = ROOT / "experiments" / "factory_demo" / "factory_cycle_result.json"
-GENERATED_REPO = ROOT / "generated_mcp_github"
+GENERATED_REPO = ROOT / "generated_mcp_server_github"
 
 
 def run_factory_cycle():

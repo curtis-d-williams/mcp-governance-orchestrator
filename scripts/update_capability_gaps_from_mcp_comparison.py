@@ -36,6 +36,7 @@ def _derive_severity(
     tool_coverage_ratio,
     capability_coverage_ratio,
     testability_coverage_ratio,
+    toolset_coverage_ratio=1.0,
 ):
     """Return deterministic severity from comparison coverage ratios.
 
@@ -47,6 +48,7 @@ def _derive_severity(
     missing_tool_ratio = 1.0 - _clamp_ratio(tool_coverage_ratio)
     missing_capability_ratio = 1.0 - _clamp_ratio(capability_coverage_ratio)
     missing_testability_ratio = 1.0 - _clamp_ratio(testability_coverage_ratio)
+    missing_toolset_ratio = 1.0 - _clamp_ratio(toolset_coverage_ratio)
 
     severity = (
         0.5 * missing_tool_ratio
@@ -65,6 +67,7 @@ def derive_capability_gaps_from_comparison(comparison):
     tool_surface = comparison.get("tool_surface", {})
     capability_surface = comparison.get("capability_surface", {})
     testability = comparison.get("testability", {})
+    toolsets = comparison.get("toolsets", {})
 
     capability = structure.get("generated_capability")
     if not isinstance(capability, str) or not capability:
@@ -76,6 +79,9 @@ def derive_capability_gaps_from_comparison(comparison):
     )
     testability_coverage_ratio = _clamp_ratio(
         testability.get("coverage_ratio", 0.0)
+    )
+    toolset_coverage_ratio = _clamp_ratio(
+        toolsets.get("coverage_ratio", 1.0)
     )
 
     missing_tools = sorted(
@@ -93,6 +99,7 @@ def derive_capability_gaps_from_comparison(comparison):
         tool_coverage_ratio=tool_coverage_ratio,
         capability_coverage_ratio=capability_coverage_ratio,
         testability_coverage_ratio=testability_coverage_ratio,
+        toolset_coverage_ratio=toolset_coverage_ratio,
     )
 
     return {
@@ -110,6 +117,7 @@ def derive_capability_gaps_from_comparison(comparison):
                 ),
                 "capability_coverage_ratio": capability_coverage_ratio,
                 "testability_coverage_ratio": testability_coverage_ratio,
+                "toolset_coverage_ratio": toolset_coverage_ratio,
             }
         ]
     }

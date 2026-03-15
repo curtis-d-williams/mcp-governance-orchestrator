@@ -18,7 +18,7 @@ def main():
     )
     parser.add_argument(
         "--name",
-        default="generated_mcp_github",
+        default="generated_mcp_server_github",
         help="Output repository directory name",
     )
     parser.add_argument(

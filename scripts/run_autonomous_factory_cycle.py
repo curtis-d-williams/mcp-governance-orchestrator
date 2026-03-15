@@ -49,12 +49,19 @@ _cap_learn_mod = _load(
     _SCRIPT_DIR / "update_capability_effectiveness_ledger.py",
     "capability_learn",
 )
+_cap_artifact_mod = _load(
+    _SCRIPT_DIR / "update_capability_artifact_registry.py",
+    "capability_artifact_registry",
+)
 
 run_governed_loop = _governed_mod.run_governed_loop
 run_mapping_repair_cycle = _repair_mod.run_mapping_repair_cycle
 update_action_effectiveness_ledger = _learn_mod.update_action_effectiveness_ledger
 update_capability_effectiveness_ledger = (
     _cap_learn_mod.update_capability_effectiveness_ledger
+)
+update_capability_artifact_registry = (
+    _cap_artifact_mod.update_capability_artifact_registry
 )
 
 
@@ -84,6 +91,7 @@ def run_autonomous_factory_cycle(
     ledger=None,
     capability_ledger=None,
     capability_ledger_output=None,
+    capability_artifact_registry_output=None,
     policy=None,
     top_k=3,
     output="autonomous_factory_cycle.json",
@@ -110,6 +118,12 @@ def run_autonomous_factory_cycle(
             output_path=capability_ledger_output,
         )
 
+    if capability_artifact_registry_output:
+        update_capability_artifact_registry(
+            registry_path=capability_artifact_registry_output,
+            cycle_artifact_path=output,
+        )
+
     return artifact
 
 
@@ -124,6 +138,7 @@ def main(argv=None):
     parser.add_argument("--capability-ledger")
     parser.add_argument("--capability-ledger-output")
     parser.add_argument("--policy")
+    parser.add_argument("--capability-artifact-registry-output")
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--output", default="autonomous_factory_cycle.json")
 
@@ -134,6 +149,7 @@ def main(argv=None):
         ledger=args.ledger,
         capability_ledger=args.capability_ledger,
         capability_ledger_output=args.capability_ledger_output,
+        capability_artifact_registry_output=args.capability_artifact_registry_output,
         policy=args.policy,
         top_k=args.top_k,
         output=args.output,

@@ -328,6 +328,16 @@ def main(argv: List[str] | None = None) -> int:
         )
         state["capability_gaps"] = merged
 
+    # Track persistence of capability gaps across cycles.
+    previous_cycles = state.get("capability_gap_cycles", {})
+    updated_cycles = {}
+
+    for cap in state.get("capability_gaps", []):
+        updated_cycles[cap] = int(previous_cycles.get(cap, 0)) + 1
+
+    state["capability_gap_cycles"] = dict(sorted(updated_cycles.items()))
+
+
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(

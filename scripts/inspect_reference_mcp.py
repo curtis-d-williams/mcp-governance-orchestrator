@@ -24,6 +24,16 @@ import json
 import re
 from pathlib import Path
 
+def _camel_to_snake(name):
+    """Convert Go-style CamelCase tool names to snake_case."""
+    import re
+    if not name:
+        return ""
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    s2 = re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1)
+    return s2.lower()
+
+
 
 def _load_server_descriptor(reference_root):
     reference_root = Path(reference_root)
@@ -147,6 +157,19 @@ def _collect_tooling(reference_root):
         set(re.findall(r'^- \*\*([a-z0-9_]+)\*\* -', readme_text, re.MULTILINE))
     )
 
+
+    normalized_registered_tools = sorted(
+        _camel_to_snake(fn) for fn in registered_tool_functions
+    )
+
+    tool_metadata = {
+        _camel_to_snake(fn): {
+            "registered_function": fn,
+            "normalized_function": _camel_to_snake(fn),
+        }
+        for fn in registered_tool_functions
+    }
+
     return {
         "registered_toolsets": registered_toolsets,
         "default_toolsets": default_toolsets,
@@ -154,6 +177,8 @@ def _collect_tooling(reference_root):
         "registered_tool_functions": registered_tool_functions,
         "documented_toolsets": documented_toolsets,
         "documented_tools": documented_tools,
+        "normalized_registered_tools": normalized_registered_tools,
+        "tool_metadata": tool_metadata,
     }
 
 

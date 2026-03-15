@@ -12,7 +12,7 @@ import builder.mcp_builder as mcp_builder
 
 def test_generate_mcp_server_script_defaults_to_github_poc():
     repo_root = mcp_builder.REPO_ROOT
-    generated = repo_root / "generated_mcp_github"
+    generated = repo_root / "generated_mcp_server_github"
 
     if generated.exists():
         shutil.rmtree(generated)
@@ -52,7 +52,7 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
 
         manifest = json.loads((generated / "manifest.json").read_text(encoding="utf-8"))
         assert manifest == {
-            "name": "generated_mcp_github",
+            "name": "generated_mcp_server_github",
             "capability": "github_repository_management",
             "protocol": "model-context-protocol",
             "version": "0.1.0",
@@ -61,6 +61,7 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
                 "get_repository",
                 "create_issue",
             ],
+            "features": [],
         }
 
         server_text = (generated / "server.py").read_text(encoding="utf-8")
@@ -77,7 +78,7 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
             assert tool_name in server_text
             assert tool_name in readme_text
 
-        assert "generated_mcp_github" in smoke_text or "server" in smoke_text
+        assert "generated_mcp_server_github" in smoke_text or "server" in smoke_text
     finally:
         if generated.exists():
             shutil.rmtree(generated)

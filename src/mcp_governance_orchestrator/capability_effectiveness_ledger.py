@@ -40,6 +40,17 @@ def record_synthesis_event(
         entry["similarity_score"] = round(float(similarity_score), 2)
     if previous_similarity_score is not None:
         entry["previous_similarity_score"] = round(float(previous_similarity_score), 2)
+    # Compute similarity_delta if not already supplied.
+    if (
+        previous_similarity_score is not None
+        and "similarity_delta" not in entry
+    ):
+        try:
+            delta = float(similarity_score) - float(previous_similarity_score)
+            entry["similarity_delta"] = round(delta, 2)
+        except Exception:
+            pass
+
     if similarity_delta is not None:
         entry["similarity_delta"] = round(float(similarity_delta), 2)
 
