@@ -82,8 +82,6 @@ ACTION_TO_TASK = {
     "run_determinism_regression_suite": "build_portfolio_dashboard",
     "analyze_repo_insights": "repo_insights_example",
     "recover_failed_workflow": "failure_recovery_example",
-    "build_mcp_server": "build_portfolio_dashboard",
-    "build_capability_artifact": "build_portfolio_dashboard",
 }
 
 def resolve_action_to_task_mapping(default_mapping, mapping_override=None):

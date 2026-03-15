@@ -141,21 +141,49 @@ def _resolve_gap_synthesis_request(portfolio_state_path):
         return None
 
     capability_gaps = state.get("capability_gaps", [])
-    if not capability_gaps:
-        return None
+    if capability_gaps:
+        capability = capability_gaps[0]
+        if not isinstance(capability, str):
+            return None
 
-    capability = capability_gaps[0]
-    if not isinstance(capability, str):
-        return None
+        artifact_kind = artifact_kind_for_capability(capability)
+        if artifact_kind is None:
+            return None
 
-    artifact_kind = artifact_kind_for_capability(capability)
-    if artifact_kind is None:
-        return None
+        return {
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
 
-    return {
-        "artifact_kind": artifact_kind,
-        "capability": capability,
-    }
+    for action in state.get("portfolio_recommendations", []):
+        if not isinstance(action, dict):
+            continue
+
+        action_type = action.get("action_type")
+        if action_type not in ("build_capability_artifact", "build_mcp_server"):
+            continue
+
+        args = action.get("task_binding", {}).get("args", {})
+        capability = args.get("capability")
+        artifact_kind = args.get("artifact_kind")
+
+        if action_type == "build_mcp_server" and capability is None:
+            capability = "github_repository_management"
+        if action_type == "build_mcp_server" and artifact_kind is None:
+            artifact_kind = "mcp_server"
+        if capability is None:
+            continue
+        if artifact_kind is None:
+            artifact_kind = artifact_kind_for_capability(capability)
+        if artifact_kind is None:
+            continue
+
+        return {
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    return None
 
 
 def run_factory_cycle(

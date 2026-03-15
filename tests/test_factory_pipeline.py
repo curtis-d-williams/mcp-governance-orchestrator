@@ -323,6 +323,90 @@ def test_run_factory_cycle_records_capability_effectiveness_for_gap_synthesis(tm
     assert persisted["capability_effectiveness_ledger"] == artifact["capability_effectiveness_ledger"]
 
 
+def test_run_factory_cycle_falls_back_to_portfolio_recommendation_build_request(tmp_path, monkeypatch):
+    build_calls = []
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "high_risk", "reasons": []}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        return {
+            "status": "repair_unavailable",
+            "repair_attempted": True,
+            "repair_success": False,
+            "repair_proposal": {"repair_needed": False},
+            "baseline_evaluation": {"risk_level": "high_risk"},
+            "repaired_evaluation": None,
+            "override_artifact": {},
+            "override_artifact_path": None,
+            "inputs": kwargs,
+        }
+
+    def fake_run_governed_loop(args):
+        raise AssertionError("governed loop should not run in repair_only path")
+
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        build_calls.append(
+            {
+                "artifact_kind": artifact_kind,
+                "capability": capability,
+                "kwargs": kwargs,
+            }
+        )
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_mcp_server_github",
+            "tools": ["list_repositories", "get_repository", "create_issue"],
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(
+        json.dumps(
+            {
+                "portfolio_recommendations": [
+                    {
+                        "action_type": "build_capability_artifact",
+                        "task_binding": {
+                            "args": {
+                                "artifact_kind": "mcp_server",
+                                "capability": "github_repository_management",
+                            }
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert build_calls == [
+        {
+            "artifact_kind": "mcp_server",
+            "capability": "github_repository_management",
+            "kwargs": {},
+        }
+    ]
+    assert artifact["cycle_result"]["builder"]["status"] == "ok"
+    assert artifact["cycle_result"]["synthesis_event"]["source"] == "portfolio_gap"
+
+
 def test_run_factory_cycle_records_reference_comparison_gap_for_mcp_build(tmp_path, monkeypatch):
     calls = {}
 

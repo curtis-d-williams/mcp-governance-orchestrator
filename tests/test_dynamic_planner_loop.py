@@ -121,6 +121,10 @@ class TestMapActionsToTasks:
             result = _map_actions_to_tasks([self._action(action_type)])
             assert result == [expected_task], f"{action_type} should map to {expected_task}"
 
+    def test_build_actions_are_unmapped_in_dynamic_loop(self):
+        assert _map_actions_to_tasks([self._action("build_mcp_server")]) == []
+        assert _map_actions_to_tasks([self._action("build_capability_artifact")]) == []
+
     def test_missing_action_type_key_skipped(self):
         actions = [{"priority": 0.9}]  # no action_type key
         assert _map_actions_to_tasks(actions) == []
@@ -303,7 +307,7 @@ class TestMainActionDriven:
         assert "falling back" in captured.out
 
     def test_default_top_k_is_3(self, tmp_path):
-        """Default --top-k must be 3: three distinct mapped actions all selected."""
+        """Default --top-k must be 3: mapped actions in the first window are selected deterministically."""
         state = tmp_path / "state.json"
         state.write_text("{}", encoding="utf-8")
         actions = self._actions(
@@ -318,7 +322,7 @@ class TestMainActionDriven:
         assert tasks == ["build_portfolio_dashboard"]
 
     def test_multi_action_selection_preserves_deterministic_order(self, tmp_path):
-        """top-k=3: all mapped action types resolve to build_portfolio_dashboard after dedup."""
+        """top-k=3: duplicate mapped actions deduplicate deterministically."""
         state = tmp_path / "state.json"
         state.write_text("{}", encoding="utf-8")
         actions = self._actions(
@@ -371,19 +375,16 @@ class TestExplorationOffset:
 
     def test_offset_shifts_window_to_different_actions(self, tmp_path):
         """offset=0 picks first window; offset=2 picks a later window."""
-        # 4-action queue, top_k=2; all mapped action types resolve to build_portfolio_dashboard
         actions = self._actions(
             "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
             "run_determinism_regression_suite", # [1] → build_portfolio_dashboard
             "refresh_repo_health",              # [2] → build_portfolio_dashboard
-            "no_such_action",                   # [3] unmapped
+            "build_capability_artifact",        # [3] unmapped in dynamic loop
         )
         tasks_offset0 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "0"])
         tasks_offset2 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "2"])
-        # offset=0: window=[0,1] → both map to build_portfolio_dashboard
         assert "build_portfolio_dashboard" in tasks_offset0
-        # offset=2: window=[2,3] → refresh_repo_health maps to build_portfolio_dashboard; no_such_action unmapped
-        assert "build_portfolio_dashboard" in tasks_offset2
+        assert tasks_offset2 == ["build_portfolio_dashboard"]
 
     def test_offset_one_skips_first_action(self, tmp_path):
         """offset=1 skips index 0 and picks from index 1."""
