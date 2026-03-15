@@ -1,0 +1,28 @@
+{
+  "capability_gaps": [
+    {
+      "capability": "github_repository_management",
+      "capability_coverage_ratio": 0.14285714285714285,
+      "gap_source": "reference_mcp_comparison",
+      "missing_enabled_capabilities": [
+        "supports_dynamic_toolsets",
+        "supports_exclude_tools",
+        "supports_feature_flags",
+        "supports_lockdown_mode",
+        "supports_read_only",
+        "supports_scope_filtering"
+      ],
+      "missing_enabled_capability_count": 6,
+      "missing_tool_count": 3,
+      "missing_tools": [
+        "create_pull_request",
+        "get_copilot_space",
+        "get_me"
+      ],
+      "severity": 0.86,
+      "testability_coverage_ratio": 0.5,
+      "tool_coverage_ratio": 0.0,
+      "toolset_coverage_ratio": 1.0
+    }
+  ]
+}

@@ -7,11 +7,11 @@ CAPABILITY_SPECS = {
         "provider": "github",
         "slug": "github",
         "title": "GitHub Repository Management",
-        "default_tools": [
-            "list_repositories",
-            "get_repository",
-            "create_issue",
-        ],
+        "default_tools": {
+            "list_repositories": {},
+            "get_repository": {"params": ["repo"]},
+            "create_issue": {"params": ["repo", "title", "body"]},
+        },
     },
     "slack_workspace_access": {
         "artifact_kind": "agent_adapter",

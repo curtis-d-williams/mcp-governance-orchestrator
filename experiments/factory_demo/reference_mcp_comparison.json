@@ -1,0 +1,111 @@
+{
+  "capability_surface": {
+    "coverage_ratio": 0.14285714285714285,
+    "generated": {
+      "supports_dynamic_toolsets": false,
+      "supports_exclude_tools": false,
+      "supports_explicit_tools": true,
+      "supports_feature_flags": false,
+      "supports_lockdown_mode": false,
+      "supports_read_only": false,
+      "supports_scope_filtering": false
+    },
+    "matching_enabled": [
+      "supports_explicit_tools"
+    ],
+    "matching_enabled_count": 1,
+    "missing_enabled": [
+      "supports_dynamic_toolsets",
+      "supports_exclude_tools",
+      "supports_feature_flags",
+      "supports_lockdown_mode",
+      "supports_read_only",
+      "supports_scope_filtering"
+    ],
+    "reference": {
+      "supports_dynamic_toolsets": true,
+      "supports_exclude_tools": true,
+      "supports_explicit_tools": true,
+      "supports_feature_flags": true,
+      "supports_lockdown_mode": true,
+      "supports_read_only": true,
+      "supports_scope_filtering": true
+    },
+    "reference_enabled_count": 7
+  },
+  "consistency": {
+    "documented_default_toolsets_match_registered_defaults": true,
+    "documented_tools_present": true,
+    "documented_toolsets_cover_registered_toolsets": true,
+    "registered_tools_present": true
+  },
+  "generated": "/Users/Curtis/Documents/GitHub_Repos/mcp-governance-orchestrator/generated_mcp_server_github",
+  "reference": "reference_mcp_github_repository_management",
+  "similarity": {
+    "capability_surface_score": 0.14,
+    "overall_score": 0.24,
+    "structural_score": 1.0,
+    "testability_score": 0.5,
+    "tool_surface_score": 0.0
+  },
+  "structure": {
+    "capability_declared": true,
+    "generated_capability": "github_repository_management",
+    "generated_protocol": "model-context-protocol",
+    "generated_version": "0.1.0",
+    "protocol_match": true,
+    "reference_name": "example/reference-mcp",
+    "reference_schema": "https://example.com/server.schema.json",
+    "reference_transports": [
+      "stdio",
+      "streamable-http"
+    ],
+    "reference_version": "0.1.0",
+    "version_match": true
+  },
+  "testability": {
+    "coverage_ratio": 0.5,
+    "generated": {
+      "has_tests": true,
+      "test_file_count": 1,
+      "test_files": [
+        "tests/test_server_smoke.py"
+      ]
+    },
+    "reference": {
+      "has_e2e_tests": true,
+      "has_server_tests": true,
+      "test_file_count": 2
+    }
+  },
+  "tool_surface": {
+    "coverage_ratio": 0.0,
+    "extra_tools": [
+      "create_issue",
+      "get_repository",
+      "list_repositories"
+    ],
+    "generated_tool_count": 3,
+    "generated_tools": [
+      "create_issue",
+      "get_repository",
+      "list_repositories"
+    ],
+    "matching_tool_count": 0,
+    "matching_tools": [],
+    "missing_tools": [
+      "create_pull_request",
+      "get_copilot_space",
+      "get_me"
+    ],
+    "reference_tool_count": 3,
+    "reference_tools": [
+      "create_pull_request",
+      "get_copilot_space",
+      "get_me"
+    ],
+    "shared_tool_count": 0,
+    "shared_tool_metadata": {},
+    "shared_tools": []
+  }
+}

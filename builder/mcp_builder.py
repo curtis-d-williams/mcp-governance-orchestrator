@@ -39,6 +39,10 @@ def build_mcp_server(
     if tools is None:
         tools = spec.get("default_tools", ["health_check"])
 
+    # Stage 1E: normalize tool specs (list[str] -> dict[str, metadata])
+    if isinstance(tools, list):
+        tools = {t: {} for t in tools}
+
     if features is None:
         features = []
 
@@ -50,15 +54,28 @@ def build_mcp_server(
     tools_json = json.dumps(tools, indent=2)
     features_json = json.dumps(features, indent=2)
     tool_imports = "\n".join(
-        f"    from .tools.{tool} import {tool} as _{tool}" for tool in tools
+        f"    from .tools.{tool} import {tool} as _{tool}" for tool in tools.keys()
     )
     tool_imports_fallback = "\n".join(
-        f"    from tools.{tool} import {tool} as _{tool}" for tool in tools
+        f"    from tools.{tool} import {tool} as _{tool}" for tool in tools.keys()
     )
-    tool_wrappers = "\n\n".join(
-        f"@mcp.tool()\ndef {tool}():\n    return _{tool}()"
-        for tool in tools
-    )
+    
+    # Stage 1E: schema-aware wrapper generation
+    tool_wrappers = []
+
+    for tool, meta in tools.items():
+        params = meta.get("params", [])
+        param_sig = ", ".join(f"{p}: str" for p in params)
+        param_pass = ", ".join(params)
+
+        if param_sig:
+            wrapper = f"@mcp.tool()\ndef {tool}({param_sig}):\n    return _{tool}({param_pass})"
+        else:
+            wrapper = f"@mcp.tool()\ndef {tool}():\n    return _{tool}()"
+
+        tool_wrappers.append(wrapper)
+
+    tool_wrappers = "\n\n".join(tool_wrappers)
 
     variables = {
         "name": name,
@@ -84,7 +101,7 @@ def build_mcp_server(
     write_file(root / "server.py", server)
 
     # Tool stubs
-    for tool in tools:
+    for tool in tools.keys():
         write_file(
             root / "tools" / f"{tool}.py",
             f"""
@@ -119,7 +136,7 @@ import server
 
 def test_all_tools_callable():
     tools = server.list_tools()
-    for tool in tools:
+    for tool in tools.keys():
         fn = getattr(server, tool)
         result = fn()
         assert isinstance(result, dict)

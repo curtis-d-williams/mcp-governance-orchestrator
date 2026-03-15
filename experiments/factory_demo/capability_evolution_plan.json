@@ -1,0 +1,44 @@
+{
+  "action_count": 10,
+  "evolution_actions": [
+    {
+      "tool": "create_pull_request",
+      "type": "add_tool"
+    },
+    {
+      "tool": "get_copilot_space",
+      "type": "add_tool"
+    },
+    {
+      "tool": "get_me",
+      "type": "add_tool"
+    },
+    {
+      "feature": "supports_dynamic_toolsets",
+      "type": "enable_feature"
+    },
+    {
+      "feature": "supports_exclude_tools",
+      "type": "enable_feature"
+    },
+    {
+      "feature": "supports_feature_flags",
+      "type": "enable_feature"
+    },
+    {
+      "feature": "supports_lockdown_mode",
+      "type": "enable_feature"
+    },
+    {
+      "feature": "supports_read_only",
+      "type": "enable_feature"
+    },
+    {
+      "feature": "supports_scope_filtering",
+      "type": "enable_feature"
+    },
+    {
+      "type": "increase_test_coverage"
+    }
+  ]
+}
