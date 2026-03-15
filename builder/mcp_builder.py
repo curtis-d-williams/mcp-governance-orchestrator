@@ -101,14 +101,22 @@ def build_mcp_server(
     write_file(root / "server.py", server)
 
     # Tool stubs
-    for tool in tools.keys():
-        write_file(
-            root / "tools" / f"{tool}.py",
-            f"""
+    for tool, meta in tools.items():
+        params = meta.get("params", [])
+        param_sig = ", ".join(params)
+        arg_names = ", ".join(f'"{p}": {p}' for p in params)
+
+        if param_sig:
+            body = f"""
+def {tool}({param_sig}):
+    return {{"status": "ok", "tool": "{tool}", "args": {{{arg_names}}}}}
+"""
+        else:
+            body = f"""
 def {tool}():
     return {{"status": "ok", "tool": "{tool}"}}
-""",
-        )
+"""
+        write_file(root / "tools" / f"{tool}.py", body)
 
     # Smoke test
     write_file(
