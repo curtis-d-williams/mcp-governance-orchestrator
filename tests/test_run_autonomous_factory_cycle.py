@@ -284,7 +284,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
             "status": "ok",
             "artifact_kind": artifact_kind,
             "capability": capability,
-            "generated_repo": "generated_mcp_github",
+            "generated_repo": "generated_mcp_server_github",
             "tools": [
                 "list_repositories",
                 "get_repository",
@@ -311,7 +311,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
         "status": "ok",
         "artifact_kind": "mcp_server",
         "capability": "github_repository_management",
-        "generated_repo": "generated_mcp_github",
+        "generated_repo": "generated_mcp_server_github",
         "tools": [
             "list_repositories",
             "get_repository",
@@ -323,7 +323,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_for_build_mcp_server(tmp_p
     assert synthesis_event["artifact_kind"] == "mcp_server"
     assert synthesis_event["status"] == "ok"
     assert synthesis_event["source"] == "planner_request"
-    assert synthesis_event["generated_repo"] == "generated_mcp_github"
+    assert synthesis_event["generated_repo"] == "generated_mcp_server_github"
     assert isinstance(synthesis_event.get("used_evolution"), bool)
 
     written = _read_json(output)
@@ -481,7 +481,7 @@ def test_run_autonomous_factory_cycle_invokes_builder_from_ranked_action_window(
             "status": "ok",
             "artifact_kind": artifact_kind,
             "capability": capability,
-            "generated_repo": "generated_mcp_github",
+            "generated_repo": "generated_mcp_server_github",
             "tools": [
                 "list_repositories",
                 "get_repository",
@@ -1155,7 +1155,7 @@ def test_run_autonomous_factory_cycle_similarity_progression_across_cycles(tmp_p
 
     monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
 
-    similarity_values = [0.40, 0.65]
+    similarity_values = [0.40, 0.65, 0.78]
 
     def _fake_compare(generated_path, reference_path, output_path=None):
         return {
@@ -1163,7 +1163,7 @@ def test_run_autonomous_factory_cycle_similarity_progression_across_cycles(tmp_p
             "structure": {"generated_capability": "github_repository_management"},
             "tool_surface": {"coverage_ratio": 0.5, "missing_tools": []},
             "capability_surface": {"coverage_ratio": 0.5},
-            "testability": {"coverage_ratio": 0.5},
+            "testability": {"coverage_ratio": 1.0},
         }
 
     monkeypatch.setattr(_pipeline, "compare_mcp_servers", _fake_compare, raising=False)
@@ -1184,10 +1184,11 @@ def test_run_autonomous_factory_cycle_similarity_progression_across_cycles(tmp_p
 
     assert row1["similarity_score"] == 0.40
     assert "previous_similarity_score" not in row1
+    assert "similarity_delta" not in row1
 
     # -------- cycle 2 --------
 
-    artifact2 = _mod.run_autonomous_factory_cycle(
+    _mod.run_autonomous_factory_cycle(
         portfolio_state="portfolio_state.json",
         capability_ledger=str(capability_ledger),
         capability_ledger_output=str(capability_ledger),
@@ -1196,18 +1197,30 @@ def test_run_autonomous_factory_cycle_similarity_progression_across_cycles(tmp_p
         output=str(tmp_path / "cycle2.json"),
     )
 
-    row2 = artifact2["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
-
-    assert True
-    assert row2["similarity_score"] == 0.65
-
-
-
-    # verify persistent ledger progression
     import json
-    persisted = json.loads(capability_ledger.read_text())
 
-    row = persisted["capabilities"]["github_repository_management"]
+    persisted2 = json.loads(capability_ledger.read_text())
+    row2 = persisted2["capabilities"]["github_repository_management"]
 
-    assert row["similarity_score"] == 0.65
+    assert row2["previous_similarity_score"] == 0.40
+    assert row2["similarity_score"] == 0.65
+    assert row2["similarity_delta"] == 0.25
+
+    # -------- cycle 3 --------
+
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle3.json"),
+    )
+
+    persisted3 = json.loads(capability_ledger.read_text())
+    row3 = persisted3["capabilities"]["github_repository_management"]
+
+    assert row3["previous_similarity_score"] == 0.65
+    assert row3["similarity_score"] == 0.78
+    assert row3["similarity_delta"] == 0.13
 

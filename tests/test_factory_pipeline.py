@@ -1162,7 +1162,7 @@ def test_run_factory_cycle_reenables_evolved_rebuild_after_blocked_cycle_records
     }
 
     build_calls = []
-    similarity_values = [0.64, 0.70]
+    similarity_values = [0.64, 0.70, 0.71, 0.71]
 
     def fake_record_normalized_synthesis_event(_ledger, synthesis_event):
         from src.mcp_governance_orchestrator.capability_effectiveness_ledger import record_synthesis_event
@@ -1295,7 +1295,7 @@ def test_run_factory_cycle_reenables_evolved_rebuild_after_blocked_cycle_records
         run_governed_loop=fake_run_governed_loop,
     )
 
-    assert len(build_calls) == 3
+    assert len(build_calls) == 4
     assert build_calls[1] == {
         "artifact_kind": "mcp_server",
         "capability": "github_repository_management",
@@ -1323,5 +1323,26 @@ def test_run_factory_cycle_reenables_evolved_rebuild_after_blocked_cycle_records
 
     row2 = artifact2["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
     assert row2["previous_similarity_score"] == 0.64
-    assert row2["similarity_score"] == 0.70
-    assert row2["similarity_delta"] == 0.06
+    assert row2["similarity_score"] == 0.71
+    assert row2["similarity_delta"] == 0.07
+
+def test_run_factory_cycle_stops_iterative_evolution_when_improvement_below_threshold(tmp_path, monkeypatch):
+    similarity_values = [0.70, 0.704]
+    build_calls = []
+
+    monkeypatch.setattr("planner_runtime.load_capability_effectiveness_ledger", lambda *_a, **_k: {"capabilities": {}})
+    monkeypatch.setattr(_mod, "build_capability_artifact", lambda *, artifact_kind, capability, **kwargs: (build_calls.append({"artifact_kind": artifact_kind, "capability": capability, "kwargs": kwargs}) or {"status": "ok", "artifact_kind": artifact_kind, "capability": capability, "generated_repo": "/tmp/generated_mcp_server_github", "tools": ["list_repositories"]}))
+    monkeypatch.setattr(_mod, "compare_mcp_servers", lambda generated_path, reference_path, output_path=None: {"similarity": {"overall_score": similarity_values.pop(0)}, "structure": {"generated_capability": "github_repository_management"}, "tool_surface": {"coverage_ratio": 0.7, "missing_tools": ["create_issue"]}, "capability_surface": {"coverage_ratio": 0.7, "missing_enabled": []}, "testability": {"coverage_ratio": 0.7}}, raising=False)
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json", ledger="ledger.json", policy="policy.json", top_k=3,
+        output=str(tmp_path / "factory_cycle.json"),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(AssertionError("repair path should not run")),
+        run_governed_loop=lambda args: {"result": {"evaluation_summary": {"runs": [{"selected_actions": ["build_mcp_server"], "selection_detail": {"ranked_action_window": ["build_mcp_server"], "ranked_action_window_detail": [{"action_type": "build_mcp_server", "task_binding": {"args": {"capability": "github_repository_management"}}}]}}]}}},
+    )
+
+    assert len(build_calls) == 2
+    assert len(artifact["cycle_result"]["evolution_iterations"]) == 1
+    assert artifact["cycle_result"]["evolution_iterations"][0]["similarity_delta"] == 0.0
+    assert artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]["similarity_score"] == 0.7

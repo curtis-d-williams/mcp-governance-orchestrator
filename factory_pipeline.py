@@ -322,17 +322,64 @@ def run_factory_cycle(
 
                     if builder_overrides and not evolution_blocked_by_similarity_regression:
                         evolution_execution_metadata["builder_overrides_applied"] = True
-                        evolved_builder_result = build_capability_artifact(
-                            artifact_kind=build_request["artifact_kind"],
-                            capability=build_request["capability"],
-                            **builder_overrides,
-                        )
+                        max_evolution_iterations = 3
+                        min_similarity_improvement = 0.01
+                        evolution_iterations = []
+                        previous_iteration_score = comparison.get("similarity", {}).get("overall_score")
+
+                        for iteration_index in range(max_evolution_iterations):
+                            evolved_builder_result = build_capability_artifact(
+                                artifact_kind=build_request["artifact_kind"],
+                                capability=build_request["capability"],
+                                **builder_overrides,
+                            )
+
+                            iteration_comparison = compare_mcp_servers(
+                                evolved_builder_result.get("generated_repo"),
+                                reference_repo,
+                            )
+                            iteration_score = iteration_comparison.get("similarity", {}).get("overall_score")
+                            iteration_delta = None
+                            if iteration_score is not None and previous_iteration_score is not None:
+                                iteration_delta = round(
+                                    float(iteration_score) - float(previous_iteration_score),
+                                    2,
+                                )
+
+                            evolution_iterations.append({
+                                "iteration": iteration_index + 1,
+                                "builder_result": evolved_builder_result,
+                                "comparison": iteration_comparison,
+                                "similarity_score": iteration_score,
+                                "similarity_delta": iteration_delta,
+                            })
+
+                            builder_result = evolved_builder_result
+                            comparison = iteration_comparison
+
+                            if (
+                                iteration_delta is None
+                                or iteration_delta <= 0
+                                or iteration_delta < min_similarity_improvement
+                            ):
+                                break
+
+                            previous_iteration_score = iteration_score
+                            evolution_plan = plan_capability_evolution(comparison)
+                            evolution_execution = build_evolution_execution(
+                                evolution_plan,
+                                artifact_kind=builder_result.get("artifact_kind"),
+                                current_tools=builder_result.get("tools", []),
+                            )
+                            builder_overrides = evolution_execution.get("builder_overrides", {})
+                            if not builder_overrides:
+                                break
 
                         if isinstance(result, dict):
-                            result["evolved_builder"] = evolved_builder_result
-                            result["builder"] = evolved_builder_result
-
-                        builder_result = evolved_builder_result
+                            result["evolution_iterations"] = evolution_iterations
+                            result["evolved_builder"] = builder_result
+                            result["builder"] = builder_result
+                            result["reference_mcp_comparison"] = comparison
 
 
                 except Exception:
