@@ -50,7 +50,10 @@ def build_mcp_server(
     tools_json = json.dumps(tools, indent=2)
     features_json = json.dumps(features, indent=2)
     tool_imports = "\n".join(
-        f"from tools.{tool} import {tool} as _{tool}" for tool in tools
+        f"    from .tools.{tool} import {tool} as _{tool}" for tool in tools
+    )
+    tool_imports_fallback = "\n".join(
+        f"    from tools.{tool} import {tool} as _{tool}" for tool in tools
     )
     tool_wrappers = "\n\n".join(
         f"@mcp.tool()\ndef {tool}():\n    return _{tool}()"
@@ -65,6 +68,7 @@ def build_mcp_server(
         "tools_json": tools_json,
         "features_json": features_json,
         "tool_imports": tool_imports,
+        "tool_imports_fallback": tool_imports_fallback,
         "tool_wrappers": tool_wrappers,
     }
 
@@ -73,6 +77,8 @@ def build_mcp_server(
     manifest = render_template(read_template(TEMPLATE_DIR, "manifest.json.tpl"), variables)
     server = render_template(read_template(TEMPLATE_DIR, "server.py.tpl"), variables)
 
+    write_file(root / "__init__.py", "")
+    write_file(root / "tools" / "__init__.py", "")
     write_file(root / "README.md", readme)
     write_file(root / "manifest.json", manifest)
     write_file(root / "server.py", server)

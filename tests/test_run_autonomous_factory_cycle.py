@@ -913,7 +913,7 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_missing
         assert (generated / "tools" / "get_me.py").is_file()
 
         server_text = (generated / "server.py").read_text(encoding="utf-8")
-        assert "from tools.get_me import get_me as _get_me" in server_text
+        assert "from .tools.get_me import get_me as _get_me" in server_text
         assert "def get_me():" in server_text
         assert "return _get_me()" in server_text
 
@@ -1005,7 +1005,7 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_create_
 
         server_text = (generated / "server.py").read_text(encoding="utf-8")
         assert (
-            "from tools.create_pull_request import create_pull_request as _create_pull_request"
+            "from .tools.create_pull_request import create_pull_request as _create_pull_request"
             in server_text
         )
         assert "def create_pull_request():" in server_text
@@ -1099,7 +1099,7 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_get_cop
 
         server_text = (generated / "server.py").read_text(encoding="utf-8")
         assert (
-            "from tools.get_copilot_space import get_copilot_space as _get_copilot_space"
+            "from .tools.get_copilot_space import get_copilot_space as _get_copilot_space"
             in server_text
         )
         assert "def get_copilot_space():" in server_text

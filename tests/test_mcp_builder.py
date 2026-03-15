@@ -135,6 +135,7 @@ def test_build_mcp_server_generates_callable_wrappers_for_dynamic_tools():
 
         server_text = (generated / "server.py").read_text(encoding="utf-8")
 
+        assert "from .tools.get_me import get_me as _get_me" in server_text
         assert "from tools.get_me import get_me as _get_me" in server_text
         assert "def get_me():" in server_text
         assert "return _get_me()" in server_text

@@ -4,7 +4,10 @@ Minimal MCP server stub.
 
 from fastmcp import FastMCP
 
+try:
 {{tool_imports}}
+except ImportError:
+{{tool_imports_fallback}}
 
 mcp = FastMCP("{{name}}")
 
