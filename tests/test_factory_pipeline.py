@@ -2,6 +2,8 @@
 """Regression tests for the governed capability factory pipeline."""
 
 import json
+import shutil
+from pathlib import Path
 
 import factory_pipeline as _mod
 
@@ -406,6 +408,119 @@ def test_run_factory_cycle_falls_back_to_portfolio_recommendation_build_request(
     assert artifact["cycle_result"]["builder"]["status"] == "ok"
     assert artifact["cycle_result"]["synthesis_event"]["source"] == "portfolio_gap"
 
+
+
+def test_run_factory_cycle_records_reference_comparison_gap_for_real_generated_mcp_build(tmp_path, monkeypatch):
+    generated = Path("generated_mcp_server_github")
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    calls = {}
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        calls["compare"] = {
+            "generated_path": generated_path,
+            "reference_path": reference_path,
+            "output_path": output_path,
+        }
+        server_text = (Path(generated_path) / "server.py").read_text(encoding="utf-8")
+        get_repository_text = (Path(generated_path) / "tools" / "get_repository.py").read_text(encoding="utf-8")
+        create_issue_text = (Path(generated_path) / "tools" / "create_issue.py").read_text(encoding="utf-8")
+
+        assert '@mcp.tool()\ndef get_repository(repo: str):' in server_text
+        assert '@mcp.tool()\ndef create_issue(repo: str, title: str, body: str):' in server_text
+        assert 'def get_repository(repo):' in get_repository_text
+        assert 'def create_issue(repo, title, body):' in create_issue_text
+
+        return {
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.33, "missing_tools": ["create_issue"]},
+            "capability_surface": {
+                "coverage_ratio": 0.5,
+                "missing_enabled": ["supports_dynamic_toolsets"],
+            },
+            "testability": {"coverage_ratio": 0.25},
+        }
+
+    def fake_derive_capability_gaps_from_comparison(comparison):
+        return {
+            "capability_gaps": [
+                {
+                    "capability": "github_repository_management",
+                    "gap_source": "reference_mcp_comparison",
+                    "severity": 0.7,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+    monkeypatch.setattr(
+        _mod,
+        "derive_capability_gaps_from_comparison",
+        fake_derive_capability_gaps_from_comparison,
+        raising=False,
+    )
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    try:
+        artifact = _mod.run_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            ledger="ledger.json",
+            policy="policy.json",
+            top_k=3,
+            output=str(output),
+            evaluate_planner_config=fake_evaluate_planner_config,
+            run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+            run_governed_loop=fake_run_governed_loop,
+        )
+
+        assert calls["compare"] == {
+            "generated_path": str(generated.resolve()),
+            "reference_path": "reference_mcp_github_repository_management",
+            "output_path": None,
+        }
+
+        comparison = artifact["cycle_result"].get("reference_mcp_comparison")
+        assert comparison is not None
+        gaps = artifact["cycle_result"].get("reference_mcp_comparison_gaps")
+        assert gaps is not None
+        assert gaps["capability_gaps"][0]["capability"] == "github_repository_management"
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
 
 def test_run_factory_cycle_records_reference_comparison_gap_for_mcp_build(tmp_path, monkeypatch):
     calls = {}
