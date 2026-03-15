@@ -143,6 +143,32 @@ def test_build_mcp_server_generates_callable_wrappers_for_dynamic_tools():
         if generated.exists():
             shutil.rmtree(generated)
 
+def test_build_mcp_server_generates_parameterized_tool_stubs_matching_schema():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        _mod.build_mcp_server()
+
+        get_repository_text = (generated / "tools" / "get_repository.py").read_text(encoding="utf-8")
+        create_issue_text = (generated / "tools" / "create_issue.py").read_text(encoding="utf-8")
+        list_repositories_text = (generated / "tools" / "list_repositories.py").read_text(encoding="utf-8")
+
+        assert "def get_repository(repo):" in get_repository_text
+        assert '"args": {"repo": repo}' in get_repository_text
+
+        assert "def create_issue(repo, title, body):" in create_issue_text
+        assert '"args": {"repo": repo, "title": title, "body": body}' in create_issue_text
+
+        assert "def list_repositories():" in list_repositories_text
+        assert '"tool": "list_repositories"' in list_repositories_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
+
 def test_build_mcp_server_renders_enabled_features_in_manifest():
     repo_root = _mod.REPO_ROOT
     generated = repo_root / "generated_mcp_server_github"
