@@ -49,7 +49,7 @@ def build_mcp_server(
         f"from tools.{tool} import {tool} as _{tool}" for tool in tools
     )
     tool_wrappers = "\n\n".join(
-        f"def {tool}():\n    return _{tool}()"
+        f"@mcp.tool()\ndef {tool}():\n    return _{tool}()"
         for tool in tools
     )
 
@@ -87,6 +87,11 @@ def {tool}():
     write_file(
         root / "tests" / "test_server_smoke.py",
         f"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import server
 
 def test_list_tools():

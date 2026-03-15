@@ -105,9 +105,13 @@ def test_build_mcp_server_exposes_callable_tool_functions():
 
         server_text = (generated / "server.py").read_text(encoding="utf-8")
 
-        assert "def list_repositories():" in server_text
-        assert "def get_repository():" in server_text
-        assert "def create_issue():" in server_text
+        assert 'from fastmcp import FastMCP' in server_text
+        assert 'mcp = FastMCP("generated_mcp_server_github")' in server_text
+        assert '@mcp.tool()\ndef list_repositories():' in server_text
+        assert '@mcp.tool()\ndef get_repository():' in server_text
+        assert '@mcp.tool()\ndef create_issue():' in server_text
+        assert 'def main():' in server_text
+        assert 'if __name__ == "__main__":' in server_text
     finally:
         if generated.exists():
             shutil.rmtree(generated)
@@ -195,6 +199,28 @@ def test_build_mcp_server_generates_additional_test_file_when_test_expansion_ena
             encoding="utf-8"
         )
         assert "def test_all_tools_callable():" in test_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
+
+def test_build_mcp_server_smoke_test_imports_generated_server_from_artifact_root():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        _mod.build_mcp_server()
+
+        smoke_text = (generated / "tests" / "test_server_smoke.py").read_text(
+            encoding="utf-8"
+        )
+
+        assert "import sys" in smoke_text
+        assert "from pathlib import Path" in smoke_text
+        assert 'sys.path.insert(0, str(Path(__file__).resolve().parents[1]))' in smoke_text
+        assert "import server" in smoke_text
     finally:
         if generated.exists():
             shutil.rmtree(generated)
