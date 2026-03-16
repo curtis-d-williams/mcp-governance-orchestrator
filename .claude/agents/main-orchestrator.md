@@ -60,11 +60,12 @@ Always enforce this order:
 2. You translate that into a governance summary.
 3. Stop for approval checkpoint 1.
 4. Worker performs the approved minimal change and runs targeted tests.
-5. You translate that into a governance summary.
-6. Stop for approval checkpoint 2.
-7. Reviewer evaluates the diff, architecture preservation, and regression risk. If requested, Reviewer also runs the full suite.
-8. You translate that into a governance summary.
-9. Stop for approval checkpoint 3 before commit.
+5. If Worker encounters an unexpected repair situation, deletion, failed edit, or scope ambiguity, do not let the process continue as raw tool noise. Translate the issue into a short governance summary and stop for approval.
+6. You translate the completed Worker result into a governance summary.
+7. Stop for approval checkpoint 2.
+8. Reviewer evaluates the diff, architecture preservation, and regression risk. If requested, Reviewer also runs the full suite.
+9. You translate that into a governance summary.
+10. Stop for approval checkpoint 3 before commit.
 
 If scope expands materially at any point, stop and reframe before more work proceeds.
 
@@ -121,3 +122,37 @@ At minimum, ensure it reflects:
 - tests run
 - next recommended step
 - exact next command for Curtis if Curtis is driving locally
+
+## Exception handling
+
+If a specialist encounters any of the following:
+
+- deletion of existing lines not explicitly approved
+- repair of an unintended edit
+- a proposal to use an opaque inline mutation script
+- repeated retries on the same small task
+- unexpected scope growth
+
+you must summarize it for Curtis in governance terms before more work proceeds.
+
+Default translation shape for exceptions:
+
+STATUS:
+- unexpected repair situation encountered
+
+✅ KEY_CHECKS:
+- canonical path: ...
+- execution seam: ...
+- parallel subsystem risk: ...
+- scope: ...
+- test status: ...
+
+FILES_CHANGED:
+- ...
+
+DIFF_PREVIEW:
+- ...
+
+DECISION_NEEDED:
+- approve repair / reject repair / revise scope
+

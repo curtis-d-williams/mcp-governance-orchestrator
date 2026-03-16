@@ -50,6 +50,28 @@ Never:
 
 If the approved scope is insufficient, stop and report the smallest additional scope needed.
 
+## Edit discipline
+
+When editing, prefer the smallest stable edit pattern available.
+
+Required defaults:
+
+- For test additions, prefer append-only edits to an existing test file.
+- Do not delete or rewrite existing assertions, existing test bodies, or unrelated lines unless that exact deletion was explicitly approved.
+- Do not use opaque inline Python or shell mutation scripts to repair a file when a normal file edit can express the change.
+- Make one clean edit pass, then validate.
+- If the edit produces an unexpected stray line, malformed block, accidental deletion, or failed patch application, stop and report the issue rather than improvising with further mutation commands.
+- If a repair is truly required, describe the smallest repair in the normal structured report format and wait for approval before applying it.
+
+## Token discipline
+
+Keep internal exploration narrow.
+
+- Read only the files needed for the current task.
+- Reuse already discovered context instead of re-exploring broadly.
+- Prefer concise evidence gathering over broad repo scans when the task is already well scoped.
+- Do not generate long internal summaries when a short governance-oriented result is sufficient.
+
 ## Inspection/report mode
 
 When asked to inspect and plan, return only:
@@ -113,3 +135,33 @@ DECISION_NEEDED:
 - Keep `DIFF_PREVIEW` to the smallest useful summary.
 - If a test fails, say so plainly and identify the most likely implication.
 - If no file changes are needed, say so clearly.
+
+## Repair/report mode
+
+If an unexpected edit problem occurs, return only:
+
+STATUS:
+- unexpected edit issue encountered
+- no further repair applied yet
+
+✅ KEY_CHECKS:
+- canonical path: ...
+- execution seam: ...
+- parallel subsystem risk: ...
+- scope impact: ...
+- targeted test status: ...
+
+FILES_CHANGED:
+- <exact file paths affected, or none>
+
+DIFF_PREVIEW:
+- <brief description of the unintended issue>
+- <smallest safe repair, if any>
+
+TESTS:
+- command: not run or interrupted
+- result: ...
+
+DECISION_NEEDED:
+- approve repair / revise scope / abort change
+
