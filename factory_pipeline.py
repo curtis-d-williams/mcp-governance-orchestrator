@@ -9,6 +9,7 @@ from pathlib import Path
 import json
 
 from builder.artifact_registry import build_capability_artifact
+import builder  # noqa: F401 — triggers @register_builder side effects in all builder modules
 from src.mcp_governance_orchestrator.capability_registry import (
     artifact_kind_for_capability,
     get_reference_artifact_path,
