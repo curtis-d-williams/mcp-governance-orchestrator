@@ -258,3 +258,12 @@ class TestInspectReferenceMCP:
         r2 = inspect_reference_mcp(ref)
 
         assert r1 == r2
+
+
+class TestRealReferenceArtifact:
+
+    def test_inspect_real_reference_mcp_returns_expected_structure(self):
+        ref = Path(__file__).resolve().parents[1] / "reference_mcp_github_repository_management"
+        result = inspect_reference_mcp(str(ref))
+        for key in ("descriptor", "tooling", "capabilities", "testability", "consistency"):
+            assert key in result, f"missing key: {key}"

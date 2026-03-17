@@ -1,7 +1,6 @@
 # tests/test_all_schema_tools_dynamic.py
 
 import inspect
-from generated_mcp_server_github import server
 
 # Simple dummy values for parameter types
 DUMMY_VALUES = {
@@ -11,6 +10,7 @@ DUMMY_VALUES = {
 }
 
 def main():
+    from generated_mcp_server_github import server
     print("Dynamic schema-aware tool test starting...\n")
     for name, func in inspect.getmembers(server, inspect.isfunction):
         if not name.startswith("_") and name != "main":  # skip internal functions and server entrypoint

@@ -1,5 +1,7 @@
 # tests/test_schema_aware_tools.py
 
+import pytest
+pytest.importorskip("generated_mcp_server_github", reason="generated_mcp_server_github not present — run factory pipeline first")
 from generated_mcp_server_github.server import list_repositories, get_repository, create_issue
 
 def test_list_repositories():
