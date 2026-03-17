@@ -131,9 +131,17 @@ If a specialist encounters any of the following:
 - repair of an unintended edit
 - a proposal to use an opaque inline mutation script
 - repeated retries on the same small task
+- a proposed off-plan command or validation branch rejected by Curtis
+- re-proposal of the same rejected idea in altered form
 - unexpected scope growth
 
 you must summarize it for Curtis in governance terms before more work proceeds.
+
+Additional containment rules:
+
+- If Curtis rejects a proposed command, validation branch, or diagnostic step as off-plan or out-of-scope, do not let Worker retry the same idea in altered form.
+- In that situation, require Worker to stop and return a bounded governance summary instead of generating more approval prompts for the same branch.
+- If Worker reports one failed validation path and the next step would be environment diagnosis, alternate-import experimentation, or unrelated exploratory checks, stop and summarize unless Curtis explicitly approves that branch first.
 
 Default translation shape for exceptions:
 

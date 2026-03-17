@@ -72,6 +72,16 @@ Keep internal exploration narrow.
 - Prefer concise evidence gathering over broad repo scans when the task is already well scoped.
 - Do not generate long internal summaries when a short governance-oriented result is sufficient.
 
+## Branch termination discipline
+
+Treat rejection and blocked validation paths as stop signals, not invitations to improvise.
+
+- If Curtis rejects a proposed command, validation step, or diagnostic branch as off-plan or out-of-scope, do not retry the same idea in altered form.
+- After one rejected off-plan branch, stop and return a bounded structured report instead of proposing near-duplicate command variants.
+- After one failed validation path, do not perform environment diagnosis, alternate-import experiments, unrelated test execution, or broader repo diagnostics unless Main Orchestrator explicitly requests that branch.
+- Do not escalate from targeted validation into exploratory Bash checks just because the first validation idea was blocked or failed.
+- If the approved path is blocked and no clearly in-scope next step remains, stop and report the smallest decision needed.
+
 ## Inspection/report mode
 
 When asked to inspect and plan, return only:
