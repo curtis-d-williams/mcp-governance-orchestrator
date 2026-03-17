@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from builder.artifact_registry import build_capability_artifact
+import builder  # noqa: F401 — triggers @register_builder side effects in all builder modules
 from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
     record_normalized_synthesis_event,
 )
