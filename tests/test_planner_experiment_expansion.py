@@ -153,7 +153,7 @@ class TestActionMapping:
         assert "failure_recovery_example" in _planner_mod.ALL_TASKS
 
     def test_all_tasks_contains_five_tasks(self):
-        assert len(_planner_mod.ALL_TASKS) == 5
+        assert len(_planner_mod.ALL_TASKS) == 6
 
     def test_all_tasks_contains_build_portfolio_dashboard(self):
         assert "build_portfolio_dashboard" in _planner_mod.ALL_TASKS

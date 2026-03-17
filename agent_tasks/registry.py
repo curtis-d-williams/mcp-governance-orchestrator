@@ -12,6 +12,15 @@ TASK_REGISTRY = {
         "deterministic": True,
         "portfolio_safe": True,
     },
+    "build_mcp_server_example": {
+        "module": "agent_tasks.build_mcp_server_example",
+        "description": "Generate an MCP server via the canonical governed build path",
+        "scope": "local_repo",
+        "inputs": [],
+        "outputs": [],
+        "deterministic": True,
+        "portfolio_safe": True,
+    },
     "build_portfolio_dashboard": {
         "module": "agent_tasks.build_portfolio_dashboard",
         "description": "Generate Tier-3 portfolio dashboard artifacts",

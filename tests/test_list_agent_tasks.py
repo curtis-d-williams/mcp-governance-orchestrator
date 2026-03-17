@@ -26,6 +26,14 @@ def test_list_agent_tasks_output():
             "portfolio_safe": True,
         },
         {
+            "task": "build_mcp_server_example",
+            "description": "Generate an MCP server via the canonical governed build path",
+            "scope": "local_repo",
+            "outputs": [],
+            "deterministic": True,
+            "portfolio_safe": True,
+        },
+        {
             "task": "build_portfolio_dashboard",
             "description": "Generate Tier-3 portfolio dashboard artifacts",
             "scope": "local_repo",

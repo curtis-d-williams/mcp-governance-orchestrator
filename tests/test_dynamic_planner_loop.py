@@ -122,7 +122,6 @@ class TestMapActionsToTasks:
             assert result == [expected_task], f"{action_type} should map to {expected_task}"
 
     def test_build_actions_are_unmapped_in_dynamic_loop(self):
-        assert _map_actions_to_tasks([self._action("build_mcp_server")]) == []
         assert _map_actions_to_tasks([self._action("build_capability_artifact")]) == []
 
     def test_missing_action_type_key_skipped(self):

@@ -67,6 +67,7 @@ DEFAULT_PORTFOLIO_STATE_OUTPUT = Path("portfolio_state.json")
 # Available Tier-3 tasks (must match TASK_REGISTRY in agent_tasks/registry.py)
 ALL_TASKS = [
     "artifact_audit_example",
+    "build_mcp_server_example",
     "build_portfolio_dashboard",
     "failure_recovery_example",
     "planner_determinism_example",
@@ -76,12 +77,13 @@ ALL_TASKS = [
 # Deterministic mapping from portfolio action_type → Tier-3 task name.
 # All entries must reference tasks present in TASK_REGISTRY.
 ACTION_TO_TASK = {
+    "analyze_repo_insights": "repo_insights_example",
+    "build_mcp_server": "build_mcp_server_example",
+    "recover_failed_workflow": "failure_recovery_example",
     "refresh_repo_health": "build_portfolio_dashboard",
     "regenerate_missing_artifact": "build_portfolio_dashboard",
     "rerun_failed_task": "build_portfolio_dashboard",
     "run_determinism_regression_suite": "build_portfolio_dashboard",
-    "analyze_repo_insights": "repo_insights_example",
-    "recover_failed_workflow": "failure_recovery_example",
 }
 
 def resolve_action_to_task_mapping(default_mapping, mapping_override=None):
