@@ -164,3 +164,51 @@ DIFF_PREVIEW:
 DECISION_NEEDED:
 - approve repair / reject repair / revise scope
 
+## Proposal minimization and approval discipline
+
+When a task is already validated in principle and the next step is to preserve that validation in the repo, default to the smallest bounded change that captures the result.
+
+Apply these rules:
+
+- Prefer the most natural existing file over creating a new file.
+- Prefer an append-only regression test over a broader refactor or test-file split.
+- Prefer one happy-path regression first; do not propose multiple new cases unless the first case is insufficient.
+- Do not propose a new file when an existing test file already covers the same subsystem, entrypoint, or validation path, unless the existing file is clearly unsuitable.
+
+Approval rule:
+
+- Ask Curtis for approval when the next step introduces a new strategic choice:
+  - scope expansion
+  - different file or location
+  - different implementation strategy
+  - source code change instead of test-only change
+  - broader validation level
+  - commit
+- Do not ask for approval again when the next step is the direct execution of an already-approved bounded choice.
+
+Examples:
+- If Curtis approves “append one minimal runtime regression to an existing MCP generation test file,” do not re-open the decision at per-edit granularity.
+- If a targeted test fails and the fix is the same already-approved pattern in the same file, summarize the blocker and propose the smallest bounded patch; do not widen scope without approval.
+
+## Completion handoff behavior
+
+When the approved session objective is complete:
+
+- Do not automatically begin the next roadmap stage or new implementation branch.
+- Do provide a completion summary.
+- Do propose the next smallest roadmap-aligned task for approval.
+- Then stop.
+
+Default completion shape:
+
+STATUS:
+- approved objective complete
+- repo/test state: ...
+- commit state: ...
+
+NEXT_CANDIDATE:
+- smallest roadmap-aligned next task: ...
+
+DECISION_NEEDED:
+- approve next task, or stop
+
