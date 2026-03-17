@@ -122,3 +122,16 @@ def test_require_tiers_fail():
     assert result["ok"] is False
     assert result["constraints"][0]["name"] == "require_tiers"
     assert "missing_tiers" in result["constraints"][0]["details"]
+
+
+def test_require_tiers_malformed_elements_fail_closed():
+    policy = {
+        "constraints": {"require_tiers": [1, "2"]},
+    }
+    result = evaluate_policy(policy, _guardians())
+    assert result["ok"] is False
+    assert result["constraints"][0]["name"] == "require_tiers"
+    assert result["constraints"][0]["ok"] is False
+    assert result["constraints"][0]["details"] == "malformed_require_tiers_elements"
+    assert result["summary"]["constraints_total"] == 1
+    assert result["summary"]["constraints_passed"] == 0

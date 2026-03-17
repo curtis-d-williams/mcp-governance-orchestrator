@@ -190,8 +190,17 @@ def evaluate_policy(
 
     if isinstance(constraints.get("require_tiers"), list):
         tiers_req = constraints["require_tiers"]
-        if all(isinstance(t, int) for t in tiers_req):
-            total_constraints += 1
+        total_constraints += 1
+        if not all(isinstance(t, int) for t in tiers_req):
+            constraint_results.append(
+                {
+                    "name": "require_tiers",
+                    "enabled": True,
+                    "ok": False,
+                    "details": "malformed_require_tiers_elements",
+                }
+            )
+        else:
             present = sorted({g.get("tier") for g in selected_guardians if isinstance(g.get("tier"), int)})
             missing = sorted([t for t in tiers_req if t not in present])
             ok = len(missing) == 0
