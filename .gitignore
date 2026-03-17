@@ -51,3 +51,6 @@ scheduled_cycle_alert.json
 scheduled_cycle_summary.json
 mapping_repair_cycle.json
 planner_scoring_metrics.json
+
+# Session working state (ephemeral; template is tracked at .claude/session_log.template.md)
+.claude/session_log.md
