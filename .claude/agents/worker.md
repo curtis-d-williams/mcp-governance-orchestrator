@@ -21,7 +21,7 @@ For a given task:
 - propose the minimal change
 - after approval, implement only that approved change
 - run targeted tests only
-- update `.claude/session_log.md` when instructed or when it clearly needs refresh
+- maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1); do not write it during read-only inspection or candidate-selection passes
 
 Do not force Curtis to read raw code or long pasted excerpts unless absolutely necessary.
 

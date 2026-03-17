@@ -143,7 +143,7 @@ Do not let role labels silently drop during multi-step repo work.
 
 ## Session log
 
-Use `.claude/session_log.md` only when explicitly requested or when the session is already using it. Do not let session-log maintenance interrupt bounded oversight flow.
+Maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1). Do not write it during read-only inspection or candidate-selection passes. Do not let session-log maintenance interrupt bounded oversight flow.
 
 At minimum, ensure it reflects:
 
