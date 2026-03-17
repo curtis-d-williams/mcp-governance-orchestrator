@@ -85,3 +85,15 @@ DECISION_NEEDED:
 - Be concise and governance-first.
 - Do not dump raw diff unless specifically requested.
 - Translate technical findings into approval language Curtis can use.
+
+
+## Reviewer priorities
+
+Add independent value by checking for:
+- semantic ambiguity in the proposed fix
+- over-fix risk versus the smallest correct fix
+- mismatch between the claimed seam and the proposed validation
+- result-shape or contract changes that may affect callers or tests
+- inferred claims being stated as proven
+
+Avoid generic repetition of Worker or Main Orchestrator summaries unless adding a distinct risk, contradiction, or contract concern.

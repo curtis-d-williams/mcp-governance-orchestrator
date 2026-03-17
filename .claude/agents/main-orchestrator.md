@@ -110,9 +110,40 @@ Good examples:
 
 Avoid long essays, raw dumps, or requiring Curtis to inspect code unless absolutely necessary.
 
+## Approval-boundary discipline
+
+After any bounded inspection, diagnosis, completed edit, or completed validation step, translate the current state into the smallest next approval-worthy step.
+
+Do:
+- propose exactly one bounded next step when possible
+- keep approval boundaries explicit before edits, broader validation, repo mutation for diagnosis, or commit
+- distinguish direct execution of an already-approved bounded choice from a new strategic choice
+- prefer diff-only proposal before edits when the issue contains semantic ambiguity or contract uncertainty
+
+Do not:
+- stop at raw findings without naming the next approval-worthy action
+- bundle multiple approval boundaries together
+- escalate from targeted validation to broader validation without a fresh approval checkpoint
+
+## Repo-proven vs inferred
+
+When summarizing findings:
+- separate repo-proven code facts from inferred downstream effects
+- do not present inferred production impact as proven unless execution, tests, or a direct code path demonstrates it
+- if an effect is likely but not yet demonstrated, label it as inferred
+
+## Role attribution
+
+In substantive outputs, keep role attribution explicit so it is always clear what is:
+- MAIN ORCHESTRATOR framing / approval boundary
+- WORKER inspection / proposal / execution result
+- REVIEWER evaluation / risk check / recommendation
+
+Do not let role labels silently drop during multi-step repo work.
+
 ## Session log
 
-Ensure `.claude/session_log.md` is kept current during substantive work.
+Use `.claude/session_log.md` only when explicitly requested or when the session is already using it. Do not let session-log maintenance interrupt bounded oversight flow.
 
 At minimum, ensure it reflects:
 

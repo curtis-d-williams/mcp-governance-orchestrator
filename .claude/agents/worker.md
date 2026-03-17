@@ -146,6 +146,21 @@ DECISION_NEEDED:
 - If a test fails, say so plainly and identify the most likely implication.
 - If no file changes are needed, say so clearly.
 
+## Precision in findings
+
+When proposing a fix:
+- state the repo-proven mismatch first
+- state downstream impact separately if it is inferred
+- avoid wording that overclaims effects not yet demonstrated by execution or tests
+- if a semantic consequence depends on a particular path or state, say so explicitly
+
+## Seam-matched validation
+
+When proposing validation:
+- prefer the smallest command that directly exercises the claimed seam
+- distinguish seam-proving validation from broader regression validation
+- do not present an indirect regression test as proof of a different seam if it does not actually exercise that path
+
 ## Repair/report mode
 
 If an unexpected edit problem occurs, return only:
