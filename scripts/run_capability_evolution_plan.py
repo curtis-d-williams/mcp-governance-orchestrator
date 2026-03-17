@@ -14,10 +14,13 @@ Fail closed on malformed inputs, unknown reference targets, or rebuild/compare e
 """
 
 import argparse
-import importlib.util
 import json
 import sys
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from builder.artifact_registry import build_capability_artifact
 from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
@@ -30,11 +33,6 @@ from src.mcp_governance_orchestrator.capability_registry import (
     get_reference_artifact_path,
 )
 from scripts.compare_mcp_servers import compare_mcp_servers
-
-
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 
 def _load_json(path, label):
