@@ -288,3 +288,60 @@ def test_stage_3b_smoke_real_fixture_build_evolution_execution():
     # all 10 actions are executable; none deferred
     assert result["executed_action_count"] == 10
     assert result["deferred_action_count"] == 0
+
+
+def test_stage_3c_smoke_real_fixture_full_script_path(monkeypatch):
+    """Smoke: full script path — plan parse → executor → builder → compare → ledger.
+
+    Stubs only compare_mcp_servers (requires a reference MCP directory on disk
+    that does not exist in the repo). All other calls (build_evolution_execution,
+    get_reference_artifact_path, build_capability_artifact) run against real code.
+    """
+    import shutil
+
+    fixture_path = _REPO_ROOT / "experiments" / "factory_demo" / "capability_evolution_plan.json"
+
+    captured = {}
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        captured["generated_path"] = generated_path
+        captured["reference_path"] = reference_path
+        return {
+            "generated": generated_path,
+            "reference": reference_path,
+            "similarity": {"overall_score": 0.80},
+        }
+
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers)
+
+    generated_repo = None
+    try:
+        artifact = run_capability_evolution_plan(
+            plan_path=str(fixture_path),
+            artifact_kind="mcp_server",
+            capability="github_repository_management",
+        )
+        generated_repo = artifact.get("builder", {}).get("generated_repo")
+
+        # Plan parse + executor: builder_overrides populated by real build_evolution_execution
+        overrides = artifact["capability_evolution_execution"]["builder_overrides"]
+        assert set(overrides["tools"]) == {"create_pull_request", "get_copilot_space", "get_me"}
+        assert overrides.get("test_expansion") is True
+
+        # Builder ran real: compare stub received the real generated_repo path
+        assert captured.get("generated_path") == generated_repo
+        assert captured.get("reference_path") == "reference_mcp_github_repository_management"
+
+        # Ledger updated in-memory (no prior ledger passed → starts fresh)
+        row = artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]
+        assert row["total_syntheses"] == 1
+        assert row["successful_evolved_syntheses"] == 1
+        assert row["similarity_score"] == 0.80
+
+        # Synthesis event wired through
+        assert artifact["synthesis_event"]["used_evolution"] is True
+        assert artifact["synthesis_event"]["status"] == "ok"
+
+    finally:
+        if generated_repo and Path(generated_repo).exists():
+            shutil.rmtree(generated_repo)
