@@ -44,28 +44,41 @@ def _aggregate(cycles):
             source = synthesis_event.get("source")
 
             if capability and artifact_kind and status and source:
-                cycle_capabilities = {
-                    capability: {
-                        "artifact_kind": artifact_kind,
-                        "failed_syntheses": 0 if status == "ok" else 1,
-                        "successful_syntheses": 1 if status == "ok" else 0,
-                        "total_syntheses": 1,
-                        "last_synthesis_source": source,
-                        "last_synthesis_status": status,
-                    }
+                used_evolution = bool(synthesis_event.get("used_evolution", False))
+                cap_entry = {
+                    "artifact_kind": artifact_kind,
+                    "failed_syntheses": 0 if status == "ok" else 1,
+                    "successful_evolved_syntheses": 1 if (status == "ok" and used_evolution) else 0,
+                    "successful_syntheses": 1 if status == "ok" else 0,
+                    "total_syntheses": 1,
+                    "last_synthesis_source": source,
+                    "last_synthesis_status": status,
+                    "last_synthesis_used_evolution": used_evolution,
                 }
+                if synthesis_event.get("similarity_score") is not None:
+                    cap_entry["similarity_score"] = synthesis_event["similarity_score"]
+                if synthesis_event.get("previous_similarity_score") is not None:
+                    cap_entry["previous_similarity_score"] = synthesis_event["previous_similarity_score"]
+                if synthesis_event.get("similarity_delta") is not None:
+                    cap_entry["similarity_delta"] = synthesis_event["similarity_delta"]
+                cycle_capabilities = {capability: cap_entry}
 
                 capabilities = merge_counter_ledger(
                     capabilities,
                     cycle_capabilities,
                     counter_fields=[
                         "failed_syntheses",
+                        "successful_evolved_syntheses",
                         "successful_syntheses",
                         "total_syntheses",
                     ],
                     last_fields=[
                         "last_synthesis_source",
                         "last_synthesis_status",
+                        "last_synthesis_used_evolution",
+                        "similarity_score",
+                        "previous_similarity_score",
+                        "similarity_delta",
                     ],
                 )
                 continue
@@ -80,12 +93,17 @@ def _aggregate(cycles):
             cycle_capabilities,
             counter_fields=[
                 "failed_syntheses",
+                "successful_evolved_syntheses",
                 "successful_syntheses",
                 "total_syntheses",
             ],
             last_fields=[
                 "last_synthesis_source",
                 "last_synthesis_status",
+                "last_synthesis_used_evolution",
+                "similarity_score",
+                "previous_similarity_score",
+                "similarity_delta",
             ],
         )
 

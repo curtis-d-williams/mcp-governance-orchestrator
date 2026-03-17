@@ -100,6 +100,7 @@ class TestAggregateLogic:
             "failed_syntheses": 0,
             "last_synthesis_source": "planner_request",
             "last_synthesis_status": "ok",
+            "successful_evolved_syntheses": 0,
             "successful_syntheses": 1,
             "total_syntheses": 1,
         }
@@ -195,6 +196,8 @@ class TestAggregateLogic:
             "failed_syntheses": 0,
             "last_synthesis_source": "planner_request",
             "last_synthesis_status": "ok",
+            "last_synthesis_used_evolution": False,
+            "successful_evolved_syntheses": 0,
             "successful_syntheses": 1,
             "total_syntheses": 1,
         }
