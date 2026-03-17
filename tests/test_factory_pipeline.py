@@ -1607,3 +1607,130 @@ def test_run_factory_cycle_records_error_synthesis_event_when_builder_raises(tmp
     assert synthesis_event["artifact_kind"] == "data_connector"
     assert synthesis_event["source"] == "planner_request"
     assert "simulated build failure" in cycle_result["builder_error"]
+
+
+def test_run_factory_cycle_records_no_op_synthesis_event_when_build_request_is_none(tmp_path, monkeypatch):
+    ledger_calls = []
+    base_ledger = {"capabilities": {}}
+
+    def fake_record_normalized_synthesis_event(ledger, synthesis_event):
+        ledger_calls.append(synthesis_event)
+        return ledger
+
+    monkeypatch.setattr(_mod, "record_normalized_synthesis_event", fake_record_normalized_synthesis_event)
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        # Return a result with no build_capability_artifact action selected
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": [],
+                            "selection_detail": {
+                                "ranked_action_window": [],
+                                "ranked_action_window_detail": [],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    # portfolio_state with no capability_gaps so gap resolver also returns None
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(
+        json.dumps({}),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    cycle_result = artifact["cycle_result"]
+    synthesis_event = cycle_result["synthesis_event"]
+
+    assert synthesis_event["status"] == "no_op"
+    assert synthesis_event["source"] == "none"
+    assert synthesis_event["capability"] == "none"
+    assert synthesis_event["artifact_kind"] == "none"
+
+    assert len(ledger_calls) == 1
+    assert ledger_calls[0]["status"] == "no_op"
+    assert ledger_calls[0]["source"] == "none"
+    assert ledger_calls[0]["capability"] == "none"
+    assert ledger_calls[0]["artifact_kind"] == "none"
+
+    assert artifact["capability_effectiveness_ledger"] is not None
+
+
+def test_no_op_synthesis_event_when_no_build_request(tmp_path, monkeypatch):
+    """No-build-request path records no_op synthesis_event with sentinel fields
+    and updates the real capability_effectiveness_ledger under key 'none'."""
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": [],
+                            "selection_detail": {
+                                "ranked_action_window": [],
+                                "ranked_action_window_detail": [],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    # portfolio_state with no capability_gaps so gap resolver also returns None
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(json.dumps({}), encoding="utf-8")
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    cycle_result = artifact["cycle_result"]
+    synthesis_event = cycle_result["synthesis_event"]
+
+    assert synthesis_event["status"] == "no_op"
+    assert synthesis_event["source"] == "none"
+    assert synthesis_event["capability"] == "none"
+    assert synthesis_event["artifact_kind"] == "none"
+
+    ledger = artifact["capability_effectiveness_ledger"]
+    assert ledger["capabilities"]["none"]["total_syntheses"] >= 1
