@@ -1545,3 +1545,65 @@ def test_run_factory_cycle_stops_iterative_evolution_when_improvement_below_thre
     assert len(artifact["cycle_result"]["evolution_iterations"]) == 1
     assert artifact["cycle_result"]["evolution_iterations"][0]["similarity_delta"] == 0.0
     assert artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]["similarity_score"] == 0.7
+
+
+def test_run_factory_cycle_records_error_synthesis_event_when_builder_raises(tmp_path, monkeypatch):
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        raise RuntimeError("simulated build failure")
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "data_connector",
+                                                "capability": "snowflake_data_access",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    cycle_result = artifact["cycle_result"]
+    synthesis_event = cycle_result["synthesis_event"]
+
+    assert synthesis_event["status"] == "error"
+    assert synthesis_event["capability"] == "snowflake_data_access"
+    assert synthesis_event["artifact_kind"] == "data_connector"
+    assert synthesis_event["source"] == "planner_request"
+    assert "simulated build failure" in cycle_result["builder_error"]
