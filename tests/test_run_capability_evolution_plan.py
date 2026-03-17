@@ -250,3 +250,41 @@ def test_run_capability_evolution_plan_fails_closed_on_builder_non_ok_status(
         assert str(exc) == "builder returned non-ok status: error"
     else:
         raise AssertionError("expected fail-closed ValueError")
+
+
+def test_stage_3b_smoke_real_fixture_build_evolution_execution():
+    """Smoke: build_evolution_execution against real experiments/factory_demo fixture."""
+    from src.mcp_governance_orchestrator.capability_evolution_executor import (
+        build_evolution_execution,
+    )
+
+    fixture_path = _REPO_ROOT / "experiments" / "factory_demo" / "capability_evolution_plan.json"
+    plan_artifact = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    # fixture has no wrapper key — _normalize_plan branch: "evolution_actions" at top level
+    assert "evolution_actions" in plan_artifact
+
+    result = build_evolution_execution(
+        plan_artifact,
+        artifact_kind="mcp_server",
+        current_tools=[],
+    )
+
+    overrides = result["builder_overrides"]
+    assert isinstance(overrides, dict), "builder_overrides must be a dict"
+    assert overrides, "builder_overrides must be non-empty for this fixture"
+
+    # 3 add_tool actions → tools list
+    assert "tools" in overrides
+    assert set(overrides["tools"]) == {"create_pull_request", "get_copilot_space", "get_me"}
+
+    # 6 enable_feature actions → features list
+    assert "features" in overrides
+    assert len(overrides["features"]) == 6
+
+    # 1 increase_test_coverage action
+    assert overrides.get("test_expansion") is True
+
+    # all 10 actions are executable; none deferred
+    assert result["executed_action_count"] == 10
+    assert result["deferred_action_count"] == 0
