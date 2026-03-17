@@ -2,6 +2,7 @@
 """Regression tests for the generate_mcp_server developer entrypoint."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
         result = subprocess.run(
             [sys.executable, "scripts/generate_mcp_server.py"],
             cwd=repo_root,
+            env={**os.environ, "PYTHONPATH": str(repo_root)},
             capture_output=True,
             text=True,
             check=True,
@@ -79,6 +81,47 @@ def test_generate_mcp_server_script_defaults_to_github_poc():
             assert tool_name in readme_text
 
         assert "generated_mcp_server_github" in smoke_text or "server" in smoke_text
+    finally:
+        if generated.exists():
+            shutil.rmtree(generated)
+
+
+def test_mcp_runtime_tool_invocation():
+    """Regression: generated server executes tools through the MCP runtime."""
+    repo_root = mcp_builder.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    try:
+        subprocess.run(
+            [sys.executable, "scripts/generate_mcp_server.py"],
+            cwd=repo_root,
+            env={**os.environ, "PYTHONPATH": str(repo_root)},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        result = subprocess.run(
+            [
+                "fastmcp", "call",
+                "--server-spec", str(generated / "server.py"),
+                "--target", "list_repositories",
+                "--json",
+            ],
+            cwd=repo_root,
+            env={**os.environ, "PYTHONPATH": str(repo_root)},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, f"fastmcp call failed: {result.stderr}"
+        response = json.loads(result.stdout)
+        assert response["is_error"] is False
+        assert "list_repositories" in response["content"][0]["text"]
     finally:
         if generated.exists():
             shutil.rmtree(generated)
