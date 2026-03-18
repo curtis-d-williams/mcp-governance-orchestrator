@@ -8,6 +8,10 @@ and does not duplicate generation logic.
 
 import argparse
 import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from builder.mcp_builder import build_mcp_server
 

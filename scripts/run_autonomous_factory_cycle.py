@@ -16,9 +16,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from factory_pipeline import decide_action as _pipeline_decide_action
-from factory_pipeline import run_factory_cycle
-
 
 # ---------------------------------------------------------------------
 # Repo path bootstrap
@@ -27,6 +24,9 @@ from factory_pipeline import run_factory_cycle
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from factory_pipeline import decide_action as _pipeline_decide_action
+from factory_pipeline import run_factory_cycle
 
 
 # ---------------------------------------------------------------------
