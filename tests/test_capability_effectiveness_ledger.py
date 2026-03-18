@@ -3,6 +3,7 @@
 
 from src.mcp_governance_orchestrator.capability_effectiveness_ledger import (
     record_normalized_synthesis_event,
+    record_synthesis_event,
 )
 
 
@@ -69,3 +70,41 @@ def test_record_normalized_synthesis_event_omits_similarity_fields_when_absent()
             }
         }
     }
+
+
+def test_record_synthesis_event_overwrites_stale_similarity_delta():
+    """Derived similarity_delta must be recomputed from current scores even when
+    the capability entry already carries a stale similarity_delta from a prior run."""
+    ledger = {
+        "capabilities": {
+            "github_repository_management": {
+                "artifact_kind": "mcp_server",
+                "failed_syntheses": 0,
+                "successful_syntheses": 1,
+                "successful_evolved_syntheses": 0,
+                "total_syntheses": 1,
+                "last_synthesis_source": "planner_request",
+                "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
+                "similarity_score": 0.50,
+                "previous_similarity_score": 0.30,
+                "similarity_delta": 0.20,  # stale value from prior run
+            }
+        }
+    }
+
+    result = record_synthesis_event(
+        ledger,
+        capability="github_repository_management",
+        artifact_kind="mcp_server",
+        synthesis_source="planner_request",
+        synthesis_status="ok",
+        similarity_score=0.75,
+        previous_similarity_score=0.50,
+        # no explicit similarity_delta supplied — must be derived fresh
+    )
+
+    cap = result["capabilities"]["github_repository_management"]
+    assert cap["similarity_score"] == 0.75
+    assert cap["previous_similarity_score"] == 0.50
+    assert cap["similarity_delta"] == 0.25  # derived from current scores, not stale 0.20
