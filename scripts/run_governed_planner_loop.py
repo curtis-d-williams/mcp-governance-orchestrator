@@ -218,6 +218,8 @@ def main(argv=None):
                         help="When all offsets remain high_risk, run the validated mapping repair cycle before aborting.")
     parser.add_argument("--learn-ledger-output", default=None, metavar="FILE",
                         help="After a successful governed run, write an updated effectiveness ledger to this path.")
+    parser.add_argument("--capability-ledger", default=None, dest="capability_ledger", metavar="FILE",
+                        help="Path to capability_effectiveness_ledger.json (optional).")
 
     args = parser.parse_args(argv)
 

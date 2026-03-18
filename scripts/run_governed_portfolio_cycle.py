@@ -87,6 +87,8 @@ def main(argv=None):
     parser.add_argument("--governance-policy", default=None, metavar="FILE",
                         dest="governance_policy",
                         help="Path to governance_policy.json for Phase L (optional).")
+    parser.add_argument("--capability-ledger", default=None, dest="capability_ledger", metavar="FILE",
+                        help="Path to capability_effectiveness_ledger.json (optional).")
 
     args = parser.parse_args(argv)
     sys.exit(run_cycle(args))

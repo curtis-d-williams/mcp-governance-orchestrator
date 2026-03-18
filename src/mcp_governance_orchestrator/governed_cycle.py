@@ -154,6 +154,7 @@ def artifact_paths(work_dir_path):
         "cycle_history_summary": str(wd / "cycle_history_summary.json"),
         "cycle_history_regression": str(wd / "cycle_history_regression_report.json"),
         "governance_decision": str(wd / "governance_decision.json"),
+        "capability_effectiveness_ledger": str(wd / "capability_effectiveness_ledger.json"),
     }
 
 
@@ -173,6 +174,7 @@ def build_runtime_config(args, ledger_path):
         "force": args.force,
         "governance_policy": getattr(args, "governance_policy", None),
         "repo_ids": getattr(args, "repo_ids", None),
+        "capability_ledger": getattr(args, "capability_ledger", None),
     }
 
 
@@ -253,6 +255,7 @@ def run_governed_loop(
     top_k,
     exploration_offset,
     ledger=None,
+    capability_ledger=None,
     policy=None,
     max_actions=None,
     explain=False,
@@ -273,6 +276,8 @@ def run_governed_loop(
     ]
     if ledger is not None:
         cmd += ["--ledger", ledger]
+    if capability_ledger is not None:
+        cmd += ["--capability-ledger", capability_ledger]
     if policy is not None:
         cmd += ["--policy", policy]
     if max_actions is not None:
@@ -518,6 +523,7 @@ def run_cycle(args):
             top_k=config["top_k"],
             exploration_offset=config["exploration_offset"],
             ledger=config["ledger_path"],
+            capability_ledger=config["capability_ledger"],
             policy=config["planner_policy"],
             max_actions=config["max_actions"],
             explain=config["explain"],

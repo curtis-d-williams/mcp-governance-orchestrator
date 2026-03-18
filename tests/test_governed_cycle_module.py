@@ -7,11 +7,15 @@ Covers the pure/stateless helpers independently of the CLI entrypoint:
 - validate_manifest_repos
 - work_dir / artifact_paths
 - resolve_planner_ledger
+- build_runtime_config
+- run_governed_loop (subprocess cmd construction)
 """
 
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,7 +25,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 from mcp_governance_orchestrator.governed_cycle import (
     artifact_paths,
+    build_runtime_config,
     resolve_planner_ledger,
+    run_governed_loop,
     try_parse_json,
     try_read_json,
     validate_manifest_repos,
@@ -156,6 +162,7 @@ class TestArtifactPaths:
             "work_dir", "report", "aggregate", "portfolio_state",
             "governed_result", "execution_result", "execution_history",
             "action_effectiveness_ledger", "cycle_history",
+            "capability_effectiveness_ledger",
         ):
             assert key in arts
 
@@ -202,3 +209,67 @@ class TestResolvePlannerLedger:
         source, path = resolve_planner_ledger("/explicit.json", arts)
         assert source == "explicit"
         assert path == "/explicit.json"
+
+
+# ---------------------------------------------------------------------------
+# build_runtime_config
+# ---------------------------------------------------------------------------
+
+class TestBuildRuntimeConfig:
+    def _args(self, capability_ledger=None):
+        return SimpleNamespace(
+            top_k=3,
+            exploration_offset=0,
+            policy=None,
+            max_actions=None,
+            explain=False,
+            force=False,
+            governance_policy=None,
+            repo_ids=None,
+            capability_ledger=capability_ledger,
+        )
+
+    def test_capability_ledger_none_by_default(self):
+        config = build_runtime_config(self._args(), ledger_path=None)
+        assert "capability_ledger" in config
+        assert config["capability_ledger"] is None
+
+    def test_capability_ledger_threaded(self):
+        config = build_runtime_config(self._args(capability_ledger="/some/cap.json"), ledger_path=None)
+        assert config["capability_ledger"] == "/some/cap.json"
+
+    def test_capability_ledger_absent_on_args(self):
+        args = SimpleNamespace(
+            top_k=3, exploration_offset=0, policy=None,
+            max_actions=None, explain=False, force=False,
+            governance_policy=None, repo_ids=None,
+        )
+        config = build_runtime_config(args, ledger_path=None)
+        assert config["capability_ledger"] is None
+
+
+# ---------------------------------------------------------------------------
+# run_governed_loop — subprocess cmd construction
+# ---------------------------------------------------------------------------
+
+class TestRunGovernedLoopCapabilityLedger:
+    def _arts(self, tmp_path):
+        return artifact_paths(tmp_path)
+
+    def test_capability_ledger_arg_included_when_provided(self, tmp_path):
+        arts = self._arts(tmp_path)
+        cap_path = "/persistent/capability_effectiveness_ledger.json"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            run_governed_loop(arts, top_k=3, exploration_offset=0, capability_ledger=cap_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--capability-ledger" in cmd
+        assert cap_path in cmd
+
+    def test_capability_ledger_arg_omitted_when_none(self, tmp_path):
+        arts = self._arts(tmp_path)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            run_governed_loop(arts, top_k=3, exploration_offset=0, capability_ledger=None)
+        cmd = mock_run.call_args[0][0]
+        assert "--capability-ledger" not in cmd
