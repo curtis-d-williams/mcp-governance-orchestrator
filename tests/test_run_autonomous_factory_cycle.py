@@ -1408,12 +1408,13 @@ def test_run_autonomous_factory_cycle_updates_existing_capability_artifact_regis
 # ---------------------------------------------------------------------------
 
 def test_build_capability_artifact_not_null_in_action_to_task():
-    """evaluate_planner_config must not classify the demo portfolio as high_risk.
+    """evaluate_planner_config must classify the demo portfolio as low_risk → governed_run.
 
     Root cause guarded: ACTION_TO_TASK was missing 'build_capability_artifact',
     causing mapped_tasks=[null, ...], unique_tasks=1, collision_ratio=0.5,
     entropy_gap=1.0 — all three high_risk thresholds firing simultaneously.
     """
+    from factory_pipeline import decide_action
     from scripts.evaluate_planner_config import evaluate_planner_config
 
     _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1437,6 +1438,10 @@ def test_build_capability_artifact_not_null_in_action_to_task():
         f"build_capability_artifact maps to null — ACTION_TO_TASK entry missing. "
         f"mapped_tasks={mapped_tasks}"
     )
-    assert evaluation.get("risk_level") != "high_risk", (
-        f"demo portfolio unexpectedly high_risk: {evaluation.get('reasons')}"
+    assert evaluation.get("risk_level") == "low_risk", (
+        f"demo portfolio expected low_risk, got {evaluation.get('risk_level')!r}: "
+        f"{evaluation.get('reasons')}"
+    )
+    assert decide_action(evaluation)["action"] == "governed_run", (
+        f"expected governed_run for low_risk evaluation, got: {decide_action(evaluation)}"
     )
