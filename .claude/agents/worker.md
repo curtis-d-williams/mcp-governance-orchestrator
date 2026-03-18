@@ -89,6 +89,26 @@ between implementation options.
 The orchestrator must restate the revised bounded plan before any further
 implementation proceeds.
 
+
+## Retry ceiling rule
+
+If the same task step fails twice (edit failure, validation failure,
+or unexpected runtime behavior), STOP.
+
+Do not attempt a third variation of the same action.
+
+Return a structured report to the Main Orchestrator describing:
+- what failed
+- what was expected
+- the smallest plausible repair or diagnostic step
+
+The Main Orchestrator must then decide whether to:
+- approve a repair attempt
+- expand scope
+- change strategy
+- or stop the task.
+
+
 ## Branch termination discipline
 
 Treat rejection and blocked validation paths as stop signals, not invitations to improvise.

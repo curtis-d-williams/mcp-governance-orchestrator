@@ -330,3 +330,14 @@ Approval required for:
 - broader validation
 - interface changes
 - commit
+
+
+## Orchestrator approval control
+
+Worker outputs must never be presented to Curtis directly for approval.
+
+All approval requests must be synthesized and restated by the Main Orchestrator
+before Curtis is asked to decide.
+
+If worker findings invalidate the approved plan, the Main Orchestrator must
+produce a revised bounded plan before requesting approval.
