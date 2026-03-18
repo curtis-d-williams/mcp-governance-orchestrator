@@ -1445,3 +1445,155 @@ def test_build_capability_artifact_not_null_in_action_to_task():
     assert decide_action(evaluation)["action"] == "governed_run", (
         f"expected governed_run for low_risk evaluation, got: {decide_action(evaluation)}"
     )
+
+
+def test_run_autonomous_factory_cycle_persists_ledger_when_only_capability_ledger_provided(
+    tmp_path, monkeypatch
+):
+    """Guard fix: ledger update must run when capability_ledger is set but capability_ledger_output is None."""
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    calls = []
+
+    def _spy_update(ledger_path, cycle_artifact_path, output_path):
+        calls.append({
+            "ledger_path": ledger_path,
+            "cycle_artifact_path": cycle_artifact_path,
+            "output_path": output_path,
+        })
+
+    monkeypatch.setattr(_mod, "update_capability_effectiveness_ledger", _spy_update)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    capability_ledger.write_text(json.dumps({"capabilities": {}}), encoding="utf-8")
+    output = tmp_path / "autonomous_factory_cycle.json"
+
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=None,
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert len(calls) == 1, (
+        f"update_capability_effectiveness_ledger should have been called once; calls={calls}"
+    )
+    assert calls[0]["ledger_path"] == str(capability_ledger)
+    assert calls[0]["output_path"] is None
+
+
+def test_run_autonomous_factory_cycle_skips_ledger_when_both_paths_none(
+    tmp_path, monkeypatch
+):
+    """Silent-skip preserved: ledger update must NOT run when both capability_ledger and capability_ledger_output are None."""
+    evaluation = {
+        "risk_level": "moderate_risk",
+        "reasons": [],
+    }
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    calls = []
+
+    def _spy_update(ledger_path, cycle_artifact_path, output_path):
+        calls.append(True)
+
+    monkeypatch.setattr(_mod, "update_capability_effectiveness_ledger", _spy_update)
+
+    output = tmp_path / "autonomous_factory_cycle.json"
+
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_ledger=None,
+        capability_ledger_output=None,
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    assert len(calls) == 0, (
+        f"update_capability_effectiveness_ledger should NOT have been called; calls={calls}"
+    )

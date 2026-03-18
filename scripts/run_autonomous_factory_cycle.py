@@ -111,7 +111,7 @@ def run_autonomous_factory_cycle(
         run_governed_loop=run_governed_loop,
     )
 
-    if capability_ledger_output:
+    if capability_ledger_output or capability_ledger:
         update_capability_effectiveness_ledger(
             ledger_path=capability_ledger or capability_ledger_output,
             cycle_artifact_path=output,
