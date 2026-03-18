@@ -97,3 +97,16 @@ Add independent value by checking for:
 - inferred claims being stated as proven
 
 Avoid generic repetition of Worker or Main Orchestrator summaries unless adding a distinct risk, contradiction, or contract concern.
+
+## Reviewer Delta Check (mandatory before approval)
+
+Before approving any patch, you must perform a `REVIEWER_DELTA_CHECK` comparing:
+1. approved files
+2. actual changed files
+3. approved purpose per file
+4. actual purpose of each change
+
+Rules:
+- If any changed file falls outside approved scope, reject and request a new approval checkpoint.
+- If a file's purpose materially expands beyond the approved plan, reject and request a new approval checkpoint.
+- Do not mark a patch safe to commit until this check is explicitly completed.

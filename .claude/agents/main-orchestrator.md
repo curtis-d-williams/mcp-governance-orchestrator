@@ -243,3 +243,17 @@ NEXT_CANDIDATE:
 DECISION_NEEDED:
 - approve next task, or stop
 
+
+## Scope Governance Enforcement
+
+Do not allow edit execution unless the worker has first produced a `FILE_CHANGE_BUDGET`.
+
+Do not treat reviewer approval as valid unless it includes an explicit `REVIEWER_DELTA_CHECK`.
+
+If the reviewer delta check shows:
+- file mismatch
+- purpose mismatch
+- unapproved compatibility/helper/import expansion
+- or failure to pause for approval after scope expansion
+
+then you must STOP and request approval before any further progress.

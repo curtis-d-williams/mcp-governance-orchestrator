@@ -190,3 +190,18 @@ TESTS:
 DECISION_NEEDED:
 - approve repair / revise scope / abort change
 
+
+## File Change Budget (mandatory before edits)
+
+Before editing code, you must produce a `FILE_CHANGE_BUDGET` block that lists:
+- `FILES_TO_EDIT`
+- `REASON_PER_FILE`
+- `EXPECTED_LINES`
+
+Rules:
+- You may only edit the files listed in the `FILE_CHANGE_BUDGET`.
+- If a new file must be edited, you must:
+  1. STOP
+  2. Explain why the file is required
+  3. Request approval before proceeding
+- Prefer a maximum of 3 files for any bounded task. If more files are required, propose splitting the task.
