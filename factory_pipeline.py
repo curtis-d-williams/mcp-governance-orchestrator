@@ -449,8 +449,9 @@ def run_factory_cycle(
                 "source": synthesis_source,
                 "used_evolution": locals().get("used_evolution", False),
             }
-            if locals().get("_comparison_failed"):
-                synthesis_event["comparison_status"] = "error"
+            _cf = locals().get("_comparison_failed")
+            if _cf is not None:
+                synthesis_event["comparison_status"] = "error" if _cf else "ok"
             if similarity_score is not None:
                 synthesis_event["similarity_score"] = similarity_score
             if prior_similarity_score is not None:

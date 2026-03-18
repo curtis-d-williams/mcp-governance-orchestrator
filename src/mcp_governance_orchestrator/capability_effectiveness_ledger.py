@@ -13,6 +13,7 @@ def record_synthesis_event(
     similarity_score=None,
     previous_similarity_score=None,
     similarity_delta=None,
+    comparison_status=None,
 ):
     """Return updated capability effectiveness ledger after one synthesis event."""
     capabilities = dict((ledger or {}).get("capabilities", {}))
@@ -54,6 +55,9 @@ def record_synthesis_event(
     if similarity_delta is not None:
         entry["similarity_delta"] = round(float(similarity_delta), 2)
 
+    if comparison_status is not None:
+        entry["last_comparison_status"] = comparison_status
+
     capabilities[capability] = entry
     return {"capabilities": capabilities}
 
@@ -90,4 +94,5 @@ def record_normalized_synthesis_event(ledger, synthesis_event):
         similarity_score=synthesis_event.get("similarity_score"),
         previous_similarity_score=synthesis_event.get("previous_similarity_score"),
         similarity_delta=synthesis_event.get("similarity_delta"),
+        comparison_status=synthesis_event.get("comparison_status"),
     )
