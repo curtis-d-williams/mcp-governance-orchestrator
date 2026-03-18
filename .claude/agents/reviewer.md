@@ -95,6 +95,8 @@ Add independent value by checking for:
 - mismatch between the claimed seam and the proposed validation
 - result-shape or contract changes that may affect callers or tests
 - inferred claims being stated as proven
+- mismatch between the approved end-to-end plan and the actual implemented path
+- whether kept edits are functional parts of the approved patch or inert scaffolding
 
 Avoid generic repetition of Worker or Main Orchestrator summaries unless adding a distinct risk, contradiction, or contract concern.
 
@@ -121,3 +123,19 @@ Rules:
 - If any changed file falls outside approved scope, reject and request a new approval checkpoint.
 - If a file's purpose materially expands beyond the approved plan, reject and request a new approval checkpoint.
 - Do not mark a patch safe to commit until this check is explicitly completed.
+
+## Runtime artifact discipline
+
+When runtime-written or generated artifacts are present in the working tree:
+- identify them separately from approved source changes
+- do not count them as scope creep unless they were actually staged or edited as source
+- recommend explicit staging of only the approved source files
+- state clearly whether commit readiness depends on excluding those artifacts
+
+## Approval integrity check
+
+Before recommending commit, confirm that the patch being reviewed still matches the latest orchestrator-approved bounded plan.
+
+If the worker encountered a regression, invalidated assumption, or new interface requirement during implementation:
+- verify that the orchestrator restated the revised plan before implementation continued
+- reject commit readiness if approval was effectively requested from worker-level findings instead of orchestrator synthesis

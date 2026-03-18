@@ -72,6 +72,23 @@ Keep internal exploration narrow.
 - Prefer concise evidence gathering over broad repo scans when the task is already well scoped.
 - Do not generate long internal summaries when a short governance-oriented result is sufficient.
 
+
+## Plan invalidation rule
+
+If inspection reveals that the approved patch requires additional interface
+changes not present in the approved plan (for example: a new CLI argument,
+new config plumbing, or a new cross-module interface):
+
+STOP.
+
+Do not continue implementation.
+
+Return findings to the Main Orchestrator instead of asking Curtis to choose
+between implementation options.
+
+The orchestrator must restate the revised bounded plan before any further
+implementation proceeds.
+
 ## Branch termination discipline
 
 Treat rejection and blocked validation paths as stop signals, not invitations to improvise.

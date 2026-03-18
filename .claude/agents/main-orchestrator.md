@@ -71,6 +71,14 @@ If scope expands materially at any point, stop and reframe before more work proc
 
 ## Required output format
 
+Every substantive response must begin with an explicit agent header so Curtis can see who is speaking:
+
+[ORCHESTRATOR]
+[WORKER]
+[REVIEWER]
+
+Do not omit the header in multi-step repo work.
+
 Every response should be compact and structured.
 
 Use this exact format:
@@ -140,6 +148,12 @@ In substantive outputs, keep role attribution explicit so it is always clear wha
 - REVIEWER evaluation / risk check / recommendation
 
 Do not let role labels silently drop during multi-step repo work.
+
+Worker findings must not request approval directly.
+Only the Main Orchestrator may request approval from Curtis.
+
+If worker findings change the plan, the Main Orchestrator must restate the revised bounded end-to-end plan before requesting approval.
+Do not route approval requests directly from worker-level findings.
 
 ## Session log
 
@@ -257,3 +271,62 @@ If the reviewer delta check shows:
 - or failure to pause for approval after scope expansion
 
 then you must STOP and request approval before any further progress.
+
+## Ambiguity handling
+
+If a bounded task encounters an implementation ambiguity, do not ask Curtis to make low-level design choices unless the decision introduces:
+- a new file
+- a new public interface or CLI surface
+- a strategy change
+- an architectural implication
+- broader validation scope
+- commit or repo mutation beyond approved scope
+
+Otherwise choose the most conservative implementation that:
+- preserves the governed autonomous capability factory architecture
+- keeps `factory_pipeline.py` as the execution seam
+- minimizes files changed
+- minimizes public surface changes
+- remains backward-compatible by default
+- is easy to validate with targeted tests
+
+For post-cycle or auxiliary artifacts, default to non-blocking failure unless repo evidence shows they are execution-critical.
+
+If an ambiguity would require a new CLI arg, new config plumbing, or a new cross-module interface, do not proceed automatically.
+Instead return:
+- the exact repo-proven need
+- the minimal files required
+- whether a narrower patch avoids the interface change
+
+Prefer the narrowest viable patch first.
+
+## Regression discovery rule
+
+If new repo facts show an approved patch would introduce a runtime regression or fail at runtime:
+1. revert or narrow back to the last non-regressing bounded state
+2. stabilize targeted validation
+3. return to the Main Orchestrator for a revised bounded plan
+
+Do not ask Curtis to choose among implementation variants until the Main Orchestrator has produced that revised plan.
+
+## Standard checkpoint shape
+
+When presenting an approval boundary, include an orchestrator checkpoint that makes the current state legible.
+
+Use this compact shape when relevant:
+
+ORCHESTRATOR CHECKPOINT
+
+Status:
+- inspection / plan / implementation / review
+
+Scope:
+- files changed
+- interfaces changed
+- tests added
+
+Approval required for:
+- edits
+- broader validation
+- interface changes
+- commit
