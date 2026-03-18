@@ -1850,3 +1850,83 @@ def test_run_autonomous_factory_cycle_removes_fulfilled_gap_from_portfolio_state
     remaining = json.loads(portfolio_state.read_text(encoding="utf-8"))
     assert "slack_workspace_access" not in remaining["capability_gaps"]
     assert "github_repo_access" in remaining["capability_gaps"]
+
+
+def test_run_factory_cycle_used_evolution_false_when_all_iterations_regress(tmp_path, monkeypatch):
+    """When the evolution loop runs but every iteration produces iteration_delta <= 0,
+    used_evolution must be False in the synthesis_event."""
+    build_calls = []
+    # similarity_values: initial build score=0.70, then evolved score=0.65 (regress)
+    similarity_values = [0.70, 0.65]
+
+    monkeypatch.setattr(
+        "planner_runtime.load_capability_effectiveness_ledger",
+        lambda *_a, **_k: {"capabilities": {}},
+    )
+    monkeypatch.setattr(
+        _mod,
+        "build_capability_artifact",
+        lambda *, artifact_kind, capability, **kwargs: (
+            build_calls.append({"artifact_kind": artifact_kind, "capability": capability, "kwargs": kwargs})
+            or {
+                "status": "ok",
+                "artifact_kind": artifact_kind,
+                "capability": capability,
+                "generated_repo": "/tmp/generated_mcp_server_github",
+                "tools": ["list_repositories"],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        _mod,
+        "compare_mcp_servers",
+        lambda generated_path, reference_path, output_path=None: {
+            "similarity": {"overall_score": similarity_values.pop(0)},
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.7, "missing_tools": ["create_issue"]},
+            "capability_surface": {"coverage_ratio": 0.7, "missing_enabled": []},
+            "testability": {"coverage_ratio": 0.7},
+        },
+        raising=False,
+    )
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(tmp_path / "factory_cycle.json"),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("repair path should not run")
+        ),
+        run_governed_loop=lambda args: {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+    # Evolution ran (loop entered) but all iterations regressed — used_evolution must be False
+    assert len(artifact["cycle_result"]["evolution_iterations"]) == 1
+    assert artifact["cycle_result"]["evolution_iterations"][0]["similarity_delta"] == -0.05
+    assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is False

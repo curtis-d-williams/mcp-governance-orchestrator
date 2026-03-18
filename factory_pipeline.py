@@ -358,6 +358,7 @@ def run_factory_cycle(
                         min_similarity_improvement = 0.01
                         evolution_iterations = []
                         previous_iteration_score = comparison.get("similarity", {}).get("overall_score")
+                        evolution_committed = False
 
                         for iteration_index in range(max_evolution_iterations):
                             evolved_builder_result = build_capability_artifact(
@@ -390,6 +391,7 @@ def run_factory_cycle(
                             if not (iteration_delta is not None and iteration_delta <= 0):
                                 builder_result = evolved_builder_result
                                 comparison = iteration_comparison
+                                evolution_committed = True
 
                             if (
                                 iteration_delta is None
@@ -408,6 +410,8 @@ def run_factory_cycle(
                             builder_overrides = evolution_execution.get("builder_overrides", {})
                             if not builder_overrides:
                                 break
+
+                        used_evolution = evolution_committed
 
                         if isinstance(result, dict):
                             result["evolution_iterations"] = evolution_iterations
