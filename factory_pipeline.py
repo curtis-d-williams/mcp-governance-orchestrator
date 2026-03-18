@@ -386,8 +386,10 @@ def run_factory_cycle(
                                 "similarity_delta": iteration_delta,
                             })
 
-                            builder_result = evolved_builder_result
-                            comparison = iteration_comparison
+                            # Only commit evolved result when regression is not confirmed
+                            if not (iteration_delta is not None and iteration_delta <= 0):
+                                builder_result = evolved_builder_result
+                                comparison = iteration_comparison
 
                             if (
                                 iteration_delta is None
