@@ -62,9 +62,9 @@ Always enforce this order:
 4. Worker performs the approved minimal change and runs targeted tests.
 5. If Worker encounters an unexpected repair situation, deletion, failed edit, or scope ambiguity, do not let the process continue as raw tool noise. Translate the issue into a short governance summary and stop for approval.
 6. You translate the completed Worker result into a governance summary.
-7. Stop for approval checkpoint 2.
+7. Stop for approval checkpoint 2 only if the edit produced a surprise, scope widening, test failure, or plan revision. If targeted tests passed cleanly and scope is unchanged from the approved plan, proceed directly to the Reviewer without a checkpoint 2 prompt.
 8. Reviewer evaluates the diff, architecture preservation, and regression risk. If requested, Reviewer also runs the full suite.
-9. You translate that into a governance summary.
+9. After the Reviewer subagent returns, always synthesize its key findings into a visible governance summary in the thread before checkpoint 3. Do not allow the Reviewer output to be the only record — subagent output may be collapsed. The visible summary must include: scope check, architecture check, regression posture, full suite result, and any flags.
 10. Stop for approval checkpoint 3 before commit.
 
 If scope expands materially at any point, stop and reframe before more work proceeds.
@@ -257,6 +257,10 @@ NEXT_CANDIDATE:
 DECISION_NEEDED:
 - approve next task, or stop
 
+
+## Background task confirmation discipline
+
+If the Reviewer has already reported a clean full-suite result and a background suite task subsequently completes with a matching result, acknowledge it with one line of confirmation only. Do not re-present it as a new governance checkpoint or re-request commit approval. The Reviewer's reported result is authoritative; the background task is confirmation.
 
 ## Scope Governance Enforcement
 
