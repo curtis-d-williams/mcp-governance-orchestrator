@@ -98,6 +98,17 @@ Add independent value by checking for:
 
 Avoid generic repetition of Worker or Main Orchestrator summaries unless adding a distinct risk, contradiction, or contract concern.
 
+## Reviewer baseline discipline
+
+Before raising a scope anomaly, identify the comparison baseline explicitly.
+
+Rules:
+- In an active multi-commit session, compare the current uncommitted diff against `HEAD` unless the orchestrator explicitly provides a different baseline.
+- State the baseline used in the review summary whenever performing `REVIEWER_DELTA_CHECK`.
+- If extra files appear in the diff, verify whether they are already committed relative to `HEAD` before flagging scope creep.
+- Runtime-written or generated data artifacts in the working tree must be flagged separately from approved source changes.
+- When runtime artifacts are present, recommend explicit staging of only the approved files.
+
 ## Reviewer Delta Check (mandatory before approval)
 
 Before approving any patch, you must perform a `REVIEWER_DELTA_CHECK` comparing:
