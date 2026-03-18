@@ -49,6 +49,7 @@ from scripts.planner_scoring import (  # noqa: F401
     compute_learning_adjustment,
     compute_policy_adjustment,
     compute_weak_signal_targeting_adjustment,
+    load_capability_effectiveness_ledger,
     load_effectiveness_ledger,
     load_planner_policy,
     load_portfolio_signals,
@@ -372,7 +373,7 @@ def load_runtime_context(args):
     return ledger, signals, policy
 
 
-def select_actions(args, raw_actions, ledger, signals, policy, mapping_override=None):
+def select_actions(args, raw_actions, ledger, signals, policy, mapping_override=None, capability_ledger=None):
     """Apply ranking, compute exploration window, and map actions to tasks.
 
     Args:
@@ -392,7 +393,7 @@ def select_actions(args, raw_actions, ledger, signals, policy, mapping_override=
         - sorted_actions:         full ranked list (for explain artifact).
     """
     active_mapping = resolve_action_to_task_mapping(ACTION_TO_TASK, mapping_override)
-    actions = _apply_learning_adjustments(raw_actions, ledger, signals, policy)
+    actions = _apply_learning_adjustments(raw_actions, ledger, signals, policy, capability_ledger=capability_ledger)
     start = max(0, min(args.exploration_offset, max(0, len(actions) - args.top_k)))
     end = start + args.top_k
     window = actions[start:end]
@@ -509,6 +510,8 @@ def main(argv=None):
                         help="Path to portfolio_state.json for action-driven selection.")
     parser.add_argument("--ledger", default=None, metavar="FILE",
                         help="Path to action_effectiveness_ledger.json (optional).")
+    parser.add_argument("--capability-ledger", default=None, metavar="FILE",
+                        help="Path to capability_effectiveness_ledger.json (optional).")
     parser.add_argument("--policy", default=None, metavar="FILE",
                         help="Path to planner_policy.json for governance signal weights (optional).")
     parser.add_argument("--top-k", type=int, default=3, metavar="INT",
@@ -587,9 +590,11 @@ def main(argv=None):
     if args.portfolio_state is not None:
         raw_actions = _fetch_action_queue(args.portfolio_state, args.ledger)
         _explain_ledger, _explain_signals, _explain_policy = load_runtime_context(args)
+        _capability_ledger = load_capability_effectiveness_ledger(getattr(args, "capability_ledger", None))
         tasks_to_run, action_dicts, _explain_actions = select_actions(
             args, raw_actions, _explain_ledger, _explain_signals, _explain_policy,
             mapping_override=_mapping_override,
+            capability_ledger=_capability_ledger,
         )
         # v0.36: compute window slice for selection_detail (additive, no ranking effect).
         _start = max(0, min(args.exploration_offset, max(0, len(_explain_actions) - args.top_k)))

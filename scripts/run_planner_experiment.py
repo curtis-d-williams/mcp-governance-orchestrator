@@ -120,6 +120,9 @@ def _build_planner_argv(args, envelope_path):
         argv += ["--max-actions", str(args.max_actions)]
     if args.explain:
         argv.append("--explain")
+    capability_ledger = getattr(args, "capability_ledger", None)
+    if capability_ledger is not None:
+        argv += ["--capability-ledger", capability_ledger]
     mapping_override = getattr(args, "mapping_override", None)
     if mapping_override:
         argv += ["--mapping-override-json", json.dumps(mapping_override)]
@@ -280,7 +283,7 @@ def run_experiment(args, planner_main=None, risk_check_fn=None):
 # Ordered list of all experiment arg attributes.  Used to copy args safely
 # regardless of whether the object uses instance or class-level defaults.
 _ARGS_ATTRS = (
-    "runs", "portfolio_state", "ledger", "policy", "top_k",
+    "runs", "portfolio_state", "ledger", "capability_ledger", "policy", "top_k",
     "exploration_offset", "max_actions", "explain", "force", "output",
     "envelope_prefix", "mapping_override",
 )

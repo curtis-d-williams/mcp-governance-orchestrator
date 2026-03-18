@@ -255,6 +255,7 @@ def run_factory_cycle(
         args.envelope_prefix = "planner_run_envelope"
         args.mapping_override = None
         args.mapping_override_path = None
+        args.capability_ledger = capability_ledger
         args.auto_repair_cycle = True
 
         out = Path(output)

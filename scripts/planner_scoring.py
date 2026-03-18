@@ -23,6 +23,7 @@ from planner_runtime import (
     compute_learning_adjustment,
     compute_policy_adjustment,
     compute_weak_signal_targeting_adjustment,
+    load_capability_effectiveness_ledger,
     load_effectiveness_ledger,
     load_planner_policy,
     load_portfolio_signals,
