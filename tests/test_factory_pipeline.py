@@ -1734,3 +1734,121 @@ def test_no_op_synthesis_event_when_no_build_request(tmp_path, monkeypatch):
 
     ledger = artifact["capability_effectiveness_ledger"]
     assert ledger["capabilities"]["none"]["total_syntheses"] >= 1
+
+
+def test_run_factory_cycle_records_synthesis_source_for_gap_build(tmp_path, monkeypatch):
+    """synthesis_source is written into cycle_result when build is triggered by a portfolio gap."""
+
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_agent_adapter_slack",
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": [],
+                            "selection_detail": {
+                                "ranked_action_window": [],
+                                "ranked_action_window_detail": [],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(
+        json.dumps({"capability_gaps": ["slack_workspace_access"]}),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("repair path should not run")
+        ),
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert artifact["cycle_result"]["synthesis_source"] == "portfolio_gap"
+
+
+def test_run_autonomous_factory_cycle_removes_fulfilled_gap_from_portfolio_state(tmp_path, monkeypatch):
+    """Post-cycle write-back removes the fulfilled capability from portfolio state capability_gaps."""
+    import importlib.util
+    import sys
+
+    _REPO_ROOT = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "run_autonomous_factory_cycle",
+        _REPO_ROOT / "scripts" / "run_autonomous_factory_cycle.py",
+    )
+    _rafc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(_rafc)
+
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(
+        json.dumps({"capability_gaps": ["slack_workspace_access", "github_repo_access"]}),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "factory_cycle.json"
+    output.write_text(json.dumps({"status": "completed"}), encoding="utf-8")
+
+    fake_artifact = {
+        "cycle_result": {
+            "synthesis_source": "portfolio_gap",
+            "synthesis_event": {
+                "status": "ok",
+                "capability": "slack_workspace_access",
+            },
+        }
+    }
+
+    monkeypatch.setattr(
+        _rafc,
+        "run_factory_cycle",
+        lambda **kwargs: fake_artifact,
+    )
+    monkeypatch.setattr(
+        _rafc,
+        "update_capability_effectiveness_ledger",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        _rafc,
+        "update_capability_artifact_registry",
+        lambda **kwargs: None,
+    )
+
+    _rafc.run_autonomous_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger=None,
+        capability_ledger=None,
+        capability_ledger_output=None,
+        capability_artifact_registry_output=None,
+        policy=None,
+        top_k=3,
+        output=str(output),
+    )
+
+    remaining = json.loads(portfolio_state.read_text(encoding="utf-8"))
+    assert "slack_workspace_access" not in remaining["capability_gaps"]
+    assert "github_repo_access" in remaining["capability_gaps"]

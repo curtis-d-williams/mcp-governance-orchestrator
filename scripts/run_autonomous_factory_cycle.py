@@ -124,6 +124,27 @@ def run_autonomous_factory_cycle(
             cycle_artifact_path=output,
         )
 
+    # Post-cycle write-back: remove fulfilled capability gap from portfolio state
+    try:
+        cycle_result = artifact.get("cycle_result", {}) if isinstance(artifact, dict) else {}
+        synthesis_source = cycle_result.get("synthesis_source")
+        synthesis_status = cycle_result.get("synthesis_event", {}).get("status")
+        if synthesis_source == "portfolio_gap" and synthesis_status == "ok":
+            import json as _json
+            ps_path = Path(portfolio_state)
+            if ps_path.exists():
+                ps_data = _json.loads(ps_path.read_text(encoding="utf-8"))
+                if isinstance(ps_data, dict) and "capability_gaps" in ps_data:
+                    fulfilled = cycle_result.get("synthesis_event", {}).get("capability")
+                    if fulfilled and fulfilled in ps_data["capability_gaps"]:
+                        ps_data["capability_gaps"].remove(fulfilled)
+                        ps_path.write_text(
+                            _json.dumps(ps_data, indent=2, sort_keys=True) + "\n",
+                            encoding="utf-8",
+                        )
+    except Exception:
+        pass
+
     return artifact
 
 

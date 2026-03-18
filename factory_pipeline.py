@@ -285,6 +285,7 @@ def run_factory_cycle(
 
             if isinstance(result, dict):
                 result["builder"] = builder_result
+                result["synthesis_source"] = synthesis_source
 
             # ------------------------------------------------------------------
             # Stage 5: MCP reference comparison learning
