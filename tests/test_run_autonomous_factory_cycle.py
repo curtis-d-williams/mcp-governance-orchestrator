@@ -1401,3 +1401,42 @@ def test_run_autonomous_factory_cycle_updates_existing_capability_artifact_regis
         "status": "ok",
         "used_evolution": False,
     }
+
+
+# ---------------------------------------------------------------------------
+# Regression: build_capability_artifact must not map to null in ACTION_TO_TASK
+# ---------------------------------------------------------------------------
+
+def test_build_capability_artifact_not_null_in_action_to_task():
+    """evaluate_planner_config must not classify the demo portfolio as high_risk.
+
+    Root cause guarded: ACTION_TO_TASK was missing 'build_capability_artifact',
+    causing mapped_tasks=[null, ...], unique_tasks=1, collision_ratio=0.5,
+    entropy_gap=1.0 — all three high_risk thresholds firing simultaneously.
+    """
+    from scripts.evaluate_planner_config import evaluate_planner_config
+
+    _REPO_ROOT = Path(__file__).resolve().parents[1]
+    portfolio_state = str(
+        _REPO_ROOT / "experiments" / "factory_demo" / "portfolio_state_missing_github.json"
+    )
+    ledger = str(
+        _REPO_ROOT / "experiments" / "factory_demo" / "action_effectiveness_ledger.json"
+    )
+
+    evaluation = evaluate_planner_config(
+        portfolio_state_path=portfolio_state,
+        ledger_path=ledger,
+        policy_path=None,
+        top_k=3,
+        output_path=None,
+    )
+
+    mapped_tasks = evaluation.get("mapped_tasks", [])
+    assert None not in mapped_tasks, (
+        f"build_capability_artifact maps to null — ACTION_TO_TASK entry missing. "
+        f"mapped_tasks={mapped_tasks}"
+    )
+    assert evaluation.get("risk_level") != "high_risk", (
+        f"demo portfolio unexpectedly high_risk: {evaluation.get('reasons')}"
+    )

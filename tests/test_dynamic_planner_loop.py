@@ -121,8 +121,8 @@ class TestMapActionsToTasks:
             result = _map_actions_to_tasks([self._action(action_type)])
             assert result == [expected_task], f"{action_type} should map to {expected_task}"
 
-    def test_build_actions_are_unmapped_in_dynamic_loop(self):
-        assert _map_actions_to_tasks([self._action("build_capability_artifact")]) == []
+    def test_build_capability_artifact_maps_to_build_mcp_server_example(self):
+        assert _map_actions_to_tasks([self._action("build_capability_artifact")]) == ["build_mcp_server_example"]
 
     def test_missing_action_type_key_skipped(self):
         actions = [{"priority": 0.9}]  # no action_type key
@@ -378,12 +378,12 @@ class TestExplorationOffset:
             "regenerate_missing_artifact",      # [0] → build_portfolio_dashboard
             "run_determinism_regression_suite", # [1] → build_portfolio_dashboard
             "refresh_repo_health",              # [2] → build_portfolio_dashboard
-            "build_capability_artifact",        # [3] unmapped in dynamic loop
+            "build_capability_artifact",        # [3] → build_mcp_server_example
         )
         tasks_offset0 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "0"])
         tasks_offset2 = self._run(tmp_path, actions, ["--top-k", "2", "--exploration-offset", "2"])
         assert "build_portfolio_dashboard" in tasks_offset0
-        assert tasks_offset2 == ["build_portfolio_dashboard"]
+        assert tasks_offset2 == ["build_portfolio_dashboard", "build_mcp_server_example"]
 
     def test_offset_one_skips_first_action(self, tmp_path):
         """offset=1 skips index 0 and picks from index 1."""

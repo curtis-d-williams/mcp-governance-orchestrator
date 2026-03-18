@@ -79,6 +79,7 @@ ALL_TASKS = [
 # All entries must reference tasks present in TASK_REGISTRY.
 ACTION_TO_TASK = {
     "analyze_repo_insights": "repo_insights_example",
+    "build_capability_artifact": "build_mcp_server_example",
     "build_mcp_server": "build_mcp_server_example",
     "recover_failed_workflow": "failure_recovery_example",
     "refresh_repo_health": "build_portfolio_dashboard",
