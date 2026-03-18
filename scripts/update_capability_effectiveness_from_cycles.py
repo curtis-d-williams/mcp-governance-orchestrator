@@ -61,6 +61,8 @@ def _aggregate(cycles):
                     cap_entry["previous_similarity_score"] = synthesis_event["previous_similarity_score"]
                 if synthesis_event.get("similarity_delta") is not None:
                     cap_entry["similarity_delta"] = synthesis_event["similarity_delta"]
+                if synthesis_event.get("comparison_status") is not None:
+                    cap_entry["last_comparison_status"] = synthesis_event["comparison_status"]
                 cycle_capabilities = {capability: cap_entry}
 
                 capabilities = merge_counter_ledger(

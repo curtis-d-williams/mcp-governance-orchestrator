@@ -311,3 +311,21 @@ class TestErrorCases:
         p.write_text(json.dumps({"cycles": "bad"}) + "\n", encoding="utf-8")
         out = tmp_path / "capability_ledger.json"
         assert update_capability_effectiveness_from_cycles(str(p), str(out)) == 1
+
+
+class TestComparisonStatus:
+    def test_comparison_status_error_propagated_to_ledger(self):
+        aggregated = _aggregate([
+            {
+                "cycle_result": {
+                    "synthesis_event": {
+                        "capability": "snowflake_data_access",
+                        "artifact_kind": "data_connector",
+                        "status": "ok",
+                        "source": "planner_request",
+                        "comparison_status": "error",
+                    }
+                }
+            }
+        ])
+        assert aggregated["snowflake_data_access"]["last_comparison_status"] == "error"
