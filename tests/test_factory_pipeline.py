@@ -1671,18 +1671,15 @@ def test_run_factory_cycle_records_no_op_synthesis_event_when_build_request_is_n
     assert synthesis_event["capability"] == "none"
     assert synthesis_event["artifact_kind"] == "none"
 
-    assert len(ledger_calls) == 1
-    assert ledger_calls[0]["status"] == "no_op"
-    assert ledger_calls[0]["source"] == "none"
-    assert ledger_calls[0]["capability"] == "none"
-    assert ledger_calls[0]["artifact_kind"] == "none"
+    # no_op cycles must not update the ledger — idle cycles are not learning signals
+    assert len(ledger_calls) == 0
 
     assert artifact["capability_effectiveness_ledger"] is not None
 
 
 def test_no_op_synthesis_event_when_no_build_request(tmp_path, monkeypatch):
     """No-build-request path records no_op synthesis_event with sentinel fields
-    and updates the real capability_effectiveness_ledger under key 'none'."""
+    and does not pollute the capability_effectiveness_ledger."""
 
     def fake_evaluate_planner_config(**kwargs):
         return {"risk_level": "low_risk"}
@@ -1732,8 +1729,9 @@ def test_no_op_synthesis_event_when_no_build_request(tmp_path, monkeypatch):
     assert synthesis_event["capability"] == "none"
     assert synthesis_event["artifact_kind"] == "none"
 
+    # no_op cycles must not create a synthetic "none" entry in the ledger
     ledger = artifact["capability_effectiveness_ledger"]
-    assert ledger["capabilities"]["none"]["total_syntheses"] >= 1
+    assert "none" not in ledger["capabilities"]
 
 
 def test_run_factory_cycle_records_synthesis_source_for_gap_build(tmp_path, monkeypatch):

@@ -499,10 +499,6 @@ def run_factory_cycle(
             }
             if isinstance(result, dict):
                 result["synthesis_event"] = synthesis_event
-            capability_effectiveness_ledger = record_normalized_synthesis_event(
-                capability_effectiveness_ledger,
-                synthesis_event,
-            )
 
     except Exception as exc:
         if isinstance(result, dict):
