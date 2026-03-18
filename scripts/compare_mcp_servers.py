@@ -181,13 +181,14 @@ def _collect_generated_capabilities(generated_root):
 
     return {
         "supports_dynamic_toolsets": "enable_toolset" in server_text
-        or "list_available_toolsets" in server_text,
+        or "list_available_toolsets" in server_text
+        or '"supports_dynamic_toolsets"' in server_text,
         "supports_explicit_tools": True,  # manifest tool list is explicit selection
-        "supports_exclude_tools": False,
-        "supports_read_only": False,
-        "supports_feature_flags": False,
-        "supports_scope_filtering": False,
-        "supports_lockdown_mode": False,
+        "supports_exclude_tools": '"supports_exclude_tools"' in server_text,
+        "supports_read_only": '"supports_read_only"' in server_text,
+        "supports_feature_flags": '"supports_feature_flags"' in server_text,
+        "supports_scope_filtering": '"supports_scope_filtering"' in server_text,
+        "supports_lockdown_mode": '"supports_lockdown_mode"' in server_text,
     }
 
 

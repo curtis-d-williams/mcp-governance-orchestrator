@@ -288,6 +288,60 @@ class TestCapabilitySurface:
         assert "supports_dynamic_toolsets" in caps["missing_enabled"]
 
 
+class TestCapabilitySurfaceFeatureDetection:
+
+    def test_features_rendered_in_server_py_are_detected(self, tmp_path):
+        gen = tmp_path / "gen"
+        ref = tmp_path / "ref"
+
+        _write_generated_repo(gen, "gen", "cap", ["get_me"])
+        _write_reference_fixture(ref)
+
+        # Simulate what the template renders when features are present
+        (gen / "server.py").write_text(
+            'ENABLED_FEATURES = [\n  "supports_dynamic_toolsets",\n'
+            '  "supports_exclude_tools",\n  "supports_read_only",\n'
+            '  "supports_feature_flags",\n  "supports_scope_filtering",\n'
+            '  "supports_lockdown_mode"\n]\n',
+            encoding="utf-8",
+        )
+
+        result = compare_mcp_servers(gen, ref)
+        caps = result["capability_surface"]
+
+        assert caps["generated"]["supports_dynamic_toolsets"] is True
+        assert caps["generated"]["supports_exclude_tools"] is True
+        assert caps["generated"]["supports_read_only"] is True
+        assert caps["generated"]["supports_feature_flags"] is True
+        assert caps["generated"]["supports_scope_filtering"] is True
+        assert caps["generated"]["supports_lockdown_mode"] is True
+        assert caps["matching_enabled"] == sorted([
+            "supports_dynamic_toolsets",
+            "supports_exclude_tools",
+            "supports_explicit_tools",
+            "supports_feature_flags",
+            "supports_lockdown_mode",
+            "supports_read_only",
+            "supports_scope_filtering",
+        ])
+
+    def test_empty_features_list_detects_nothing(self, tmp_path):
+        gen = tmp_path / "gen"
+        ref = tmp_path / "ref"
+
+        _write_generated_repo(gen, "gen", "cap", ["get_me"])
+        _write_reference_fixture(ref)
+
+        (gen / "server.py").write_text("ENABLED_FEATURES = []\n", encoding="utf-8")
+
+        result = compare_mcp_servers(gen, ref)
+        caps = result["capability_surface"]
+
+        assert caps["generated"]["supports_exclude_tools"] is False
+        assert caps["generated"]["supports_read_only"] is False
+        assert caps["matching_enabled"] == ["supports_explicit_tools"]
+
+
 class TestTestSurface:
 
     def test_detects_tests(self, tmp_path):

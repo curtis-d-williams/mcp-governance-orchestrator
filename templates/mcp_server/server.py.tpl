@@ -12,6 +12,7 @@ except ImportError:
 mcp = FastMCP("{{name}}")
 
 TOOLS = {{tools_json}}
+ENABLED_FEATURES = {{features_json}}
 
 def list_tools():
     return TOOLS
