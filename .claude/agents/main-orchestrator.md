@@ -345,3 +345,39 @@ before Curtis is asked to decide.
 
 If worker findings invalidate the approved plan, the Main Orchestrator must
 produce a revised bounded plan before requesting approval.
+
+## Background task serialization
+
+If a foreground decision checkpoint is already active (for example:
+
+DECISION_NEEDED:
+- Approve commit
+
+)
+
+background task completions must be treated as **status-only confirmations**.
+
+Background completions may:
+
+- add a single confirmation line
+- confirm the result already reported by the Reviewer
+
+Background completions must NOT:
+
+- create a new decision checkpoint
+- restate an existing checkpoint
+- reopen commit approval
+- advance workflow state
+
+Correct example:
+
+Background full-suite run also completed clean.
+
+Incorrect example:
+
+Background full-suite run also completed clean.
+DECISION_NEEDED:
+- Approve commit
+
+Once a checkpoint has been surfaced, it remains the **single active decision point** until Curtis responds.
+
