@@ -33,6 +33,7 @@ def _make_args(tmp_path, **overrides):
         max_consecutive_idle_cycles=5,
         sleep_seconds=0,
         max_cycles=1,
+        capability_ledger_output=None,
     )
     for k, v in overrides.items():
         setattr(obj, k, v)
@@ -193,6 +194,29 @@ def test_extract_status_treats_unsuccessful_repair_only_cycle_as_failed():
     }
 
     assert _mod._extract_status(artifact) == "failed"
+
+
+def test_run_factory_daemon_passes_capability_ledger_output_to_cycle(tmp_path, monkeypatch):
+    received = {}
+
+    def fake_cycle(**kwargs):
+        received.update(kwargs)
+        return {
+            "decision": {"action": "governed_run", "reason": "planner_acceptable_risk",
+                         "repair_enabled": True, "learning_enabled": True},
+            "evaluation": {"risk_level": "low_risk", "reasons": []},
+            "cycle_result": {},
+            "status": "completed",
+        }
+
+    monkeypatch.setattr(_mod, "run_autonomous_factory_cycle", fake_cycle)
+
+    ledger_path = str(tmp_path / "capability_ledger.json")
+    args = _make_args(tmp_path, capability_ledger_output=ledger_path)
+    _mod.run_factory_daemon(args)
+
+    assert received["capability_ledger"] == ledger_path
+    assert received["capability_ledger_output"] == ledger_path
 
 
 def test_extract_repair_applied_detects_nested_auto_repair_cycle():

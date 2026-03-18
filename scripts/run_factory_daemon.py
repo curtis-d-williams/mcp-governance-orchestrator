@@ -57,6 +57,8 @@ def run_factory_daemon(args):
             artifact = run_autonomous_factory_cycle(
                 portfolio_state=args.portfolio_state,
                 ledger=args.ledger,
+                capability_ledger=args.capability_ledger_output,
+                capability_ledger_output=args.capability_ledger_output,
                 policy=args.policy,
                 top_k=args.top_k,
                 output=str(cycle_output),
@@ -159,6 +161,11 @@ def main(argv=None):
         type=int,
         default=None,
         help="Optional hard cap on cycles for test runs.",
+    )
+    parser.add_argument(
+        "--capability-ledger-output",
+        default=None,
+        help="Path to persist capability effectiveness ledger across cycles.",
     )
 
     args = parser.parse_args(argv)
