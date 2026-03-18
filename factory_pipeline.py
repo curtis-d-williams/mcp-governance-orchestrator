@@ -295,6 +295,7 @@ def run_factory_cycle(
                 and builder_result.get("status") == "ok"
                 and builder_result.get("artifact_kind") == "mcp_server"
             ):
+                _comparison_failed = False
                 try:
                     generated_repo = builder_result.get("generated_repo")
                     capability = builder_result.get("capability")
@@ -413,9 +414,11 @@ def run_factory_cycle(
                             result["reference_mcp_comparison"] = comparison
 
 
-                except Exception:
+                except Exception as _comparison_exc:
                     # Comparison is a learning signal only — never break the cycle
-                    pass
+                    _comparison_failed = True
+                    if isinstance(result, dict):
+                        result["reference_mcp_comparison_error"] = str(_comparison_exc)
 
             prior_similarity_score = None
             if build_request is not None:
@@ -446,6 +449,8 @@ def run_factory_cycle(
                 "source": synthesis_source,
                 "used_evolution": locals().get("used_evolution", False),
             }
+            if locals().get("_comparison_failed"):
+                synthesis_event["comparison_status"] = "error"
             if similarity_score is not None:
                 synthesis_event["similarity_score"] = similarity_score
             if prior_similarity_score is not None:
