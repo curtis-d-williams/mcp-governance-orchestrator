@@ -79,6 +79,7 @@ def _aggregate(cycles):
                         "similarity_score",
                         "previous_similarity_score",
                         "similarity_delta",
+                        "last_comparison_status",
                     ],
                 )
                 continue
@@ -104,6 +105,7 @@ def _aggregate(cycles):
                 "similarity_score",
                 "previous_similarity_score",
                 "similarity_delta",
+                "last_comparison_status",
             ],
         )
 
