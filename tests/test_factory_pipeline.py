@@ -1965,3 +1965,61 @@ def test_run_factory_cycle_records_repair_only_synthesis_event(tmp_path, monkeyp
     assert artifact["cycle_result"]["synthesis_event"]["source"] == "repair"
     assert artifact["capability_effectiveness_ledger"]["capabilities"]["_repair_cycle"]["total_syntheses"] == 1
     assert artifact["capability_effectiveness_ledger"]["capabilities"]["_repair_cycle"]["last_synthesis_source"] == "repair"
+
+
+def test_run_factory_cycle_records_error_synthesis_event_on_builder_exception(tmp_path, monkeypatch):
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        raise RuntimeError("build failed")
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", fake_build_capability_artifact)
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": "github_repository_management",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert artifact["cycle_result"]["builder_error"] == "build failed"
+    assert artifact["cycle_result"]["synthesis_event"]["status"] == "error"
+    assert artifact["cycle_result"]["synthesis_event"]["capability"] == "github_repository_management"
+    assert artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]["failed_syntheses"] == 1
