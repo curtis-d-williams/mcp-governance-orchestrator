@@ -1961,6 +1961,7 @@ def test_run_factory_cycle_records_repair_only_synthesis_event(tmp_path, monkeyp
         run_governed_loop=fake_run_governed_loop,
     )
 
-    assert artifact["cycle_result"]["synthesis_event"]["status"] == "repair_only"
+    assert artifact["cycle_result"]["synthesis_event"]["status"] == "ok"
     assert artifact["cycle_result"]["synthesis_event"]["source"] == "repair"
-    assert artifact["capability_effectiveness_ledger"]["capabilities"] == {}
+    assert artifact["capability_effectiveness_ledger"]["capabilities"]["_repair_cycle"]["total_syntheses"] == 1
+    assert artifact["capability_effectiveness_ledger"]["capabilities"]["_repair_cycle"]["last_synthesis_source"] == "repair"

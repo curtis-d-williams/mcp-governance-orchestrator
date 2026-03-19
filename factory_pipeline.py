@@ -236,13 +236,22 @@ def run_factory_cycle(
             policy_path=policy,
             top_k=top_k,
         )
+        repair_status = (
+            "ok"
+            if isinstance(result, dict) and result.get("status") != "error"
+            else "error"
+        )
+        repair_event = {
+            "capability": "_repair_cycle",
+            "artifact_kind": "system",
+            "status": repair_status,
+            "source": "repair",
+        }
+        capability_effectiveness_ledger = record_normalized_synthesis_event(
+            capability_effectiveness_ledger, repair_event
+        )
         if isinstance(result, dict):
-            result["synthesis_event"] = {
-                "status": "repair_only",
-                "source": "repair",
-                "capability": "none",
-                "artifact_kind": "none",
-            }
+            result["synthesis_event"] = repair_event
 
     elif decision["action"] == "governed_run":
         class Args:
