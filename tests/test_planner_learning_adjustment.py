@@ -823,3 +823,58 @@ class TestRepairCycleLedgerExclusion:
         adj = _compute_repair_pressure_adjustment(action, capability_ledger)
 
         assert adj == 0.0
+
+    def test_returns_zero_when_capability_ledger_is_empty(self):
+        # planner_runtime:539 — `if not capability_ledger: return 0.0`
+        action = self._action("snowflake_data_access")
+        adj = _compute_repair_pressure_adjustment(action, {})
+        assert adj == 0.0
+
+    def test_returns_zero_for_non_synthesis_action_type(self):
+        # planner_runtime:542-544 — action_type not in the synthesis set
+        action = {"action_type": "refresh_repo_health", "capability": "snowflake_data_access"}
+        capability_ledger = {
+            "capabilities": {
+                "_repair_cycle": {
+                    "total_syntheses": 4,
+                    "failed_syntheses": 3,
+                }
+            }
+        }
+        adj = _compute_repair_pressure_adjustment(action, capability_ledger)
+        assert adj == 0.0
+
+    def test_returns_zero_when_caps_is_not_a_dict(self):
+        # planner_runtime:546-548 — capabilities value is not a dict
+        action = self._action("snowflake_data_access")
+        capability_ledger = {"capabilities": "malformed"}
+        adj = _compute_repair_pressure_adjustment(action, capability_ledger)
+        assert adj == 0.0
+
+    def test_returns_zero_when_failed_syntheses_is_non_numeric(self):
+        # planner_runtime:554-558 — float() raises TypeError/ValueError
+        action = self._action("snowflake_data_access")
+        capability_ledger = {
+            "capabilities": {
+                "_repair_cycle": {
+                    "total_syntheses": 4,
+                    "failed_syntheses": "bad",
+                }
+            }
+        }
+        adj = _compute_repair_pressure_adjustment(action, capability_ledger)
+        assert adj == 0.0
+
+    def test_returns_zero_when_failed_syntheses_is_zero(self):
+        # planner_runtime:563-564 — failed == 0.0 guard
+        action = self._action("snowflake_data_access")
+        capability_ledger = {
+            "capabilities": {
+                "_repair_cycle": {
+                    "total_syntheses": 4,
+                    "failed_syntheses": 0,
+                }
+            }
+        }
+        adj = _compute_repair_pressure_adjustment(action, capability_ledger)
+        assert adj == 0.0
