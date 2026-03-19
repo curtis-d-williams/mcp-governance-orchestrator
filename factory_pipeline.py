@@ -424,11 +424,14 @@ def run_factory_cycle(
 
                             previous_iteration_score = iteration_score
                             evolution_plan = plan_capability_evolution(comparison)
-                            evolution_execution = build_evolution_execution(
-                                evolution_plan,
-                                artifact_kind=builder_result.get("artifact_kind"),
-                                current_tools=builder_result.get("tools", []),
-                            )
+                            try:
+                                evolution_execution = build_evolution_execution(
+                                    evolution_plan,
+                                    artifact_kind=builder_result.get("artifact_kind"),
+                                    current_tools=builder_result.get("tools", []),
+                                )
+                            except Exception:
+                                break
                             builder_overrides = evolution_execution.get("builder_overrides", {})
                             if not builder_overrides:
                                 break

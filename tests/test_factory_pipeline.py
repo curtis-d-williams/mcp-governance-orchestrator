@@ -2093,3 +2093,157 @@ def test_run_factory_cycle_governed_run_exception_guard(tmp_path, monkeypatch):
 
     assert artifact["cycle_result"]["status"] == "error"
     assert artifact["cycle_result"]["governed_run_error"] == "governed exploded"
+
+
+def test_evolution_loop_build_evolution_execution_raises_mid_loop(tmp_path, monkeypatch):
+    """When build_evolution_execution raises on the second iteration, the loop
+    breaks immediately and used_evolution reflects only the committed iteration."""
+    monkeypatch.setattr(
+        "planner_runtime.load_capability_effectiveness_ledger",
+        lambda *_a, **_k: {"capabilities": {}},
+    )
+
+    compare_calls = []
+    compare_scores = [0.8, 0.85]
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        score = compare_scores.pop(0)
+        compare_calls.append(score)
+        return {
+            "similarity": {"overall_score": score},
+            "structure": {"generated_capability": "test_cap"},
+            "tool_surface": {"coverage_ratio": score, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": score, "missing_enabled": []},
+            "testability": {"coverage_ratio": score},
+        }
+
+    build_evolution_execution_calls = []
+
+    def fake_build_evolution_execution(evolution_plan, *, artifact_kind, current_tools):
+        build_evolution_execution_calls.append(len(build_evolution_execution_calls) + 1)
+        if len(build_evolution_execution_calls) == 1:
+            return {"builder_overrides": {"key": "val"}}
+        raise RuntimeError("evolution exploded")
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", lambda *, artifact_kind, capability, **kwargs: {
+        "status": "ok",
+        "artifact_kind": "mcp_server",
+        "generated_repo": "/tmp/repo",
+        "capability": "test_cap",
+        "tools": [],
+    })
+    monkeypatch.setattr(_mod, "get_reference_artifact_path", lambda capability: "/tmp/ref_repo", raising=False)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison: {"plan": "evolve"}, raising=False)
+    monkeypatch.setattr(_mod, "build_evolution_execution", fake_build_evolution_execution, raising=False)
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("wrong branch")
+        ),
+        run_governed_loop=lambda args: {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {"capability": "test_cap"}
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+    assert len(artifact["cycle_result"]["evolution_iterations"]) == 1
+    assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is True
+
+
+def test_evolution_loop_exhausts_all_three_iterations(tmp_path, monkeypatch):
+    """When build_evolution_execution always returns non-empty builder_overrides and
+    similarity improves by > 0.01 each iteration, the loop runs all 3 iterations."""
+    monkeypatch.setattr(
+        "planner_runtime.load_capability_effectiveness_ledger",
+        lambda *_a, **_k: {"capabilities": {}},
+    )
+
+    compare_scores = [0.7, 0.72, 0.74, 0.76]
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        score = compare_scores.pop(0)
+        return {
+            "similarity": {"overall_score": score},
+            "structure": {"generated_capability": "test_cap"},
+            "tool_surface": {"coverage_ratio": score, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": score, "missing_enabled": []},
+            "testability": {"coverage_ratio": score},
+        }
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", lambda *, artifact_kind, capability, **kwargs: {
+        "status": "ok",
+        "artifact_kind": "mcp_server",
+        "generated_repo": "/tmp/repo",
+        "capability": "test_cap",
+        "tools": [],
+    })
+    monkeypatch.setattr(_mod, "get_reference_artifact_path", lambda capability: "/tmp/ref_repo", raising=False)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison: {"plan": "evolve"}, raising=False)
+    monkeypatch.setattr(_mod, "build_evolution_execution", lambda evolution_plan, *, artifact_kind, current_tools: {"builder_overrides": {"key": "val"}}, raising=False)
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("wrong branch")
+        ),
+        run_governed_loop=lambda args: {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {"capability": "test_cap"}
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+    assert len(artifact["cycle_result"]["evolution_iterations"]) == 3
+    assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is True
