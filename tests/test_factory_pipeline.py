@@ -2177,6 +2177,12 @@ def test_evolution_loop_build_evolution_execution_raises_mid_loop(tmp_path, monk
 
     assert len(artifact["cycle_result"]["evolution_iterations"]) == 1
     assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is True
+    assert artifact["cycle_result"]["synthesis_event"]["status"] == "ok"
+    cap_entry = artifact["capability_effectiveness_ledger"]["capabilities"]["test_cap"]
+    assert cap_entry["last_synthesis_status"] == "ok"
+    assert cap_entry["last_synthesis_used_evolution"] is True
+    assert cap_entry["successful_syntheses"] == 1
+    assert cap_entry["failed_syntheses"] == 0
 
 
 def test_evolution_loop_exhausts_all_three_iterations(tmp_path, monkeypatch):
