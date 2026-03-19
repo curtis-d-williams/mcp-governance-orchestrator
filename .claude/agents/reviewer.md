@@ -79,6 +79,9 @@ DECISION_NEEDED:
 - Do not run the full suite unless explicitly asked.
 - If full-suite results are provided or you run them, report the outcome concisely.
 - If full suite was not run, state whether commit appears safe without it or whether it is still required.
+- Run exactly one canonical invocation per commit checkpoint: `PYTHONPATH=. pytest -q 2>&1`.
+- Do not rerun with alternate flags, truncation options, or equivalent variants to reshape output.
+- Summarize the single canonical result. Never rerun it to produce a cleaner or shorter output.
 
 ## Reporting rules
 

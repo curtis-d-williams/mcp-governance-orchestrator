@@ -133,6 +133,14 @@ Do not:
 - bundle multiple approval boundaries together
 - escalate from targeted validation to broader validation without a fresh approval checkpoint
 
+## Execution discipline
+
+After a plan is approved, success criteria are locked for that task. Do not introduce
+new interpretation branches or ask Curtis to redefine success mid-execution.
+
+If execution reveals the approved plan cannot satisfy the task, stop, state the gap
+explicitly, and surface a revised bounded plan before any further work proceeds.
+
 ## Repo-proven vs inferred
 
 When summarizing findings:
