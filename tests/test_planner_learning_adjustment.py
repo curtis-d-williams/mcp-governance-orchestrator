@@ -527,6 +527,29 @@ class TestCapabilityReliabilityAdjustment:
 
         assert adj == pytest.approx(expected)
 
+    def test_evolved_syntheses_exceeding_successes_is_clamped(self):
+        # successful_evolved_syntheses (8) > successful_syntheses (5):
+        # the clamp at planner_runtime:889 caps evolved_success to success (5),
+        # so the result must equal the equal-values case exactly.
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 5,
+                    "successful_evolved_syntheses": 8,
+                }
+            }
+        }
+
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+
+        success_rate = (6 / 7)
+        reliability = (success_rate - 0.5) * 0.10
+        expected = reliability - CAPABILITY_EVOLUTION_PENALTY_WEIGHT
+
+        assert adj == pytest.approx(expected)
+
     def test_missing_evolved_success_history_preserves_existing_behavior(self):
         action = self._action("cap_a")
         ledger = {
