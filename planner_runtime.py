@@ -86,6 +86,12 @@ CAPABILITY_EXPLORATION_WEIGHT = 0.005
 CAPABILITY_EVOLUTION_PENALTY_WEIGHT = 0.02
 
 # ---------------------------------------------------------------------------
+# v0.35: Repair-pressure scoring constant
+# ---------------------------------------------------------------------------
+
+REPAIR_PRESSURE_WEIGHT = 0.08
+
+# ---------------------------------------------------------------------------
 # v0.26: Ledger loading and learning adjustment helpers
 # ---------------------------------------------------------------------------
 
@@ -433,6 +439,7 @@ class PriorityBreakdown:
             + weak_signal_targeting_component
             + policy_component
             + capability_reliability_component
+            + repair_pressure_component
             + exploration_component
         )
 
@@ -446,6 +453,7 @@ class PriorityBreakdown:
     weak_signal_targeting_component: float
     policy_component: float
     capability_reliability_component: float
+    repair_pressure_component: float
     confidence_factor: float
     exploration_component: float
     final_priority: float
@@ -462,6 +470,7 @@ class PriorityBreakdown:
             "capability_reliability_component": round(
                 self.capability_reliability_component, 6
             ),
+            "repair_pressure_component": round(self.repair_pressure_component, 6),
             "confidence_factor": round(self.confidence_factor, 6),
             "exploration_component": round(self.exploration_component, 6),
             "final_priority": round(self.final_priority, 6),
@@ -510,6 +519,61 @@ def _compute_capability_reliability_adjustment_raw(context):
     )
 
 
+def _compute_repair_pressure_adjustment(action, capability_ledger):
+    """Return a bounded repair-pressure adjustment for capability synthesis actions.
+
+    Applies only when the capability_ledger contains a _repair_cycle entry
+    with a non-zero failed_syntheses count. The adjustment is proportional
+    to the repair failure rate scaled by REPAIR_PRESSURE_WEIGHT.
+
+    Formula:
+        repair_ratio = failed_syntheses / (total_syntheses or 1)
+        adjustment   = repair_ratio * REPAIR_PRESSURE_WEIGHT
+
+    Returns 0.0 when:
+        - capability_ledger is empty or has no _repair_cycle key
+        - action is not a capability synthesis action
+        - _repair_cycle entry is malformed or has no failed_syntheses
+    Never raises.
+    """
+    if not capability_ledger:
+        return 0.0
+
+    action_type = action.get("action_type", "")
+    if action_type not in ("build_capability_artifact", "build_mcp_server"):
+        return 0.0
+
+    caps = capability_ledger.get("capabilities")
+    if not isinstance(caps, dict):
+        return 0.0
+
+    repair = caps.get("_repair_cycle")
+    if not isinstance(repair, dict):
+        return 0.0
+
+    try:
+        failed = float(repair.get("failed_syntheses", 0))
+        total = float(repair.get("total_syntheses", 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+    failed = max(0.0, failed)
+    total = max(0.0, total)
+
+    if failed == 0.0:
+        return 0.0
+
+    repair_ratio = failed / max(total, 1.0)
+    return repair_ratio * REPAIR_PRESSURE_WEIGHT
+
+
+def _compute_repair_pressure_adjustment_raw(context):
+    """Return raw repair-pressure adjustment (not confidence-scaled)."""
+    return _compute_repair_pressure_adjustment(
+        context.action, context.capability_ledger
+    )
+
+
 def _compute_exploration_adjustment_raw(context):
     """Return combined exploration adjustment.
 
@@ -545,6 +609,11 @@ SCORING_SIGNALS = (
     ScoringSignal(
         "capability_reliability_component",
         _compute_capability_reliability_adjustment_raw,
+        False,
+    ),
+    ScoringSignal(
+        "repair_pressure_component",
+        _compute_repair_pressure_adjustment_raw,
         False,
     ),
     ScoringSignal("exploration_component", _compute_exploration_adjustment_raw, False),
@@ -624,6 +693,7 @@ def _compute_priority_breakdown(
             capability_reliability_component=components[
                 "capability_reliability_component"
             ],
+            repair_pressure_component=components["repair_pressure_component"],
             confidence_factor=confidence,
             exploration_component=components["exploration_component"],
             final_priority=final,

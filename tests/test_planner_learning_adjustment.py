@@ -27,6 +27,7 @@ from planner_runtime import (  # noqa: E402
     CAPABILITY_EXPLORATION_WEIGHT,
     EFFECTIVENESS_CLAMP,
     EFFECTIVENESS_WEIGHT,
+    REPAIR_PRESSURE_WEIGHT,
     SIGNAL_IMPACT_CLAMP,
     SIGNAL_IMPACT_WEIGHT,
     _apply_learning_adjustments,
@@ -34,6 +35,7 @@ from planner_runtime import (  # noqa: E402
     _compute_capability_exploration_adjustment,
     _compute_capability_reliability_adjustment,
     _compute_priority_breakdown,
+    _compute_repair_pressure_adjustment,
     _extract_capability_history,
     compute_learning_adjustment,
     load_effectiveness_ledger,
@@ -685,7 +687,7 @@ class TestPlannerScoringTelemetry:
         record = data["actions"][0]
 
         assert record["action_type"] == "refresh_repo_health"
-        assert len(record["signal_contributions"]) == 6
+        assert len(record["signal_contributions"]) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -757,3 +759,44 @@ class TestRepairCycleLedgerExclusion:
         # real-capability action is unaffected.
         real_action = self._action("snowflake_data_access")
         assert _extract_capability_history(real_action, ledger) is None
+
+    def test_repair_pressure_adjustment_returns_nonzero_when_repair_cycle_has_failures(self):
+        """_compute_repair_pressure_adjustment returns a positive value when
+        _repair_cycle entry has failed_syntheses > 0."""
+        action = self._action("snowflake_data_access")
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 3,
+                    "successful_syntheses": 3,
+                },
+                "_repair_cycle": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 1,
+                    "failed_syntheses": 3,
+                    "last_synthesis_source": "repair",
+                },
+            }
+        }
+
+        adj = _compute_repair_pressure_adjustment(action, capability_ledger)
+
+        expected = (3.0 / 4.0) * REPAIR_PRESSURE_WEIGHT
+        assert adj == pytest.approx(expected)
+
+    def test_repair_pressure_adjustment_returns_zero_when_no_repair_cycle_entry(self):
+        """_compute_repair_pressure_adjustment returns 0.0 when the ledger has
+        no _repair_cycle entry."""
+        action = self._action("snowflake_data_access")
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 3,
+                    "successful_syntheses": 3,
+                },
+            }
+        }
+
+        adj = _compute_repair_pressure_adjustment(action, capability_ledger)
+
+        assert adj == 0.0

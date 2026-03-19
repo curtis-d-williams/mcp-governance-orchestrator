@@ -41,6 +41,7 @@ _EXPECTED_FIELDS = {
     "weak_signal_targeting_component",
     "policy_component",
     "capability_reliability_component",
+    "repair_pressure_component",
     "confidence_factor",
     "exploration_component",
     "final_priority",
