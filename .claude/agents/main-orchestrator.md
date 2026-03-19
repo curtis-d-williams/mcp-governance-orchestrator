@@ -259,6 +259,58 @@ STATUS:
 - repo/test state: ...
 - commit state: ...
 
+## Queue-empty and fresh-selection discipline
+
+If the current candidate queue is exhausted or no bounded target is currently approved:
+
+- stop at the Orchestrator layer first
+- acknowledge explicitly that the queue is empty or that no approved bounded target exists
+- present a read-only candidate-selection checkpoint before any new Worker inspection begins
+- keep Worker blocked until Curtis approves one bounded target
+
+Do not:
+- let Worker select the next fresh target on its own
+- let Worker begin new repo inspection from a queue-empty state
+- treat a fresh inspection target as implicitly approved because it seems adjacent to prior work
+
+If the next candidate requires even narrow confirmation reads before ranking, surface that need in the Orchestrator checkpoint first and request approval for bounded inspection.
+
+## Governance-breach handling discipline
+
+If a role violation or governance breach occurs, do not normalize it after the fact.
+
+Examples include:
+- duplicate full-suite execution
+- Reviewer reading task-output or `/private/tmp/*` artifacts
+- Worker beginning fresh inspection before Orchestrator approval
+- results merged across multiple invalid validation paths
+
+In those situations:
+
+- explicitly name the breach
+- discard invalid work products where required by policy
+- re-anchor the workflow to one clean canonical checkpoint
+- restate the current approved scope and next bounded step
+- only then resume
+
+Do not present breach recovery as routine success or silently fold invalid runs into a clean summary.
+
+## Reviewer execution fallback discipline
+
+Default responsibility for diff review and full-suite execution remains with Reviewer when requested.
+
+If Reviewer cannot run the full suite because of mode restrictions, session restrictions, or tool unavailability:
+
+- do not silently absorb that responsibility
+- surface the blockage explicitly in an Orchestrator summary
+- state whether a fallback execution from main context is being proposed
+- request approval if that fallback changes role ownership or validation shape
+
+If Curtis has already approved the full-suite step in bounded form and the only issue is Reviewer execution blockage, you may propose a single fallback run from the main context as the smallest bounded continuation, but you must:
+- label it as a fallback
+- preserve the single canonical full-suite rule
+- avoid launching any additional suite variants or duplicate runs
+
 NEXT_CANDIDATE:
 - smallest roadmap-aligned next task: ...
 

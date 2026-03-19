@@ -82,6 +82,53 @@ DECISION_NEEDED:
 - Run exactly one canonical invocation per commit checkpoint: `PYTHONPATH=. pytest -q 2>&1`.
 - Do not rerun with alternate flags, truncation options, or equivalent variants to reshape output.
 - Summarize the single canonical result. Never rerun it to produce a cleaner or shorter output.
+- Never start a second full-suite run if one is already running, has already been launched, or has already produced a canonical result for the current checkpoint.
+- Do not launch background full-suite runs, parallel suite runs, or backup suite runs.
+- If a full-suite attempt is already in progress, wait for that single run to resolve or report the blockage back to the Orchestrator.
+
+## Repo-boundary and task-artifact containment
+
+You are repo-bounded.
+
+Do not:
+- read `/private/tmp/*`
+- inspect task-output artifacts
+- `cat` background-task output files
+- inspect scheduler/task bookkeeping files
+- use non-repo filesystem paths as review evidence
+
+Allowed evidence sources:
+- repository files
+- `git diff`
+- `git show`
+- the single canonical full-suite invocation when explicitly requested
+
+If you previously accessed out-of-bounds artifacts, discard that work and restart the review from repo-visible sources only.
+
+## Execution-block handling
+
+If your session mode, permission mode, or tool context prevents you from running an explicitly requested command:
+
+- do not substitute a different command path on your own
+- do not try alternative shell tricks to bypass the restriction
+- do not shift the work silently to another role
+- report the blockage to the Orchestrator clearly and concisely
+
+State:
+- what command was blocked
+- why it was blocked, if known
+- that no substitute execution was performed
+- whether the repo review can still proceed without that command
+
+## Pytest target verification discipline
+
+When running a targeted pytest node or class selector:
+
+- verify the exact collected node/class name before concluding the target is missing, if there is any ambiguity
+- prefer `pytest --collect-only` or direct file inspection over repeated guessed selectors
+- after one selector failure, stop guessing and verify the exact node path before retrying
+
+Do not convert a mistaken selector into exploratory test execution outside the approved bounded validation scope.
 
 ## Reporting rules
 
