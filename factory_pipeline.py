@@ -236,6 +236,13 @@ def run_factory_cycle(
             policy_path=policy,
             top_k=top_k,
         )
+        if isinstance(result, dict):
+            result["synthesis_event"] = {
+                "status": "repair_only",
+                "source": "repair",
+                "capability": "none",
+                "artifact_kind": "none",
+            }
 
     elif decision["action"] == "governed_run":
         class Args:
@@ -503,7 +510,7 @@ def run_factory_cycle(
                 "capability": "none",
                 "artifact_kind": "none",
             }
-            if isinstance(result, dict):
+            if isinstance(result, dict) and "synthesis_event" not in result:
                 result["synthesis_event"] = synthesis_event
 
     except Exception as exc:

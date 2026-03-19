@@ -1930,3 +1930,37 @@ def test_run_factory_cycle_used_evolution_false_when_all_iterations_regress(tmp_
     assert len(artifact["cycle_result"]["evolution_iterations"]) == 1
     assert artifact["cycle_result"]["evolution_iterations"][0]["similarity_delta"] == -0.05
     assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is False
+
+
+def test_run_factory_cycle_records_repair_only_synthesis_event(tmp_path, monkeypatch):
+    """repair_only branch attaches a sentinel synthesis_event and does not write to the ledger."""
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "high_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        return {"status": "repair_completed"}
+
+    def fake_run_governed_loop(args):
+        raise AssertionError("governed loop should not run in repair_only path")
+
+    # portfolio_state with no capability_gaps so gap resolver also returns None
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(json.dumps({}), encoding="utf-8")
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert artifact["cycle_result"]["synthesis_event"]["status"] == "repair_only"
+    assert artifact["cycle_result"]["synthesis_event"]["source"] == "repair"
+    assert artifact["capability_effectiveness_ledger"]["capabilities"] == {}
