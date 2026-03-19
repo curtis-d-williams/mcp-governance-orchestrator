@@ -27,6 +27,7 @@ from mcp_governance_orchestrator.governed_cycle import (
     artifact_paths,
     build_runtime_config,
     resolve_planner_ledger,
+    run_cycle,
     run_governed_loop,
     try_parse_json,
     try_read_json,
@@ -273,3 +274,147 @@ class TestRunGovernedLoopCapabilityLedger:
             run_governed_loop(arts, top_k=3, exploration_offset=0, capability_ledger=None)
         cmd = mock_run.call_args[0][0]
         assert "--capability-ledger" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — capability_effectiveness_ledger persistence
+# ---------------------------------------------------------------------------
+
+_GOVERNED_RESULT_DATA = {
+    "status": "ok",
+    "selected_offset": 0,
+    "attempts": [{"offset": 0, "risk_level": "low_risk"}],
+    "result": {"run_count": 1},
+    "capability_effectiveness_ledger": {
+        "capabilities": {
+            "_repair_cycle": {
+                "total_syntheses": 3,
+                "failed_syntheses": 1,
+                "successful_syntheses": 2,
+                "successful_evolved_syntheses": 0,
+            }
+        }
+    },
+}
+
+
+def _make_args(tmp_path, capability_ledger=None):
+    """Build a minimal argparse-like namespace for run_cycle."""
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps({"repos": [{"id": "r", "path": str(tmp_path)}]}),
+        encoding="utf-8",
+    )
+    return SimpleNamespace(
+        manifest=str(manifest),
+        task=["artifact_audit_example"],
+        output=str(tmp_path / "cycle.json"),
+        ledger=None,
+        policy=None,
+        top_k=3,
+        exploration_offset=0,
+        max_actions=None,
+        explain=False,
+        force=False,
+        governance_policy=None,
+        repo_ids=None,
+        capability_ledger=capability_ledger,
+    )
+
+
+def _ok_proc(stdout="{}"):
+    m = MagicMock()
+    m.stdout = stdout
+    m.stderr = ""
+    m.returncode = 0
+    return m
+
+
+class TestCapabilityLedgerPersistenceInRunCycle:
+    def test_capability_ledger_written_after_phase_c(self, tmp_path):
+        """update_capability_effectiveness_ledger is called once when capability_ledger is set."""
+        args = _make_args(tmp_path, capability_ledger=str(tmp_path / "cap.json"))
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write governed_result so try_read_json returns data after Phase C
+        import json as _json
+        Path(arts["governed_result"]).write_text(
+            _json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        _phases = [
+            "run_portfolio_tasks",
+            "run_build_portfolio_state",
+            "run_governed_loop",
+            "run_execute_governed_actions",
+            "run_update_execution_history",
+            "run_update_action_effectiveness_from_history",
+            "run_update_cycle_history",
+            "run_aggregate_cycle_history",
+            "run_detect_cycle_history_regression",
+            "run_enforce_governance_policy",
+        ]
+
+        def _make_proc_returning_governed_result(name):
+            proc = _ok_proc()
+            if name == "run_portfolio_tasks":
+                proc.stdout = "{}"
+            return proc
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            with patch(
+                "mcp_governance_orchestrator.governed_cycle.update_capability_effectiveness_ledger"
+            ) as mock_update:
+                run_cycle(args)
+
+        mock_update.assert_called_once_with(
+            ledger_path=arts["capability_effectiveness_ledger"],
+            cycle_artifact_path=arts["governed_result"],
+            output_path=arts["capability_effectiveness_ledger"],
+        )
+
+    def test_capability_ledger_not_written_when_no_ledger_arg(self, tmp_path):
+        """update_capability_effectiveness_ledger is NOT called when capability_ledger is absent."""
+        args = _make_args(tmp_path, capability_ledger=None)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        import json as _json
+        Path(arts["governed_result"]).write_text(
+            _json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            with patch(
+                "mcp_governance_orchestrator.governed_cycle.update_capability_effectiveness_ledger"
+            ) as mock_update:
+                run_cycle(args)
+
+        mock_update.assert_not_called()

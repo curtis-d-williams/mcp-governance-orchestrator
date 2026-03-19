@@ -27,6 +27,7 @@ Public API:
     run_cycle(args) -> int
 """
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -35,6 +36,22 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _load_script(script_path, module_name):
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_cap_learn_mod = _load_script(
+    _REPO_ROOT / "scripts" / "update_capability_effectiveness_ledger.py",
+    "capability_learn",
+)
+update_capability_effectiveness_ledger = (
+    _cap_learn_mod.update_capability_effectiveness_ledger
+)
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +560,14 @@ def run_cycle(args):
         return 1
 
     governed_result = try_read_json(arts["governed_result"])
+
+    # Persist capability_effectiveness_ledger when a ledger path was provided
+    if config.get("capability_ledger"):
+        update_capability_effectiveness_ledger(
+            ledger_path=arts["capability_effectiveness_ledger"],
+            cycle_artifact_path=arts["governed_result"],
+            output_path=arts["capability_effectiveness_ledger"],
+        )
 
     # --- Phase D: governed execution ---
     if governed_result and governed_result.get("idle") is True:
