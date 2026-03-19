@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 import builder.mcp_builder as _mod
+from builder.artifact_registry import build_capability_artifact
 
 
 def _read(path):
@@ -251,3 +252,23 @@ def test_build_mcp_server_smoke_test_imports_generated_server_from_artifact_root
     finally:
         if generated.exists():
             shutil.rmtree(generated)
+
+
+def test_build_capability_artifact_dispatches_mcp_server_builder():
+    repo_root = _mod.REPO_ROOT
+    generated = repo_root / "generated_mcp_server_github"
+
+    if generated.exists():
+        shutil.rmtree(generated)
+
+    result = build_capability_artifact(
+        artifact_kind="mcp_server",
+        capability="github_repository_management",
+    )
+
+    assert result["artifact_kind"] == "mcp_server"
+    assert "status" in result
+    assert result["status"] == "ok"
+    assert generated.is_dir()
+
+    shutil.rmtree(generated)
