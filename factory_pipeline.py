@@ -230,12 +230,15 @@ def run_factory_cycle(
     synthesis_source = None
 
     if decision["action"] == "repair_only":
-        result = run_mapping_repair_cycle(
-            portfolio_state_path=portfolio_state,
-            ledger_path=ledger,
-            policy_path=policy,
-            top_k=top_k,
-        )
+        try:
+            result = run_mapping_repair_cycle(
+                portfolio_state_path=portfolio_state,
+                ledger_path=ledger,
+                policy_path=policy,
+                top_k=top_k,
+            )
+        except Exception as exc:
+            result = {"status": "error", "repair_error": str(exc)}
         repair_status = (
             "ok"
             if isinstance(result, dict) and result.get("status") != "error"

@@ -2023,3 +2023,41 @@ def test_run_factory_cycle_records_error_synthesis_event_on_builder_exception(tm
     assert artifact["cycle_result"]["synthesis_event"]["status"] == "error"
     assert artifact["cycle_result"]["synthesis_event"]["capability"] == "github_repository_management"
     assert artifact["capability_effectiveness_ledger"]["capabilities"]["github_repository_management"]["failed_syntheses"] == 1
+
+
+def test_run_factory_cycle_records_error_synthesis_event_when_repair_raises(tmp_path, monkeypatch):
+    """repair_only branch catches exceptions from run_mapping_repair_cycle and
+    records an error synthesis_event with failed_syntheses=1."""
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "high_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise RuntimeError("repair exploded")
+
+    def fake_run_governed_loop(args):
+        raise AssertionError("governed loop should not run in repair_only path")
+
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(json.dumps({}), encoding="utf-8")
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    synthesis_event = artifact["cycle_result"]["synthesis_event"]
+    assert synthesis_event["status"] == "error"
+    assert synthesis_event["capability"] == "_repair_cycle"
+    assert synthesis_event["source"] == "repair"
+
+    assert artifact["capability_effectiveness_ledger"]["capabilities"]["_repair_cycle"]["failed_syntheses"] == 1
+    assert artifact["cycle_result"]["repair_error"] == "repair exploded"
