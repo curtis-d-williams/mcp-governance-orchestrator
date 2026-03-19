@@ -2093,6 +2093,8 @@ def test_run_factory_cycle_governed_run_exception_guard(tmp_path, monkeypatch):
 
     assert artifact["cycle_result"]["status"] == "error"
     assert artifact["cycle_result"]["governed_run_error"] == "governed exploded"
+    assert artifact["cycle_result"]["synthesis_event"]["status"] == "no_op"
+    assert artifact["capability_effectiveness_ledger"] == {"capabilities": {}}
 
 
 def test_evolution_loop_build_evolution_execution_raises_mid_loop(tmp_path, monkeypatch):
