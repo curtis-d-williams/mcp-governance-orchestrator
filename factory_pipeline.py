@@ -282,13 +282,16 @@ def run_factory_cycle(
             out.with_name(out.stem + "_learned_ledger.json")
         )
 
-        result = run_governed_loop(args)
+        try:
+            result = run_governed_loop(args)
 
-        runs = result.get("result", {}).get("evaluation_summary", {}).get("runs", [])
-        first_run = runs[0] if runs else {}
-        build_request = _resolve_factory_build_request(first_run)
-        if build_request is not None:
-            synthesis_source = "planner_request"
+            runs = result.get("result", {}).get("evaluation_summary", {}).get("runs", [])
+            first_run = runs[0] if runs else {}
+            build_request = _resolve_factory_build_request(first_run)
+            if build_request is not None:
+                synthesis_source = "planner_request"
+        except Exception as exc:
+            result = {"status": "error", "governed_run_error": str(exc)}
 
     if build_request is None:
         build_request = _resolve_gap_synthesis_request(portfolio_state)

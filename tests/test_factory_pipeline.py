@@ -2060,4 +2060,36 @@ def test_run_factory_cycle_records_error_synthesis_event_when_repair_raises(tmp_
     assert synthesis_event["source"] == "repair"
 
     assert artifact["capability_effectiveness_ledger"]["capabilities"]["_repair_cycle"]["failed_syntheses"] == 1
-    assert artifact["cycle_result"]["repair_error"] == "repair exploded"
+
+
+def test_run_factory_cycle_governed_run_exception_guard(tmp_path, monkeypatch):
+    """When run_governed_loop raises, run_factory_cycle must not propagate the
+    exception and must record status=error with governed_run_error in cycle_result."""
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_governed_loop(args):
+        raise RuntimeError("governed exploded")
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("wrong branch")
+
+    portfolio_state = tmp_path / "portfolio_state.json"
+    portfolio_state.write_text(json.dumps({}), encoding="utf-8")
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state=str(portfolio_state),
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    assert artifact["cycle_result"]["status"] == "error"
+    assert artifact["cycle_result"]["governed_run_error"] == "governed exploded"
