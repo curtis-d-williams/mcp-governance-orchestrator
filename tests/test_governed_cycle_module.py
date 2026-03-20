@@ -539,3 +539,86 @@ class TestExecutionHistoryRealHandoff:
         assert record["status"] == "ok"
         assert record["resolved_via"] == "no_action_window"
         assert record["selected_tasks"] == []
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — execution_history.json → action_effectiveness_ledger.json real handoff
+# ---------------------------------------------------------------------------
+
+def _load_update_action_effectiveness_from_history():
+    """Load update_action_effectiveness_from_history.py directly from scripts/."""
+    spec = _importlib_util.spec_from_file_location(
+        "update_action_effectiveness_from_history",
+        str(_REPO_ROOT / "scripts" / "update_action_effectiveness_from_history.py"),
+    )
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestActionEffectivenessRealHandoff:
+    """Real-reference test: Phase F reads execution_history.json and writes action_effectiveness_ledger.json."""
+
+    def test_action_effectiveness_written_via_real_update(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Pre-condition: write execution_history.json (Phase E output) directly.
+        # governed_cycle.run_update_execution_history is mocked, so we supply the
+        # file it would have written so Phase F has real input to consume.
+        exec_history = {
+            "records": [
+                {
+                    "status": "ok",
+                    "selected_tasks": ["build_mcp_server"],
+                    "resolved_via": "action_window",
+                }
+            ]
+        }
+        Path(arts["execution_history"]).write_text(
+            json.dumps(exec_history), encoding="utf-8"
+        )
+
+        _uaef_mod = _load_update_action_effectiveness_from_history()
+
+        def _real_update_action_effectiveness_shim(artifacts):
+            """Thin shim: calls the real update_action_effectiveness_from_history() directly."""
+            rc = _uaef_mod.update_action_effectiveness_from_history(
+                artifacts["execution_history"],
+                artifacts["action_effectiveness_ledger"],
+            )
+            if rc != 0:
+                raise RuntimeError("update_action_effectiveness_from_history returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=_real_update_action_effectiveness_shim,
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        ledger_path = Path(arts["action_effectiveness_ledger"])
+        assert ledger_path.exists(), "action_effectiveness_ledger.json was not written"
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        actions = ledger.get("actions", {})
+        assert "build_mcp_server" in actions
+        entry = actions["build_mcp_server"]
+        assert entry["total_runs"] == 1
+        assert entry["success_count"] == 1
+        assert entry["failure_count"] == 0
+        assert entry["last_status"] == "ok"
