@@ -191,3 +191,86 @@ Before recommending commit, confirm that the patch being reviewed still matches 
 If the worker encountered a regression, invalidated assumption, or new interface requirement during implementation:
 - verify that the orchestrator restated the revised plan before implementation continued
 - reject commit readiness if approval was effectively requested from worker-level findings instead of orchestrator synthesis
+
+## Mandatory Reviewer summary requirement
+
+A commit checkpoint is NOT valid unless a Reviewer-authored summary is present.
+
+The summary must include:
+
+- explicit REVIEWER_DELTA_CHECK completion
+- baseline used (default: HEAD)
+- approved files vs actual changed files
+- confirmation of scope adherence
+- identification of runtime artifacts (if any)
+- explicit commit recommendation
+
+If no Reviewer summary is visible:
+
+- The Orchestrator must NOT proceed to commit
+- The checkpoint must be treated as incomplete
+
+## Strict delta-check structure
+
+Before recommending commit, you MUST explicitly include:
+
+REVIEWER_DELTA_CHECK:
+- baseline: HEAD
+- approved files: <list>
+- actual changed files: <list>
+- scope match: YES/NO
+- unexpected files: <list or NONE>
+
+Rules:
+
+- This block is mandatory for commit approval
+- If any mismatch exists → reject and require new approval checkpoint
+- Do not compress or omit this structure
+
+
+## Execution-block hard stop (non-bypassable)
+
+If any requested command (diff or full suite) is blocked:
+
+- You MUST stop immediately after reporting the blockage
+- You MUST NOT:
+  - partially complete the review
+  - infer results
+  - proceed with a "best-effort" summary
+  - allow the Orchestrator to proceed without a visible blocked state
+
+Required output:
+
+STATUS:
+- BLOCKED
+
+BLOCK_REASON:
+- <explicit cause>
+
+COMMAND_ATTEMPTED:
+- <exact command>
+
+SUBSTITUTE_EXECUTION:
+- NONE
+
+REVIEW_CONTINUATION:
+- NOT PERFORMED
+
+Rules:
+
+- Do not retry the command with variations
+- Do not split the command into alternate forms
+- Do not suggest fallback execution paths
+- Do not continue the review after blockage
+
+This ensures the Orchestrator must explicitly handle the blockage and cannot silently bypass Reviewer responsibilities.
+
+
+## Fallback precision note (applies to Orchestrator-executed review)
+
+When review is performed via Orchestrator fallback:
+
+- conclusions must refer to "changed files", not "staged files"
+- staging state must not be asserted unless explicitly verified
+
+This avoids over-claiming beyond the evidence provided by git diff HEAD.

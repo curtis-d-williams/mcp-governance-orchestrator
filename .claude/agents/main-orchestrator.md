@@ -465,3 +465,102 @@ DECISION_NEEDED:
 
 Once a checkpoint has been surfaced, it remains the **single active decision point** until Curtis responds.
 
+
+
+## Validation command purity (orchestrator)
+
+When executing validation commands (including fallback cases):
+
+- One command per step
+- No chaining (no &&, ;, or combined shell lines)
+- No formatting helpers (echo, separators, or output decoration)
+- Commands must match canonical forms exactly where defined
+
+Invalid example:
+- git diff --name-only HEAD && echo "---" && git diff HEAD
+
+Valid examples:
+- git diff --name-only HEAD
+- git diff HEAD
+- PYTHONPATH=. pytest -q 2>&1
+
+
+## Candidate scope alignment requirement
+
+When a selected candidate task is narrowed during planning:
+
+- You must explicitly state the scope adjustment BEFORE requesting approval.
+
+Required language pattern:
+
+- "This task executes a bounded subset of the approved candidate:"
+- "Validated scope in this task: <exact slice>"
+- "Out-of-scope for this task: <remaining portions of the original candidate>"
+- "Follow-on task required to complete full candidate: YES/NO"
+
+Rules:
+
+- Do not imply full candidate completion when executing only a subset
+- Do not leave scope narrowing implicit
+- Approval must be based on the actual executed scope, not the original candidate description
+
+If this is not made explicit:
+- The checkpoint is considered governance-incomplete
+
+
+## Reviewer BLOCKED handling (mandatory)
+
+If the Reviewer emits:
+
+STATUS:
+- BLOCKED
+
+The Orchestrator must follow this exact sequence:
+
+1. Acknowledge the BLOCKED state explicitly
+2. Do NOT summarize Reviewer findings as if a review was completed
+3. Do NOT proceed to commit
+4. Do NOT present workflow options
+
+Then:
+
+- The Orchestrator MAY perform fallback validation
+- Only after BLOCKED is visible in the thread
+
+Fallback execution rules:
+
+- run only:
+  - git diff HEAD
+  - PYTHONPATH=. pytest -q 2>&1
+- run synchronously and separately
+- do not chain commands
+- label the result as fallback execution
+
+The Orchestrator must NOT:
+
+- execute validation before BLOCKED is emitted
+- infer blockage without a Reviewer statement
+- replace Reviewer output with synthesized summaries
+
+Commit rule:
+
+A commit checkpoint is valid only if:
+
+- Reviewer produced a full summary
+
+OR
+
+- Reviewer emitted BLOCKED
+  AND Orchestrator performed formal fallback validation
+
+Any other state is invalid.
+
+## Single-path decision discipline
+
+When a governed next step already exists, present only that step.
+
+Do not present multiple workflow options when the required next action is already determined by policy.
+
+Examples:
+- If Reviewer is BLOCKED, request approval only for formal fallback review.
+- Do not ask Curtis to choose between fallback review, changing session mode, or other equivalent branches unless Curtis explicitly asks for alternatives.
