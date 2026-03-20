@@ -1173,3 +1173,87 @@ class TestAutoRepair:
         data = json.loads(output.read_text(encoding="utf-8"))
         assert "auto_repair_attempted" not in data
         assert "auto_repair_applied" not in data
+
+
+# ---------------------------------------------------------------------------
+# 14. capability_ledger threaded to planner argv
+# ---------------------------------------------------------------------------
+
+class TestCapabilityLedgerThreading:
+    @staticmethod
+    def _recording_planner(captured_argvs):
+        """Return a planner stub that records full argv and still writes the envelope.
+
+        _noop_planner uses strict parse_args, so --capability-ledger (unknown to
+        that stub) must be stripped before delegation.  The full original argv is
+        captured first, preserving the threading assertion.
+        """
+        def planner(argv):
+            captured_argvs.append(list(argv))
+            stripped = []
+            skip_next = False
+            for a in argv:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if a == "--capability-ledger":
+                    skip_next = True
+                    continue
+                stripped.append(a)
+            _noop_planner(stripped)
+        return planner
+
+    def test_capability_ledger_forwarded_to_planner_argv(self, tmp_path):
+        """capability_ledger on args is forwarded as --capability-ledger in planner argv."""
+        cap_ledger = tmp_path / "cap_ledger.json"
+        cap_ledger.write_text(json.dumps({"capabilities": {}}), encoding="utf-8")
+        args = _make_args(tmp_path, capability_ledger=str(cap_ledger))
+
+        captured_argvs = []
+        run_governed_loop(
+            args,
+            planner_main=self._recording_planner(captured_argvs),
+            preflight_fn=lambda a: {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 2},
+        )
+
+        assert len(captured_argvs) == 1
+        argv = captured_argvs[0]
+        assert "--capability-ledger" in argv
+        idx = argv.index("--capability-ledger")
+        assert argv[idx + 1] == str(cap_ledger)
+
+    def test_absent_capability_ledger_not_in_planner_argv(self, tmp_path):
+        """When capability_ledger is absent, --capability-ledger must not appear in planner argv."""
+        args = _make_args(tmp_path)  # capability_ledger not in defaults
+
+        captured_argvs = []
+        run_governed_loop(
+            args,
+            planner_main=self._recording_planner(captured_argvs),
+            preflight_fn=lambda a: {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 2},
+        )
+
+        assert len(captured_argvs) == 1
+        assert "--capability-ledger" not in captured_argvs[0]
+
+    def test_cli_accepts_capability_ledger_flag(self, tmp_path):
+        """main() must parse --capability-ledger and thread it to args.capability_ledger."""
+        cap_ledger = tmp_path / "cap_ledger.json"
+        cap_ledger.write_text(json.dumps({"capabilities": {}}), encoding="utf-8")
+        output = tmp_path / "governed_result.json"
+
+        captured_args = []
+
+        def capturing_loop(args, **kwargs):
+            captured_args.append(args)
+            return {"selected_offset": 0, "attempts": [], "result": {}}
+
+        original = _mod.run_governed_loop
+        _mod.run_governed_loop = capturing_loop
+        try:
+            _mod.main(["--capability-ledger", str(cap_ledger), "--output", str(output)])
+        finally:
+            _mod.run_governed_loop = original
+
+        assert len(captured_args) == 1
+        assert captured_args[0].capability_ledger == str(cap_ledger)
