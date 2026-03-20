@@ -22,6 +22,7 @@ _fetch_action_queue = _mod._fetch_action_queue
 _map_actions_to_tasks = _mod._map_actions_to_tasks
 ACTION_TO_TASK = _mod.ACTION_TO_TASK
 ALL_TASKS = _mod.ALL_TASKS
+_apply_learning_adjustments = _mod._apply_learning_adjustments
 
 # ---------------------------------------------------------------------------
 # Original integration test (preserved unchanged)
@@ -480,3 +481,53 @@ class TestRegistryAlignment:
                 f"ACTION_TO_TASK[{action_type!r}] → unknown task: {task!r}. "
                 "Add it to TASK_REGISTRY or update ACTION_TO_TASK."
             )
+
+
+# ---------------------------------------------------------------------------
+# TestCapabilityLedgerRankingEffect
+# ---------------------------------------------------------------------------
+
+class TestCapabilityLedgerRankingEffect:
+    """Verify capability_ledger content alters action ranking in _apply_learning_adjustments."""
+
+    _BASE_ACTION = {
+        "action_type": "build_capability_artifact",
+        "base_priority": 1.0,
+        "action_id": "a1",
+        "repo_id": "r1",
+        "args": {"capability": "test_cap"},
+    }
+    _PLAIN_ACTION = {
+        "action_type": "refresh_repo_health",
+        "base_priority": 1.0,
+        "action_id": "a2",
+        "repo_id": "r1",
+    }
+
+    def test_high_success_ledger_boosts_capability_action(self):
+        """A high-success capability ledger boosts the capability synthesis action above a plain action."""
+        ledger = {"capabilities": {"test_cap": {
+            "total_syntheses": 5,
+            "successful_syntheses": 5,
+            "successful_evolved_syntheses": 0,
+        }}}
+        # capability action starts second — ledger should lift it to first
+        actions = [self._PLAIN_ACTION, self._BASE_ACTION]
+        result = _apply_learning_adjustments(actions, {}, capability_ledger=ledger)
+        assert result[0]["action_type"] == "build_capability_artifact", (
+            f"Expected build_capability_artifact first after high-success ledger boost, got {result[0]['action_type']}"
+        )
+
+    def test_high_failure_ledger_demotes_capability_action(self):
+        """A high-failure capability ledger demotes the capability synthesis action below a plain action."""
+        ledger = {"capabilities": {"test_cap": {
+            "total_syntheses": 5,
+            "successful_syntheses": 0,
+            "successful_evolved_syntheses": 0,
+        }}}
+        # capability action starts first — ledger should demote it to second
+        actions = [self._BASE_ACTION, self._PLAIN_ACTION]
+        result = _apply_learning_adjustments(actions, {}, capability_ledger=ledger)
+        assert result[0]["action_type"] == "refresh_repo_health", (
+            f"Expected refresh_repo_health first after high-failure ledger penalty, got {result[0]['action_type']}"
+        )
