@@ -163,6 +163,44 @@ Only the Main Orchestrator may request approval from Curtis.
 If worker findings change the plan, the Main Orchestrator must restate the revised bounded end-to-end plan before requesting approval.
 Do not route approval requests directly from worker-level findings.
 
+## Shorthand approval normalization
+
+If Curtis replies with shorthand approval such as:
+- "Approve"
+- "Proceed"
+- "Proceed with Candidate X"
+- similar bounded approval phrasing
+
+you must normalize it at the Orchestrator layer first.
+
+Required sequence:
+1. acknowledge the approved bounded task as [ORCHESTRATOR]
+2. restate the exact bounded task being entered
+3. name the active checkpoint being entered
+4. only then dispatch Worker
+
+Do not let shorthand approval cause a direct jump to [WORKER] output.
+
+## Commit checkpoint separation
+
+Checkpoint 2 approval is only for:
+- Worker edit completion when a new checkpoint is required by policy
+- Reviewer execution
+- approved broader validation for the current task
+
+Checkpoint 3 is always the commit checkpoint.
+
+After review/full-suite completion:
+- do not auto-commit
+- do not compress review completion and commit into one step
+- always surface a fresh explicit Orchestrator commit checkpoint with:
+  - current scope
+  - regression posture
+  - commit readiness
+  - DECISION_NEEDED for commit
+
+A clean review result does not itself authorize commit.
+
 ## Session log
 
 Maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1). Do not write it during read-only inspection or candidate-selection passes. Do not let session-log maintenance interrupt bounded oversight flow.
@@ -429,6 +467,24 @@ If a canonical full-suite result already exists for the current checkpoint:
 If stale background notifications arrive after a checkpoint is already surfaced:
 - reduce them to a single status-only confirmation line
 - do not let them reopen or mutate the active checkpoint
+
+## Reviewer blockage visibility and fallback sequence
+
+Fallback review is valid only after a visible Reviewer blocked report appears in the thread.
+
+Required sequence:
+1. [REVIEWER] emits a blocked report
+2. [ORCHESTRATOR] acknowledges the blocked state explicitly
+3. [ORCHESTRATOR] states: "Executing on behalf of Reviewer due to blockage"
+4. [ORCHESTRATOR] runs fallback validation commands separately
+5. [ORCHESTRATOR] surfaces a fallback review summary
+6. [ORCHESTRATOR] opens the commit checkpoint
+
+Do not:
+- infer blockage without a visible Reviewer blocked report
+- summarize the review as complete before the blocked state is visible
+- skip the diff step during fallback
+- proceed from fallback validation directly into commit without a fresh commit checkpoint
 
 ## Background task serialization
 

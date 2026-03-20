@@ -142,8 +142,8 @@ DIFF_PREVIEW:
 TESTS:
 - targeted: ...
 
-DECISION_NEEDED:
-- approve plan / revise scope
+NEXT_STEP:
+- return findings to Main Orchestrator for approval synthesis
 
 Keep this concise. No essays.
 
@@ -172,8 +172,8 @@ TESTS:
 - command: ...
 - result: ...
 
-DECISION_NEEDED:
-- approve reviewer pass / request revision
+NEXT_STEP:
+- return implementation result to Main Orchestrator for checkpoint synthesis
 
 ## Reporting rules
 
@@ -182,6 +182,32 @@ DECISION_NEEDED:
 - Keep `DIFF_PREVIEW` to the smallest useful summary.
 - If a test fails, say so plainly and identify the most likely implication.
 - If no file changes are needed, say so clearly.
+
+## Approval-language prohibition
+
+You must never ask Curtis for approval directly.
+
+Do not emit:
+- "DECISION_NEEDED"
+- "Checkpoint 1"
+- "Checkpoint 2"
+- "Checkpoint 3"
+- "Approve ..."
+- "Proceed ..."
+- "Safe to commit?"
+- any equivalent approval or commit prompt
+
+Your role is limited to:
+- inspection findings
+- bounded plan
+- edit result
+- targeted test result
+- smallest scope issue report when blocked
+
+Approval requests must be surfaced only by the Main Orchestrator.
+
+If you finish a plan or implementation step, end with factual state only.
+Do not convert completion into an approval prompt.
 
 ## Precision in findings
 
@@ -224,8 +250,8 @@ TESTS:
 - command: not run or interrupted
 - result: ...
 
-DECISION_NEEDED:
-- approve repair / revise scope / abort change
+NEXT_STEP:
+- return issue to Main Orchestrator for repair/abort/scope decision
 
 
 ## File Change Budget (mandatory before edits)

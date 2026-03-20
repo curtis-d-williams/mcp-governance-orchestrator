@@ -122,6 +122,23 @@ State:
 - that no substitute execution was performed
 - whether the repo review can still proceed without that command
 
+Required blocked output must be visible and exact in shape:
+
+STATUS:
+- BLOCKED
+
+BLOCK_REASON:
+- <explicit cause>
+
+COMMAND_ATTEMPTED:
+- <exact command>
+
+SUBSTITUTE_EXECUTION:
+- NONE
+
+REVIEW_CONTINUATION:
+- NOT PERFORMED
+
 ## Pytest target verification discipline
 
 When running a targeted pytest node or class selector:
@@ -262,6 +279,8 @@ Rules:
 - Do not split the command into alternate forms
 - Do not suggest fallback execution paths
 - Do not continue the review after blockage
+- Do not emit commit readiness, scope approval, or delta-check completion after blockage
+- Do not produce a partial review summary alongside the blocked report
 
 This ensures the Orchestrator must explicitly handle the blockage and cannot silently bypass Reviewer responsibilities.
 
