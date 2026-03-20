@@ -518,6 +518,16 @@ def test_run_factory_cycle_records_reference_comparison_gap_for_real_generated_m
         gaps = artifact["cycle_result"].get("reference_mcp_comparison_gaps")
         assert gaps is not None
         assert gaps["capability_gaps"][0]["capability"] == "github_repository_management"
+
+        # Assert synthesis_event and capability_effectiveness_ledger are populated
+        # by the real builder output — closes the assertion gap for the real-build path.
+        synthesis_event = artifact["cycle_result"]["synthesis_event"]
+        assert synthesis_event["status"] == "ok"
+        assert synthesis_event["capability"] == "github_repository_management"
+        assert synthesis_event["comparison_status"] == "ok"
+        caps = artifact["capability_effectiveness_ledger"]["capabilities"]
+        assert "github_repository_management" in caps
+        assert caps["github_repository_management"]["total_syntheses"] == 1
     finally:
         if generated.exists():
             shutil.rmtree(generated)
