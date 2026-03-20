@@ -456,6 +456,103 @@ class TestApplyLearningAdjustments:
         assert result[0]["action_type"] == "analyze_repo_insights"
         assert result[1]["action_type"] == "build_capability_artifact"
 
+    def test_all_scoring_signals_contribute_nonzero_and_sort_order_is_correct(self):
+        """All 7 SCORING_SIGNALS produce non-zero contributions simultaneously.
+
+        Fixture design:
+        - action in ledger (effectiveness_score > 0, effect_deltas non-empty)
+          → times_executed absent → confidence=1.0 (backward-compat)
+          → action exploration bonus uses times_executed=0 → max bonus
+        - current_signals with value < 1.0 matching effect_deltas key
+          → weak_signal_targeting non-zero
+        - policy matching effect_deltas key → policy_component non-zero
+        - capability_ledger with successful syntheses → reliability non-zero
+        - capability_ledger with _repair_cycle.failed_syntheses > 0
+          → repair_pressure non-zero
+        - capability_ledger total_syntheses < threshold → capability exploration non-zero
+
+        Arithmetic (to verify sort order):
+          build_mcp_server base=0.5, confidence=1.0 (times_executed absent)
+            effectiveness  = 1.0 * min(0.8*0.15, clamp) = 0.120
+            signal_delta   = 1.0 * min(0.5*0.05, clamp) = 0.025
+            weak_signal    = 1.0 * (0.5 * (1.0-0.3)) * 0.10 = 0.035
+            policy         = 1.0 * (0.4 * 0.5)              = 0.200
+            reliability    = (6/7 - 0.5) * 0.10             ~ 0.036
+            repair_pressure= (1/3) * 0.08                   ~ 0.027
+            exploration    = action: 1/(1+0)*0.05=0.05 + cap: total=5>=threshold → 0.0 = 0.050
+          Total boost ~ 0.493  →  final ~ 0.993
+
+          competitor base=0.8, absent from ledger → confidence=0.0
+            All confidence-scaled components = 0.0
+            exploration = 0.05 (action absent from ledger → max bonus)
+          final = 0.85
+
+          build_mcp_server (0.993) > competitor (0.85) → sort order holds.
+        """
+        action = {
+            "action_type": "build_mcp_server",
+            "priority": 0.5,
+            "action_id": "aid-1",
+            "repo_id": "repo-1",
+            "args": {"capability": "auth_service"},
+        }
+        ledger = {
+            "build_mcp_server": {
+                "effectiveness_score": 0.8,
+                "effect_deltas": {"signal_x": 0.5},
+                # times_executed absent → confidence_factor = 1.0 (backward-compat)
+            }
+        }
+        current_signals = {"signal_x": 0.3}  # < 1.0 → weak_signal_targeting non-zero
+        policy = {"signal_x": 0.4}           # matches effect_deltas → policy_component non-zero
+        capability_ledger = {
+            "capabilities": {
+                "auth_service": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 4,  # reliability boost
+                },
+                "_repair_cycle": {
+                    "total_syntheses": 3,
+                    "failed_syntheses": 1,      # repair_pressure non-zero
+                },
+            }
+        }
+
+        # Assert all 7 components are non-zero via _compute_priority_breakdown
+        bd = _compute_priority_breakdown(
+            action, ledger, current_signals, policy, capability_ledger
+        )
+        assert bd.effectiveness_component != 0.0, "effectiveness_component must be non-zero"
+        assert bd.signal_delta_component != 0.0, "signal_delta_component must be non-zero"
+        assert bd.weak_signal_targeting_component != 0.0, "weak_signal_targeting_component must be non-zero"
+        assert bd.policy_component != 0.0, "policy_component must be non-zero"
+        assert bd.capability_reliability_component != 0.0, "capability_reliability_component must be non-zero"
+        assert bd.repair_pressure_component != 0.0, "repair_pressure_component must be non-zero"
+        assert bd.exploration_component != 0.0, "exploration_component must be non-zero"
+
+        # Assert _apply_learning_adjustments sort order reflects all-signal combined boost.
+        # Competitor has higher base priority but is absent from both ledgers
+        # → confidence=0.0 → all scaled components zero, no capability signals.
+        # build_mcp_server's combined boost must overtake the priority gap.
+        competitor = {
+            "action_type": "analyze_repo_insights",
+            "priority": 0.8,
+            "action_id": "aid-2",
+            "repo_id": "repo-2",
+        }
+        result = _apply_learning_adjustments(
+            [competitor, action],
+            ledger,
+            current_signals=current_signals,
+            policy=policy,
+            capability_ledger=capability_ledger,
+        )
+        assert result[0]["action_type"] == "build_mcp_server", (
+            f"build_mcp_server should rank first due to all-signal boost; "
+            f"got {[a['action_type'] for a in result]}"
+        )
+        assert result[1]["action_type"] == "analyze_repo_insights"
+
 
 # ---------------------------------------------------------------------------
 # Capability reliability helper stability (D3.3)
