@@ -749,3 +749,96 @@ class TestCycleHistoryRealHandoff:
         assert len(cycles) == 1, f"expected 1 cycle record, got {len(cycles)}"
         record = cycles[0]
         assert record["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — cycle_history.json → cycle_history_summary.json real handoff (Phase J)
+# ---------------------------------------------------------------------------
+
+
+def _load_aggregate_cycle_history():
+    """Load scripts/aggregate_cycle_history.py directly via importlib (no subprocess)."""
+    spec = _importlib_util.spec_from_file_location(
+        "aggregate_cycle_history",
+        str(_REPO_ROOT / "scripts" / "aggregate_cycle_history.py"),
+    )
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestAggregateHistoryRealHandoff:
+    """Real-reference test: Phase J reads cycle_history.json and writes cycle_history_summary.json.
+
+    run_aggregate_cycle_history is replaced with a thin shim that calls the real
+    aggregate_cycle_history() function directly, exercising the
+    cycle_history.json -> cycle_history_summary.json handoff without a subprocess.
+
+    cycle_history.json is pre-written as a pre-condition (Phase I is mocked),
+    following the same pattern used by TestActionEffectivenessRealHandoff for Phase F.
+    """
+
+    def test_cycle_history_summary_written_via_real_aggregate(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write governed_result so run_cycle does not abort after Phase C.
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history.json (Phase I output) directly.
+        # Phase I is mocked so we supply the file it would have written.
+        cycle_history = {
+            "cycles": [
+                {
+                    "ledger_source": None,
+                    "selected_tasks": None,
+                    "status": "ok",
+                    "timestamp": "2026-01-01T00:00:00.000000Z",
+                }
+            ]
+        }
+        Path(arts["cycle_history"]).write_text(
+            json.dumps(cycle_history), encoding="utf-8"
+        )
+
+        _ach_mod = _load_aggregate_cycle_history()
+
+        def _real_run_aggregate_cycle_history_shim(artifacts):
+            """Thin shim: calls the real aggregate_cycle_history() directly."""
+            rc = _ach_mod.aggregate_cycle_history(
+                artifacts["cycle_history"],
+                artifacts["cycle_history_summary"],
+            )
+            if rc != 0:
+                raise RuntimeError("aggregate_cycle_history returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=_real_run_aggregate_cycle_history_shim,
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        summary_path = Path(arts["cycle_history_summary"])
+        assert summary_path.exists(), "cycle_history_summary.json was not written"
+        data = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert data["cycles_total"] == 1
+        assert data["success_rate"] == 1.0
+        assert data["status_counts"] == {"ok": 1}
