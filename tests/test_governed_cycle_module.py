@@ -1206,3 +1206,55 @@ class TestEnforceGovernancePolicyRealHandoff:
         data = json.loads(decision_path.read_text(encoding="utf-8"))
         assert data["decision"] == "continue"
         assert data["regression_detected"] is False
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — Phase L abort path: CalledProcessError → status=aborted
+# ---------------------------------------------------------------------------
+
+
+class TestEnforceGovernancePolicyAbortPath:
+    """Assert that a CalledProcessError from run_enforce_governance_policy causes
+    run_cycle to write status=aborted, phase=governance_enforcement to the cycle
+    artifact and return 1.
+
+    Phase L abort differs from Phase K: cycle_history_summary and
+    cycle_history_regression are both read before Phase L, so the abort
+    artifact includes both keys (None when the prior phases are mocked
+    without writing files).
+    """
+
+    def test_phase_l_failure_writes_aborted_artifact_and_returns_one(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write governed_result so run_cycle does not abort before Phase L.
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(
+                side_effect=subprocess.CalledProcessError(1, [])
+            ),
+        ):
+            rc = run_cycle(args)
+
+        assert rc == 1
+        cycle = json.loads(Path(args.output).read_text(encoding="utf-8"))
+        assert cycle["status"] == "aborted"
+        assert cycle["phase"] == "governance_enforcement"
+        assert "cycle_history_summary" in cycle
+        assert "cycle_history_regression" in cycle
