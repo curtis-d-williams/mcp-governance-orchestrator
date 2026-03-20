@@ -1257,3 +1257,124 @@ class TestCapabilityLedgerThreading:
 
         assert len(captured_args) == 1
         assert captured_args[0].capability_ledger == str(cap_ledger)
+
+
+# ---------------------------------------------------------------------------
+# 15. real planner + capability ledger ranking effect
+# ---------------------------------------------------------------------------
+
+_PLANNER_SCRIPT = _REPO_ROOT / "scripts" / "claude_dynamic_planner_loop.py"
+_planner_spec = importlib.util.spec_from_file_location("claude_dynamic_planner_loop", _PLANNER_SCRIPT)
+_planner_mod = importlib.util.module_from_spec(_planner_spec)
+_planner_spec.loader.exec_module(_planner_mod)
+
+
+def _write_portfolio_state(tmp_path):
+    """Two-action portfolio state: build_capability_artifact and refresh_repo_health."""
+    state = {
+        "repos": [
+            {
+                "repo_id": "repo_a",
+                "signals": {},
+                "recommended_actions": [
+                    {
+                        "action_id": "build_cap_1",
+                        "action_type": "build_capability_artifact",
+                        "priority": 1.0,
+                        "eligible": True,
+                        "args": {"capability": "test_cap"},
+                    },
+                    {
+                        "action_id": "refresh_1",
+                        "action_type": "refresh_repo_health",
+                        "priority": 1.0,
+                        "eligible": True,
+                        "args": {},
+                    },
+                ],
+            }
+        ]
+    }
+    p = tmp_path / "portfolio_state.json"
+    p.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    return p
+
+
+def _write_cap_ledger(tmp_path, successful, total=5):
+    """Write a capability effectiveness ledger for test_cap."""
+    ledger = {
+        "capabilities": {
+            "test_cap": {
+                "total_syntheses": total,
+                "successful_syntheses": successful,
+                "successful_evolved_syntheses": 0,
+            }
+        }
+    }
+    p = tmp_path / "capability_effectiveness_ledger.json"
+    p.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+    return p
+
+
+def _low_risk_preflight(_args):
+    return {"risk_level": "low_risk", "collision_ratio": 0.0, "unique_tasks": 2}
+
+
+class TestRealPlannerCapabilityLedgerEffect:
+    """Real planner subprocess verifies capability ledger alters action ranking."""
+
+    def test_high_success_ledger_promotes_capability_action(self, tmp_path):
+        ps_path = _write_portfolio_state(tmp_path)
+        cap_ledger_path = _write_cap_ledger(tmp_path, successful=5, total=5)
+        args = _make_args(
+            tmp_path,
+            portfolio_state=str(ps_path),
+            capability_ledger=str(cap_ledger_path),
+            top_k=2,
+            runs=1,
+        )
+
+        result = run_governed_loop(
+            args,
+            planner_main=_planner_mod.main,
+            preflight_fn=_low_risk_preflight,
+        )
+
+        assert "selected_offset" in result, f"expected successful governed loop artifact; got {result}"
+        assert "forced" not in result, "loop should not have required force override"
+        envelope_path = tmp_path / "planner_run_envelope_run1.json"
+        assert envelope_path.exists(), "real planner must write envelope"
+        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        window = envelope.get("selection_detail", {}).get("ranked_action_window", [])
+        assert len(window) >= 1
+        assert window[0] == "build_capability_artifact", (
+            f"high-success ledger should promote build_capability_artifact; got {window}"
+        )
+
+    def test_high_failure_ledger_demotes_capability_action(self, tmp_path):
+        ps_path = _write_portfolio_state(tmp_path)
+        cap_ledger_path = _write_cap_ledger(tmp_path, successful=0, total=5)
+        args = _make_args(
+            tmp_path,
+            portfolio_state=str(ps_path),
+            capability_ledger=str(cap_ledger_path),
+            top_k=2,
+            runs=1,
+        )
+
+        result = run_governed_loop(
+            args,
+            planner_main=_planner_mod.main,
+            preflight_fn=_low_risk_preflight,
+        )
+
+        assert "selected_offset" in result, f"expected successful governed loop artifact; got {result}"
+        assert "forced" not in result, "loop should not have required force override"
+        envelope_path = tmp_path / "planner_run_envelope_run1.json"
+        assert envelope_path.exists(), "real planner must write envelope"
+        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        window = envelope.get("selection_detail", {}).get("ranked_action_window", [])
+        assert len(window) >= 1
+        assert window[0] != "build_capability_artifact", (
+            f"high-failure ledger should demote build_capability_artifact; got {window}"
+        )
