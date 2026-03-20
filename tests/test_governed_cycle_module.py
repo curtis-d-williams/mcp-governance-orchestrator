@@ -671,3 +671,81 @@ class TestRunCycleLedgerThreading:
             f"expected ledger={arts['action_effectiveness_ledger']!r}, "
             f"got ledger={kwargs.get('ledger')!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — governed_result.json → cycle_history.json real handoff (Phase I)
+# ---------------------------------------------------------------------------
+
+
+def _load_update_cycle_history():
+    """Load scripts/update_cycle_history.py directly via importlib (no subprocess)."""
+    spec = _importlib_util.spec_from_file_location(
+        "update_cycle_history",
+        str(_REPO_ROOT / "scripts" / "update_cycle_history.py"),
+    )
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestCycleHistoryRealHandoff:
+    """Real-reference test: Phase I reads the cycle artifact and writes cycle_history.json.
+
+    run_update_cycle_history is replaced with a thin shim that calls the real
+    update_cycle_history() function directly, exercising the
+    governed_result.json -> cycle_history.json handoff without a subprocess.
+
+    The cycle artifact (args.output) is written by run_cycle itself at line 651
+    with status="ok" before Phase I is invoked — no pre-write is needed here.
+    """
+
+    def test_cycle_history_written_via_real_update(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write governed_result so run_cycle does not abort after Phase C.
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        _uch_mod = _load_update_cycle_history()
+
+        def _real_update_cycle_history_shim(artifacts, cycle_artifact_path):
+            """Thin shim: calls the real update_cycle_history() directly."""
+            rc = _uch_mod.update_cycle_history(
+                cycle_artifact_path,
+                artifacts["cycle_history"],
+            )
+            if rc != 0:
+                raise RuntimeError("update_cycle_history returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=_real_update_cycle_history_shim,
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        history_path = Path(arts["cycle_history"])
+        assert history_path.exists(), "cycle_history.json was not written"
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+        cycles = history.get("cycles", [])
+        assert len(cycles) == 1, f"expected 1 cycle record, got {len(cycles)}"
+        record = cycles[0]
+        assert record["status"] == "ok"
