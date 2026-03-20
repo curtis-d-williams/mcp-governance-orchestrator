@@ -622,3 +622,52 @@ class TestActionEffectivenessRealHandoff:
         assert entry["success_count"] == 1
         assert entry["failure_count"] == 0
         assert entry["last_status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — --ledger arg threading to run_governed_loop
+# ---------------------------------------------------------------------------
+
+
+class TestRunCycleLedgerThreading:
+    """Assert that when action_effectiveness_ledger.json exists in work_dir,
+    run_cycle passes --ledger <work_dir_path> to run_governed_loop."""
+
+    def test_ledger_arg_threaded_to_run_governed_loop_when_work_dir_ledger_exists(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write action_effectiveness_ledger.json so resolve_planner_ledger
+        # returns source="work_dir" and path=arts["action_effectiveness_ledger"].
+        Path(arts["action_effectiveness_ledger"]).write_text("{}", encoding="utf-8")
+
+        # Write governed_result so run_cycle does not abort after Phase C.
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        mock_loop = MagicMock(return_value=_ok_proc())
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=mock_loop,
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        mock_loop.assert_called_once()
+        _, kwargs = mock_loop.call_args
+        assert kwargs.get("ledger") == arts["action_effectiveness_ledger"], (
+            f"expected ledger={arts['action_effectiveness_ledger']!r}, "
+            f"got ledger={kwargs.get('ledger')!r}"
+        )
