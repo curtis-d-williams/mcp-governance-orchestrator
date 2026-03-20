@@ -80,11 +80,13 @@ DECISION_NEEDED:
 - If full-suite results are provided or you run them, report the outcome concisely.
 - If full suite was not run, state whether commit appears safe without it or whether it is still required.
 - Run exactly one canonical invocation per commit checkpoint: `PYTHONPATH=. pytest -q 2>&1`.
-- Do not rerun with alternate flags, truncation options, or equivalent variants to reshape output.
+- Do not rerun with alternate flags, truncation options, shell pipelines, truncation helpers, or equivalent variants to reshape output.
+- Do not use `tail`, `head`, `tee`, `wait`, shell job control, or background-task wrappers around the full-suite command.
 - Summarize the single canonical result. Never rerun it to produce a cleaner or shorter output.
 - Never start a second full-suite run if one is already running, has already been launched, or has already produced a canonical result for the current checkpoint.
-- Do not launch background full-suite runs, parallel suite runs, or backup suite runs.
-- If a full-suite attempt is already in progress, wait for that single run to resolve or report the blockage back to the Orchestrator.
+- Do not launch background full-suite runs, parallel suite runs, backup suite runs, or orchestrator-fallback suite runs from the Reviewer role.
+- If a full-suite attempt is already in progress, report that status back to the Orchestrator. Do not say you will report later. Do not emit future-tense progress promises such as "will report when complete."
+- If synchronous execution is blocked by session mode, permission mode, or plan mode, report the blockage immediately and stop. Do not retry with alternate command forms.
 
 ## Repo-boundary and task-artifact containment
 

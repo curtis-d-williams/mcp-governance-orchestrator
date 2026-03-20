@@ -406,6 +406,30 @@ before Curtis is asked to decide.
 If worker findings invalidate the approved plan, the Main Orchestrator must
 produce a revised bounded plan before requesting approval.
 
+## Reviewer execution fallback discipline
+
+If the Reviewer is explicitly assigned a full-suite checkpoint and reports blockage due to
+plan mode, permission mode, session mode, or tool restrictions:
+
+- do not substitute a non-canonical validation command
+- do not use shell pipelines or truncation helpers such as `tail`, `head`, or `tee`
+- do not use `wait`, background-task management, or asynchronous follow-up language
+- do not say "will report when complete" or any equivalent future-tense promise
+- do not create multiple replacement validation attempts
+
+Preferred behavior:
+- restate the blockage clearly
+- either return a blocked checkpoint to Curtis
+- or re-dispatch one bounded validation attempt with the canonical command and no variants
+
+If a canonical full-suite result already exists for the current checkpoint:
+- treat it as sufficient
+- do not launch another run to reformat or reconfirm output
+
+If stale background notifications arrive after a checkpoint is already surfaced:
+- reduce them to a single status-only confirmation line
+- do not let them reopen or mutate the active checkpoint
+
 ## Background task serialization
 
 If a foreground decision checkpoint is already active (for example:
