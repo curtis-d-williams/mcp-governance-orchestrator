@@ -30,13 +30,16 @@ from planner_runtime import (  # noqa: E402
     REPAIR_PRESSURE_WEIGHT,
     SIGNAL_IMPACT_CLAMP,
     SIGNAL_IMPACT_WEIGHT,
+    ScoringContext,
     _apply_learning_adjustments,
     _build_priority_breakdown,
     _compute_capability_exploration_adjustment,
     _compute_capability_reliability_adjustment,
+    _compute_exploration_adjustment_raw,
     _compute_priority_breakdown,
     _compute_repair_pressure_adjustment,
     _extract_capability_history,
+    compute_exploration_bonus,
     compute_learning_adjustment,
     load_effectiveness_ledger,
 )
@@ -904,3 +907,57 @@ class TestRepairCycleLedgerExclusion:
         }
         adj = _compute_repair_pressure_adjustment(action, capability_ledger)
         assert adj == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _compute_exploration_adjustment_raw — combined path (action + capability)
+# ---------------------------------------------------------------------------
+
+class TestComputeExplorationAdjustmentRaw:
+    def test_both_sub_functions_contribute_nonzero_and_sum_is_correct(self):
+        """_compute_exploration_adjustment_raw returns the sum of
+        compute_exploration_bonus and _compute_capability_exploration_adjustment
+        when both contribute non-zero values.
+
+        Conditions that guarantee both sub-values are non-zero:
+        - action_type absent from ledger → uncertainty=1.0, full action bonus
+        - capability row exists with total_syntheses=0 → confidence=0.0, full capability bonus
+        """
+        # action_type must be a synthesis type for capability exploration to apply,
+        # and must be absent from the action-level ledger for action exploration bonus.
+        action_type = "build_capability_artifact"
+        action = {
+            "action_type": action_type,
+            "priority": 0.5,
+            "action_id": "aid-raw",
+            "repo_id": "repo-raw",
+            "args": {"capability": "cap_x"},
+        }
+        ledger = {}  # build_capability_artifact absent → times_executed=0 → full action bonus
+        capability_ledger = {
+            "capabilities": {
+                "cap_x": {"total_syntheses": 0, "successful_syntheses": 0}
+            }
+        }
+
+        context = ScoringContext(
+            action=action,
+            action_type=action_type,
+            base_priority=0.5,
+            ledger=ledger,
+            current_signals={},
+            policy={},
+            capability_ledger=capability_ledger,
+            confidence_factor=1.0,
+            row={},
+            effect_deltas={},
+        )
+
+        expected_action_bonus = compute_exploration_bonus(action_type, ledger)
+        expected_cap_bonus = _compute_capability_exploration_adjustment(action, capability_ledger)
+
+        assert expected_action_bonus != 0.0, "action exploration bonus must be non-zero"
+        assert expected_cap_bonus != 0.0, "capability exploration bonus must be non-zero"
+
+        result = _compute_exploration_adjustment_raw(context)
+        assert result == pytest.approx(expected_action_bonus + expected_cap_bonus)
