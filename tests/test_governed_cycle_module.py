@@ -451,3 +451,91 @@ class TestCapabilityLedgerPersistenceInRunCycle:
         caps = ledger.get("capabilities", {})
         assert "_repair_cycle" in caps, "_repair_cycle capability not merged into ledger"
         assert caps["_repair_cycle"]["total_syntheses"] == 3
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — execution_result.json → execution_history.json real handoff
+# ---------------------------------------------------------------------------
+
+import importlib.util as _importlib_util
+
+def _load_update_execution_history():
+    """Load update_execution_history.py directly from scripts/ without subprocess."""
+    spec = _importlib_util.spec_from_file_location(
+        "update_execution_history",
+        str(_REPO_ROOT / "scripts" / "update_execution_history.py"),
+    )
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestExecutionHistoryRealHandoff:
+    """Exercise the real update_execution_history file handoff via the idle path.
+
+    governed_result["idle"] == True causes governed_cycle.py to write
+    execution_result.json itself (without calling run_execute_governed_actions).
+    run_update_execution_history is replaced with a thin shim that calls the
+    real update_execution_history() function directly, exercising the
+    execution_result.json -> execution_history.json handoff without a subprocess.
+    """
+
+    def test_execution_history_written_via_real_update(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # governed_result with idle=True so governed_cycle writes execution_result itself
+        idle_governed_result = {
+            "status": "ok",
+            "idle": True,
+            "selected_offset": 0,
+            "attempts": [],
+            "result": {},
+        }
+        Path(arts["governed_result"]).write_text(
+            json.dumps(idle_governed_result), encoding="utf-8"
+        )
+
+        _ueh_mod = _load_update_execution_history()
+
+        def _real_update_execution_history_shim(artifacts):
+            """Thin shim: calls the real update_execution_history() directly."""
+            rc = _ueh_mod.update_execution_history(
+                artifacts["execution_result"],
+                artifacts["execution_history"],
+            )
+            if rc != 0:
+                raise RuntimeError("update_execution_history returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=_real_update_execution_history_shim,
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        history_path = Path(arts["execution_history"])
+        assert history_path.exists(), "execution_history.json was not written"
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+        records = history.get("records", [])
+        assert len(records) == 1, f"expected 1 record, got {len(records)}"
+        record = records[0]
+        # idle path sets status="ok", resolved_via="no_action_window", selected_tasks=[]
+        assert record["status"] == "ok"
+        assert record["resolved_via"] == "no_action_window"
+        assert record["selected_tasks"] == []
