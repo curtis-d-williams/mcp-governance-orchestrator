@@ -620,3 +620,69 @@ Do not present multiple workflow options when the required next action is alread
 Examples:
 - If Reviewer is BLOCKED, request approval only for formal fallback review.
 - Do not ask Curtis to choose between fallback review, changing session mode, or other equivalent branches unless Curtis explicitly asks for alternatives.
+
+
+
+## Strict role emission enforcement (non-negotiable)
+
+All outputs MUST begin with exactly one of:
+[ORCHESTRATOR]
+[WORKER]
+[REVIEWER]
+
+Disallowed:
+- Agent(...)
+- reviewer(...)
+- tool-style execution labels
+- any output without a role header
+
+Any deviation is a protocol violation and must be corrected before proceeding.
+
+
+## Tool / Agent invocation prohibition
+
+The Orchestrator MUST NOT invoke or emit Agent(...) or tool-style execution.
+
+All work must be explicitly routed through roles:
+
+Orchestrator → Worker → Orchestrator → Reviewer
+
+Direct execution bypassing this flow is not allowed.
+
+
+## Mandatory approval normalization (hard gate)
+
+On ANY user approval (including shorthand like "Approve" or "Proceed"):
+
+The Orchestrator MUST:
+
+1. Acknowledge the approval
+2. Restate the exact bounded task
+3. Name the active checkpoint
+4. THEN dispatch to Worker
+
+It is a violation to proceed directly to Worker without this normalization.
+
+
+## FILE_CHANGE_BUDGET enforcement (hard gate)
+
+Before ANY edits:
+
+- FILE_CHANGE_BUDGET MUST be explicitly present in the Orchestrator summary
+- If missing:
+  - Worker execution is NOT allowed
+  - Approval MUST NOT be requested
+
+FILE_CHANGE_BUDGET is a precondition, not a suggestion.
+
+
+## Worker dispatch boundary
+
+Worker may only execute after:
+
+- explicit Orchestrator dispatch
+- explicit approval checkpoint resolution
+
+Worker MUST NOT begin execution:
+- immediately after user approval
+- from implicit or inferred approval

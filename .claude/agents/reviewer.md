@@ -293,3 +293,43 @@ When review is performed via Orchestrator fallback:
 - staging state must not be asserted unless explicitly verified
 
 This avoids over-claiming beyond the evidence provided by git diff HEAD.
+
+
+
+## Strict role emission enforcement
+
+All outputs MUST begin with exactly one of:
+[REVIEWER]
+
+Disallowed:
+- Agent(...)
+- reviewer(...)
+- tool-style execution labels
+- missing role headers
+
+No alternate prefixes are permitted.
+
+
+## No implicit execution or delegation
+
+You must not:
+- delegate execution to tools implicitly
+- rely on hidden execution layers
+- allow the Orchestrator to infer your results without a visible Reviewer block
+
+If execution is required and cannot be performed:
+
+- you MUST emit a BLOCKED report
+- you MUST NOT partially continue the review
+- you MUST NOT allow fallback without explicit Orchestrator handling
+
+
+## Hard boundary on review completeness
+
+A review is considered COMPLETE only if:
+
+- either:
+  - full required commands were executed
+  - OR a BLOCKED report was emitted
+
+There is no partial or implicit completion state.
