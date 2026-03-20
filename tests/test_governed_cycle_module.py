@@ -846,6 +846,112 @@ class TestAggregateHistoryRealHandoff:
 
 
 # ---------------------------------------------------------------------------
+# run_cycle — cycle_history_summary.json → cycle_history_regression.json real handoff (Phase K)
+# ---------------------------------------------------------------------------
+
+
+def _load_cycle_history_runtime():
+    """Load cycle_history_runtime.py directly via importlib (no subprocess)."""
+    spec = _importlib_util.spec_from_file_location(
+        "cycle_history_runtime",
+        str(_REPO_ROOT / "cycle_history_runtime.py"),
+    )
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestDetectRegressionRealHandoff:
+    """Real-reference test: Phase K reads cycle_history.json +
+    cycle_history_summary.json and writes cycle_history_regression.json.
+
+    run_detect_cycle_history_regression is replaced with a thin shim that
+    calls detect_cycle_history_regression() from cycle_history_runtime directly,
+    exercising the cycle_history_summary.json -> cycle_history_regression.json
+    handoff without a subprocess.
+
+    cycle_history.json and cycle_history_summary.json are pre-written as
+    pre-conditions (Phases I and J are mocked), following the same pattern
+    used by TestAggregateHistoryRealHandoff for Phase J.
+    """
+
+    def test_cycle_history_regression_written_via_real_detect(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write governed_result so run_cycle does not abort after Phase C.
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history.json (Phase I output) directly.
+        cycle_history = {
+            "cycles": [
+                {
+                    "ledger_source": None,
+                    "selected_tasks": None,
+                    "status": "ok",
+                    "timestamp": "2026-01-01T00:00:00.000000Z",
+                }
+            ]
+        }
+        Path(arts["cycle_history"]).write_text(
+            json.dumps(cycle_history), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history_summary.json (Phase J output) directly.
+        cycle_history_summary = {
+            "cycles_total": 1,
+            "success_rate": 1.0,
+            "status_counts": {"ok": 1},
+        }
+        Path(arts["cycle_history_summary"]).write_text(
+            json.dumps(cycle_history_summary), encoding="utf-8"
+        )
+
+        _chr_mod = _load_cycle_history_runtime()
+
+        def _real_run_detect_regression_shim(artifacts):
+            """Thin shim: calls detect_cycle_history_regression() directly."""
+            rc = _chr_mod.detect_cycle_history_regression(
+                artifacts["cycle_history"],
+                artifacts["cycle_history_summary"],
+                artifacts["cycle_history_regression"],
+            )
+            if rc != 0:
+                raise RuntimeError("detect_cycle_history_regression returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=_real_run_detect_regression_shim,
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        regression_path = Path(arts["cycle_history_regression"])
+        assert regression_path.exists(), "cycle_history_regression.json was not written"
+        data = json.loads(regression_path.read_text(encoding="utf-8"))
+        assert data["insufficient_history"] is True
+        assert data["regression_detected"] is False
+        assert data["signals"] == []
+
+
+# ---------------------------------------------------------------------------
 # run_cycle — Phase I abort path: CalledProcessError → status=aborted
 # ---------------------------------------------------------------------------
 
