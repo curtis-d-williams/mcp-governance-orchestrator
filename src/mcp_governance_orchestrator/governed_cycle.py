@@ -566,7 +566,7 @@ def run_cycle(args):
         update_capability_effectiveness_ledger(
             ledger_path=arts["capability_effectiveness_ledger"],
             cycle_artifact_path=arts["governed_result"],
-            output_path=arts["capability_effectiveness_ledger"],
+            output_path=config["capability_ledger"],
         )
 
     # --- Phase D: governed execution ---
