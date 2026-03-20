@@ -856,8 +856,13 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_missing
     monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
     monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
 
+    _compare_calls_missing_tool = []
+
     def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        _compare_calls_missing_tool.append(len(_compare_calls_missing_tool) + 1)
+        score = 0.75 if len(_compare_calls_missing_tool) == 1 else 0.85
         return {
+            "similarity": {"overall_score": score},
             "structure": {"generated_capability": "github_repository_management"},
             "tool_surface": {
                 "coverage_ratio": 0.75,
@@ -947,8 +952,13 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_create_
     monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
     monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
 
+    _compare_calls_create_pr = []
+
     def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        _compare_calls_create_pr.append(len(_compare_calls_create_pr) + 1)
+        score = 0.75 if len(_compare_calls_create_pr) == 1 else 0.85
         return {
+            "similarity": {"overall_score": score},
             "structure": {"generated_capability": "github_repository_management"},
             "tool_surface": {
                 "coverage_ratio": 0.75,
@@ -1041,8 +1051,13 @@ def test_run_autonomous_factory_cycle_generates_evolved_mcp_artifact_for_get_cop
     monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
     monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
 
+    _compare_calls_copilot = []
+
     def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        _compare_calls_copilot.append(len(_compare_calls_copilot) + 1)
+        score = 0.75 if len(_compare_calls_copilot) == 1 else 0.85
         return {
+            "similarity": {"overall_score": score},
             "structure": {"generated_capability": "github_repository_management"},
             "tool_surface": {
                 "coverage_ratio": 0.75,

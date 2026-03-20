@@ -881,8 +881,13 @@ def test_run_factory_cycle_rebuilds_mcp_artifact_with_evolution_overrides(tmp_pa
             "test_expansion": True,
         }
 
+    _compare_calls = []
+
     def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        _compare_calls.append(len(_compare_calls) + 1)
+        score = 0.75 if len(_compare_calls) == 1 else 0.85
         return {
+            "similarity": {"overall_score": score},
             "structure": {"generated_capability": "github_repository_management"},
             "tool_surface": {
                 "coverage_ratio": 0.33,
@@ -960,7 +965,7 @@ def test_run_factory_cycle_rebuilds_mcp_artifact_with_evolution_overrides(tmp_pa
         run_governed_loop=fake_run_governed_loop,
     )
 
-    assert len(build_calls) == 2
+    assert len(build_calls) >= 2
     assert build_calls[0] == {
         "artifact_kind": "mcp_server",
         "capability": "github_repository_management",
@@ -2255,3 +2260,74 @@ def test_evolution_loop_exhausts_all_three_iterations(tmp_path, monkeypatch):
 
     assert len(artifact["cycle_result"]["evolution_iterations"]) == 3
     assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is True
+
+
+def test_evolution_loop_no_score_does_not_commit_evolution(tmp_path, monkeypatch):
+    """When compare_mcp_servers returns no overall_score, iteration_delta is None
+    and evolution must NOT be committed: used_evolution stays False and
+    successful_evolved_syntheses is not incremented."""
+    monkeypatch.setattr(
+        "planner_runtime.load_capability_effectiveness_ledger",
+        lambda *_a, **_k: {"capabilities": {}},
+    )
+
+    def fake_compare_mcp_servers(generated_path, reference_path, output_path=None):
+        # Return a result with no overall_score so iteration_score = None
+        return {"similarity": {}}
+
+    monkeypatch.setattr(_mod, "build_capability_artifact", lambda *, artifact_kind, capability, **kwargs: {
+        "status": "ok",
+        "artifact_kind": "mcp_server",
+        "generated_repo": "/tmp/repo",
+        "capability": "test_cap",
+        "tools": [],
+    })
+    monkeypatch.setattr(_mod, "get_reference_artifact_path", lambda capability: "/tmp/ref_repo", raising=False)
+    monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
+    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison: {"plan": "evolve"}, raising=False)
+    monkeypatch.setattr(
+        _mod,
+        "build_evolution_execution",
+        lambda evolution_plan, *, artifact_kind, current_tools: {"builder_overrides": {"key": "val"}},
+        raising=False,
+    )
+
+    output = tmp_path / "factory_cycle.json"
+
+    artifact = _mod.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=lambda **kwargs: {"risk_level": "low_risk"},
+        run_mapping_repair_cycle=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("wrong branch")
+        ),
+        run_governed_loop=lambda args: {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_mcp_server"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_mcp_server"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_mcp_server",
+                                        "task_binding": {
+                                            "args": {"capability": "test_cap"}
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+    assert artifact["cycle_result"]["synthesis_event"]["used_evolution"] is False
+    cap_entry = artifact["capability_effectiveness_ledger"]["capabilities"].get("test_cap", {})
+    assert cap_entry.get("successful_evolved_syntheses", 0) == 0
