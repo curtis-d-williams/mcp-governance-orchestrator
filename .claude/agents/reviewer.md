@@ -249,6 +249,8 @@ Rules:
 
 If any requested command (diff or full suite) is blocked:
 
+Check execution availability before beginning any review work. If execution is blocked, emit the BLOCKED report as the first and sole output — do not run git diff, do not produce partial analysis, and do not include any review content before or alongside the BLOCKED report.
+
 - You MUST stop immediately after reporting the blockage
 - You MUST NOT:
   - partially complete the review
