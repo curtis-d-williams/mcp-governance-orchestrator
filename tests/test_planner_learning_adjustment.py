@@ -665,6 +665,32 @@ class TestExtractCapabilityHistory:
         }
         assert _extract_capability_history(self._action(), ledger) == ("cap_a", 0.0, 0.0)
 
+    def test_build_mcp_server_action_type_exercises_all_three_functions(self):
+        action = {
+            "action_type": "build_mcp_server",
+            "priority": 0.8,
+            "action_id": "aid-mcp",
+            "repo_id": "repo-mcp",
+            "args": {"capability": "api_gateway"},
+        }
+        capability_ledger = {
+            "capabilities": {
+                "api_gateway": {
+                    "total_syntheses": 2,
+                    "successful_syntheses": 2,
+                }
+            }
+        }
+
+        history = _extract_capability_history(action, capability_ledger)
+        assert history == ("api_gateway", 2.0, 2.0)
+
+        exploration_adj = _compute_capability_exploration_adjustment(action, capability_ledger)
+        assert exploration_adj == pytest.approx(0.003)  # (1 - 0.4) * 0.005
+
+        reliability_adj = _compute_capability_reliability_adjustment(action, capability_ledger)
+        assert reliability_adj == pytest.approx(0.01)  # 0.4 * (0.75 - 0.5) * 0.10
+
 
 # ---------------------------------------------------------------------------
 # Planner scoring telemetry
