@@ -838,6 +838,69 @@ class TestPlannerScoringTelemetry:
         assert record["action_type"] == "refresh_repo_health"
         assert len(record["signal_contributions"]) == 7
 
+    def test_exploration_component_includes_capability_sub_term(self):
+        """exploration_component scaled_value is strictly greater when capability_ledger
+        is populated vs None, proving both action and capability sub-terms contribute."""
+        action = {
+            "action_type": "build_capability_artifact",
+            "priority": 0.80,
+            "action_id": "aid-expl",
+            "repo_id": "repo-expl",
+            "args": {"capability": "snowflake_data_access"},
+        }
+        ledger = {
+            "build_capability_artifact": {
+                "effectiveness_score": 1.0,
+                "effect_deltas": {},
+                "times_executed": 0,
+            }
+        }
+        capability_ledger = {
+            "capabilities": {
+                "snowflake_data_access": {
+                    "total_syntheses": 2,
+                    "successful_syntheses": 2,
+                }
+            }
+        }
+
+        telemetry_none = PlannerScoringTelemetry()
+        _compute_priority_breakdown(
+            action,
+            ledger,
+            current_signals={},
+            policy={},
+            capability_ledger=None,
+            telemetry=telemetry_none,
+        )
+        record_none = telemetry_none.to_dict()["actions"][0]
+        assert len(record_none["signal_contributions"]) == 7
+        expl_none = next(
+            c for c in record_none["signal_contributions"]
+            if c["component_field"] == "exploration_component"
+        )
+
+        telemetry_cap = PlannerScoringTelemetry()
+        _compute_priority_breakdown(
+            action,
+            ledger,
+            current_signals={},
+            policy={},
+            capability_ledger=capability_ledger,
+            telemetry=telemetry_cap,
+        )
+        record_cap = telemetry_cap.to_dict()["actions"][0]
+        assert len(record_cap["signal_contributions"]) == 7
+        expl_cap = next(
+            c for c in record_cap["signal_contributions"]
+            if c["component_field"] == "exploration_component"
+        )
+
+        assert expl_cap["scaled_value"] == pytest.approx(
+            expl_none["scaled_value"] + 0.003
+        )
+        assert expl_cap["scaled_value"] > expl_none["scaled_value"]
+
 
 # ---------------------------------------------------------------------------
 # _repair_cycle ledger entry isolation (Stage 2 guard)
