@@ -1095,3 +1095,114 @@ class TestDetectRegressionAbortPath:
         assert cycle["status"] == "aborted"
         assert cycle["phase"] == "cycle_history_regression"
         assert "cycle_history_summary" in cycle
+
+
+# ---------------------------------------------------------------------------
+# run_cycle — cycle_history_regression → governance_decision.json real handoff (Phase L)
+# ---------------------------------------------------------------------------
+
+
+def _load_enforce_governance_policy():
+    """Load scripts/enforce_governance_policy.py directly via importlib (no subprocess)."""
+    spec = _importlib_util.spec_from_file_location(
+        "enforce_governance_policy",
+        str(_REPO_ROOT / "scripts" / "enforce_governance_policy.py"),
+    )
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestEnforceGovernancePolicyRealHandoff:
+    """Real-reference test: Phase L reads cycle_history.json +
+    cycle_history_summary.json and writes governance_decision.json.
+
+    run_enforce_governance_policy is replaced with a thin shim that
+    calls enforce_governance_policy() from scripts/enforce_governance_policy.py
+    directly, exercising the cycle_history_regression → governance_decision.json
+    handoff without a subprocess.
+
+    cycle_history.json and cycle_history_summary.json are pre-written as
+    pre-conditions (Phases I and J mocked), following the same pattern
+    used by TestDetectRegressionRealHandoff for Phase K.
+    """
+
+    def test_governance_decision_written_via_real_enforce(self, tmp_path):
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # Write governed_result so run_cycle does not abort after Phase C.
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history.json (Phase I output) directly.
+        cycle_history = {
+            "cycles": [
+                {
+                    "ledger_source": None,
+                    "selected_tasks": None,
+                    "status": "ok",
+                    "timestamp": "2026-01-01T00:00:00.000000Z",
+                }
+            ]
+        }
+        Path(arts["cycle_history"]).write_text(
+            json.dumps(cycle_history), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history_summary.json (Phase J output) directly.
+        cycle_history_summary = {
+            "cycles_total": 1,
+            "success_rate": 1.0,
+            "status_counts": {"ok": 1},
+        }
+        Path(arts["cycle_history_summary"]).write_text(
+            json.dumps(cycle_history_summary), encoding="utf-8"
+        )
+
+        # Pre-condition: write a minimal policy file.
+        policy = {"on_regression": "warn", "abort_on_signals": [], "allow_if_only": []}
+        policy_path = str(tmp_path / "_test_policy.json")
+        Path(policy_path).write_text(json.dumps(policy), encoding="utf-8")
+
+        _egp_mod = _load_enforce_governance_policy()
+
+        def _real_run_enforce_governance_policy_shim(artifacts, policy_file=None):
+            """Thin shim: calls enforce_governance_policy() directly."""
+            rc = _egp_mod.enforce_governance_policy(
+                artifacts["cycle_history"],
+                artifacts["cycle_history_summary"],
+                policy_path,
+                artifacts["governance_decision"],
+            )
+            if rc != 0:
+                raise RuntimeError("enforce_governance_policy returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=_real_run_enforce_governance_policy_shim,
+        ):
+            run_cycle(args)
+
+        decision_path = Path(arts["governance_decision"])
+        assert decision_path.exists(), "governance_decision.json was not written"
+        data = json.loads(decision_path.read_text(encoding="utf-8"))
+        assert data["decision"] == "continue"
+        assert data["regression_detected"] is False
