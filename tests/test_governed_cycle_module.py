@@ -418,3 +418,36 @@ class TestCapabilityLedgerPersistenceInRunCycle:
                 run_cycle(args)
 
         mock_update.assert_not_called()
+
+    def test_capability_ledger_written_to_disk_real_reference(self, tmp_path):
+        """update_capability_effectiveness_ledger runs un-mocked and writes ledger to disk."""
+        args = _make_args(tmp_path, capability_ledger=str(tmp_path / "cap.json"))
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=MagicMock(return_value=_ok_proc()),
+        ):
+            run_cycle(args)
+
+        ledger_path = Path(arts["capability_effectiveness_ledger"])
+        assert ledger_path.exists(), "capability_effectiveness_ledger.json was not written"
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        caps = ledger.get("capabilities", {})
+        assert "_repair_cycle" in caps, "_repair_cycle capability not merged into ledger"
+        assert caps["_repair_cycle"]["total_syntheses"] == 3
