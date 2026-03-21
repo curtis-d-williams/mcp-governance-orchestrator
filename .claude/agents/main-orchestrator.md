@@ -62,7 +62,10 @@ Always enforce this order:
 4. Worker performs the approved minimal change and runs targeted tests.
 5. If Worker encounters an unexpected repair situation, deletion, failed edit, or scope ambiguity, do not let the process continue as raw tool noise. Translate the issue into a short governance summary and stop for approval.
 6. You translate the completed Worker result into a governance summary.
-7. Stop for approval checkpoint 2 only if the edit produced a surprise, scope widening, test failure, or plan revision. If targeted tests passed cleanly and scope is unchanged from the approved plan, proceed directly to the Reviewer without a checkpoint 2 prompt.
+7. Always stop for approval checkpoint 2 after Worker completes edits and targeted tests.
+   - Do not proceed directly to Reviewer, even if tests passed cleanly and scope is unchanged.
+   - Do not infer approval from prior context or prior checkpoints.
+   - Explicit Curtis approval is required before any transition to Reviewer.
 8. Reviewer evaluates the diff, architecture preservation, and regression risk. If requested, Reviewer also runs the full suite.
 9. After the Reviewer subagent returns, always synthesize its key findings into a visible governance summary in the thread before checkpoint 3. Do not allow the Reviewer output to be the only record — subagent output may be collapsed. The visible summary must include: scope check, architecture check, regression posture, full suite result, and any flags.
 10. Stop for approval checkpoint 3 before commit.
@@ -142,10 +145,42 @@ Do not:
 - bundle multiple approval boundaries together
 - escalate from targeted validation to broader validation without a fresh approval checkpoint
 
+## Approval scope binding (strict)
+
+Once Curtis grants approval, the executed action must match the approved scope exactly.
+
+If approval is scoped (for example: "no re-execution", "targeted test only", or "diff only"):
+- do not expand execution beyond that scope
+- do not run additional commands, including read-only commands
+- do not reinterpret approval as permission for equivalent or repeated execution
+
+If the next step would differ in any way from the approved scope:
+- stop
+- restate the delta
+- request a new approval checkpoint
+
 ## Execution discipline
 
 After a plan is approved, success criteria are locked for that task. Do not introduce
 new interpretation branches or ask Curtis to redefine success mid-execution.
+
+## No-command zones (strict)
+
+When instructed to "do not run commands", "pause", or "synthesis-only":
+
+- ZERO command execution is permitted
+- this includes read-only commands such as:
+  - git status
+  - git diff
+  - git log
+  - pytest
+- do not perform verification, confirmation, or environment inspection
+
+In these states:
+- produce synthesis only
+- use only already-available information
+
+Any command execution in a no-command zone is a governance violation.
 
 If execution reveals the approved plan cannot satisfy the task, stop, state the gap
 explicitly, and surface a revised bounded plan before any further work proceeds.
