@@ -343,3 +343,56 @@ class TestComparisonStatus:
             }
         ])
         assert aggregated["snowflake_data_access"]["last_comparison_status"] == "error"
+
+
+class TestSimilarityFields:
+    def _sim_cycle(self, similarity_score=None, previous_similarity_score=None, similarity_delta=None):
+        event = {
+            "capability": "snowflake_data_access",
+            "artifact_kind": "data_connector",
+            "status": "ok",
+            "source": "planner_request",
+        }
+        if similarity_score is not None:
+            event["similarity_score"] = similarity_score
+        if previous_similarity_score is not None:
+            event["previous_similarity_score"] = previous_similarity_score
+        if similarity_delta is not None:
+            event["similarity_delta"] = similarity_delta
+        return {"cycle_result": {"synthesis_event": event}}
+
+    def test_similarity_score_propagated_from_synthesis_event(self):
+        aggregated = _aggregate([self._sim_cycle(similarity_score=0.87)])
+        cap = aggregated["snowflake_data_access"]
+        assert cap["similarity_score"] == 0.87
+        assert "previous_similarity_score" not in cap
+        assert "similarity_delta" not in cap
+
+    def test_all_three_similarity_fields_propagated(self):
+        aggregated = _aggregate([
+            self._sim_cycle(
+                similarity_score=0.91,
+                previous_similarity_score=0.75,
+                similarity_delta=0.16,
+            )
+        ])
+        cap = aggregated["snowflake_data_access"]
+        assert cap["similarity_score"] == 0.91
+        assert cap["previous_similarity_score"] == 0.75
+        assert cap["similarity_delta"] == 0.16
+
+    def test_similarity_delta_last_value_wins_across_cycles(self):
+        aggregated = _aggregate([
+            self._sim_cycle(similarity_score=0.80, previous_similarity_score=0.70, similarity_delta=0.10),
+            self._sim_cycle(similarity_score=0.90, previous_similarity_score=0.80, similarity_delta=0.20),
+        ])
+        cap = aggregated["snowflake_data_access"]
+        assert cap["similarity_delta"] == 0.20
+        assert cap["similarity_score"] == 0.90
+
+    def test_similarity_score_absent_when_not_in_event(self):
+        aggregated = _aggregate([_event_cycle()])
+        cap = aggregated["snowflake_data_access"]
+        assert "similarity_score" not in cap
+        assert "previous_similarity_score" not in cap
+        assert "similarity_delta" not in cap

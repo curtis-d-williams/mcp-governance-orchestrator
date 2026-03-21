@@ -1294,3 +1294,32 @@ class TestUpdateFromCyclesRoundTrip:
         ]
         ranked = _apply_learning_adjustments(actions, {}, capability_ledger=ledger)
         assert ranked[0]["action_type"] != "build_capability_artifact"
+
+    def test_similarity_fields_survive_aggregation_to_ledger_file(self, tmp_path):
+        cycle_history = {
+            "cycles": [{
+                "cycle_result": {
+                    "synthesis_event": {
+                        "capability": "test_cap",
+                        "artifact_kind": "mcp_server",
+                        "status": "ok",
+                        "source": "builder",
+                        "similarity_score": 0.91,
+                        "previous_similarity_score": 0.75,
+                        "similarity_delta": 0.16,
+                    }
+                }
+            }]
+        }
+        ch_path = tmp_path / "cycle_history_sim.json"
+        ch_path.write_text(json.dumps(cycle_history), encoding="utf-8")
+        out_path = tmp_path / "cap_ledger_sim.json"
+
+        rc = update_capability_effectiveness_from_cycles(str(ch_path), str(out_path))
+        assert rc == 0
+
+        ledger = load_capability_effectiveness_ledger(str(out_path))
+        cap = ledger["capabilities"]["test_cap"]
+        assert cap["similarity_score"] == 0.91
+        assert cap["previous_similarity_score"] == 0.75
+        assert cap["similarity_delta"] == 0.16
