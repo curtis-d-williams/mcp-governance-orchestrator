@@ -7,6 +7,7 @@ Covers:
 - missing/None ledger produces identical ordering (v0.25 parity)
 - adjustments are bounded by EFFECTIVENESS_CLAMP and SIGNAL_IMPACT_CLAMP
 """
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -44,6 +45,19 @@ from planner_runtime import (  # noqa: E402
     load_capability_effectiveness_ledger,
     load_effectiveness_ledger,
 )
+
+
+# ---------------------------------------------------------------------------
+# Module loader for update_capability_effectiveness_from_cycles
+# ---------------------------------------------------------------------------
+
+_CYCLES_SCRIPT = _REPO_ROOT / "scripts" / "update_capability_effectiveness_from_cycles.py"
+_cycles_spec = importlib.util.spec_from_file_location(
+    "update_capability_effectiveness_from_cycles", _CYCLES_SCRIPT
+)
+_cycles_mod = importlib.util.module_from_spec(_cycles_spec)
+_cycles_spec.loader.exec_module(_cycles_mod)
+update_capability_effectiveness_from_cycles = _cycles_mod.update_capability_effectiveness_from_cycles
 
 
 # ---------------------------------------------------------------------------
@@ -1214,3 +1228,69 @@ class TestLoadCapabilityLedgerRoundTrip:
         adj_no_evo = _compute_capability_reliability_adjustment(action, loaded_no_evo)
         adj_with_evo = _compute_capability_reliability_adjustment(action, loaded_with_evo)
         assert adj_with_evo < adj_no_evo
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateFromCyclesRoundTrip
+# ---------------------------------------------------------------------------
+
+class TestUpdateFromCyclesRoundTrip:
+    """Round-trip: update_capability_effectiveness_from_cycles output → planner ranking."""
+
+    def test_cycle_history_with_success_produces_positive_ranking_boost(self, tmp_path):
+        cycle_history = {
+            "cycles": [{
+                "cycle_result": {
+                    "synthesis_event": {
+                        "capability": "test_cap",
+                        "artifact_kind": "mcp_server",
+                        "status": "ok",
+                        "source": "builder",
+                        "used_evolution": False,
+                    }
+                }
+            }]
+        }
+        ch_path = tmp_path / "cycle_history.json"
+        ch_path.write_text(json.dumps(cycle_history), encoding="utf-8")
+        out_path = tmp_path / "cap_ledger.json"
+
+        rc = update_capability_effectiveness_from_cycles(str(ch_path), str(out_path))
+        assert rc == 0
+        assert out_path.exists()
+
+        ledger = load_capability_effectiveness_ledger(str(out_path))
+        actions = [
+            {"action_type": "build_capability_artifact", "priority": 10.0, "args": {"capability": "test_cap"}},
+            {"action_type": "refresh_repo_health", "priority": 10.0, "args": {}},
+        ]
+        ranked = _apply_learning_adjustments(actions, {}, capability_ledger=ledger)
+        assert ranked[0]["action_type"] == "build_capability_artifact"
+
+    def test_cycle_history_with_failure_produces_negative_ranking_effect(self, tmp_path):
+        failure_cycle = {
+            "cycle_result": {
+                "synthesis_event": {
+                    "capability": "test_cap_fail",
+                    "artifact_kind": "mcp_server",
+                    "status": "failed",
+                    "source": "builder",
+                    "used_evolution": False,
+                }
+            }
+        }
+        cycle_history = {"cycles": [failure_cycle] * 5}
+        ch_path = tmp_path / "cycle_history.json"
+        ch_path.write_text(json.dumps(cycle_history), encoding="utf-8")
+        out_path = tmp_path / "cap_ledger.json"
+
+        rc = update_capability_effectiveness_from_cycles(str(ch_path), str(out_path))
+        assert rc == 0
+
+        ledger = load_capability_effectiveness_ledger(str(out_path))
+        actions = [
+            {"action_type": "build_capability_artifact", "priority": 10.0, "args": {"capability": "test_cap_fail"}},
+            {"action_type": "refresh_repo_health", "priority": 10.0, "args": {}},
+        ]
+        ranked = _apply_learning_adjustments(actions, {}, capability_ledger=ledger)
+        assert ranked[0]["action_type"] != "build_capability_artifact"
