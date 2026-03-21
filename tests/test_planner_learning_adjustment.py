@@ -41,6 +41,7 @@ from planner_runtime import (  # noqa: E402
     _extract_capability_history,
     compute_exploration_bonus,
     compute_learning_adjustment,
+    load_capability_effectiveness_ledger,
     load_effectiveness_ledger,
 )
 
@@ -1121,3 +1122,62 @@ class TestComputeExplorationAdjustmentRaw:
 
         result = _compute_exploration_adjustment_raw(context)
         assert result == pytest.approx(expected_action_bonus + expected_cap_bonus)
+
+
+# ---------------------------------------------------------------------------
+# TestLoadCapabilityLedgerRoundTrip
+# ---------------------------------------------------------------------------
+
+class TestLoadCapabilityLedgerRoundTrip:
+    """Round-trip: file-written ledger -> load -> planner sort effect."""
+
+    def _make_cap_ledger_file(self, tmp_path, capabilities):
+        """Write a capability ledger JSON and return the path string."""
+        data = {"capabilities": capabilities}
+        p = tmp_path / "cap_ledger.json"
+        p.write_text(json.dumps(data), encoding="utf-8")
+        return str(p)
+
+    def test_file_sourced_ledger_produces_nonzero_reliability_adjustment(self, tmp_path):
+        # total=5 (at threshold), success=5 → confidence=1.0, success_rate=6/7 → positive adj
+        path = self._make_cap_ledger_file(tmp_path, {
+            "my_capability": {"total_syntheses": 5, "successful_syntheses": 5}
+        })
+        loaded = load_capability_effectiveness_ledger(path)
+        action = {
+            "action_type": "build_capability_artifact",
+            "args": {"capability": "my_capability"},
+            "priority": 0.5,
+        }
+        result = _compute_capability_reliability_adjustment(action, loaded)
+        assert result != 0.0
+
+    def test_file_sourced_ledger_affects_sort_order(self, tmp_path):
+        # high_cap: 5/5 success → positive boost; low_cap: 0/5 success → negative penalty
+        path = self._make_cap_ledger_file(tmp_path, {
+            "high_cap": {"total_syntheses": 5, "successful_syntheses": 5},
+            "low_cap": {"total_syntheses": 5, "successful_syntheses": 0},
+        })
+        loaded = load_capability_effectiveness_ledger(path)
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "args": {"capability": "low_cap"},
+                "priority": 0.5,
+                "action_id": "aid-low",
+                "repo_id": "repo-0",
+            },
+            {
+                "action_type": "build_capability_artifact",
+                "args": {"capability": "high_cap"},
+                "priority": 0.5,
+                "action_id": "aid-high",
+                "repo_id": "repo-0",
+            },
+        ]
+        sorted_actions = _apply_learning_adjustments(actions, {}, capability_ledger=loaded)
+        assert sorted_actions[0]["args"]["capability"] == "high_cap"
+
+    def test_missing_ledger_file_returns_empty_dict(self):
+        result = load_capability_effectiveness_ledger("/nonexistent/path/cap_ledger.json")
+        assert result == {}
