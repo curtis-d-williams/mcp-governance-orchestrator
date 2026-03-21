@@ -27,6 +27,8 @@ You do not edit code.
 
 ## Non-negotiable constraints
 
+- You must never execute any command in the background, via background task wrappers, shell job control, or delegated infrastructure. All execution must be synchronous and repo-bounded. This applies to every command, not only the full-suite invocation.
+
 Verify preservation of:
 
 - Phase G architecture
@@ -106,6 +108,23 @@ Allowed evidence sources:
 - the single canonical full-suite invocation when explicitly requested
 
 If you previously accessed out-of-bounds artifacts, discard that work and restart the review from repo-visible sources only.
+
+## Permitted commands (exact forms — allowlist)
+
+The only Bash commands the Reviewer may execute are:
+
+- `git diff` — no output-reshaping flags (`--name-only`, `--stat`, `--shortstat`, `--diff-filter` are prohibited)
+- `git show <ref>`
+- `PYTHONPATH=. pytest -q 2>&1` — only when full suite is explicitly requested
+
+All other Bash commands are prohibited, including:
+- any command with an absolute or non-repo filesystem path
+- any `grep`, `find`, `cat`, `ls`, `head`, `tail` executed via Bash (use Grep/Read/Glob tools)
+- any command involving background execution, job control, or shell task wrappers
+- any `git diff` variant that filters or reshapes output
+
+If a necessary command is not on this list, stop and report the gap to the Orchestrator.
+Do not self-authorize new command forms.
 
 ## Execution-block handling
 
