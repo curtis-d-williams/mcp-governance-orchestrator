@@ -267,3 +267,84 @@ def test_missing_cycle_artifact_returns_one_and_does_not_create_output(tmp_path)
 
     assert rc == 1
     assert not registry.exists()
+
+
+def test_registry_update_from_real_factory_cycle_output(tmp_path, monkeypatch):
+    """Feed a real run_factory_cycle() output to update_capability_artifact_registry.
+
+    Confirms _extract_registration() correctly navigates the full factory
+    envelope (decision, inputs, evaluation, capability_effectiveness_ledger,
+    status) and reads only the cycle_result fields it needs.
+    """
+    mod = _require_module()
+
+    import factory_pipeline as _fp
+
+    def fake_build_capability_artifact(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/generated_data_connector_snowflake",
+        }
+
+    monkeypatch.setattr(_fp, "build_capability_artifact", fake_build_capability_artifact)
+
+    def fake_evaluate_planner_config(**kwargs):
+        return {"risk_level": "low_risk"}
+
+    def fake_run_mapping_repair_cycle(**kwargs):
+        raise AssertionError("repair path should not run")
+
+    def fake_run_governed_loop(args):
+        return {
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "data_connector",
+                                                "capability": "snowflake_data_access",
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+
+    output = tmp_path / "factory_cycle.json"
+
+    _fp.run_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="ledger.json",
+        policy="policy.json",
+        top_k=3,
+        output=str(output),
+        evaluate_planner_config=fake_evaluate_planner_config,
+        run_mapping_repair_cycle=fake_run_mapping_repair_cycle,
+        run_governed_loop=fake_run_governed_loop,
+    )
+
+    registry_path = tmp_path / "registry.json"
+    rc = mod.update_capability_artifact_registry(
+        registry_path=str(registry_path),
+        cycle_artifact_path=str(output),
+    )
+
+    assert rc == 0
+
+    registry = _read_json(registry_path)
+    row = registry["capabilities"]["snowflake_data_access"]
+    assert row["latest_artifact"] == "/tmp/generated_data_connector_snowflake"
+    assert row["revision"] == 1
