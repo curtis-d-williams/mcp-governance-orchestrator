@@ -229,6 +229,9 @@ class TestAggregateLogic:
         ])
         assert aggregated == {}
 
+    def test_idle_cycle_with_null_cycle_result_produces_empty_aggregation(self):
+        assert _aggregate([{"cycle_result": None}]) == {}
+
 
 class TestLedgerCreation:
     def test_returns_zero(self, tmp_path):
