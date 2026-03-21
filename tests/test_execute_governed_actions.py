@@ -399,3 +399,57 @@ class TestErrorCases:
         data = json.loads(output.read_text())
         assert data["resolved_via"] == "action_mapping_fallback"
         assert data["selected_tasks"] == ["failure_recovery_example"]
+
+
+# ---------------------------------------------------------------------------
+# E. Real subprocess path (no subprocess.run mock)
+# ---------------------------------------------------------------------------
+
+class TestRealSubprocessPath:
+    def test_real_repo_insights_example(self, tmp_path):
+        """Execute repo_insights_example against the real repo without mocking subprocess."""
+        manifest = tmp_path / "manifest.json"
+        manifest.write_text(
+            json.dumps({"repos": [{"id": "mcp-governance-orchestrator", "path": str(_REPO_ROOT)}]}),
+            encoding="utf-8",
+        )
+
+        gr = _governed_result_with_selected(["repo_insights_example"])
+        gr_path = tmp_path / "governed_result.json"
+        gr_path.write_text(json.dumps(gr) + "\n", encoding="utf-8")
+
+        output = tmp_path / "execution_result.json"
+
+        rc = execute_governed_actions(str(gr_path), str(manifest), str(output))
+
+        # 1. execute_governed_actions returns 0
+        assert rc == 0
+
+        # 2. Output file exists and is valid JSON
+        assert output.exists()
+        data = json.loads(output.read_text(encoding="utf-8"))
+
+        # 3. status == "ok"
+        assert data["status"] == "ok"
+
+        # 4. returncode == 0
+        assert data["returncode"] == 0
+
+        # 5. selected_tasks == ["repo_insights_example"]
+        assert data["selected_tasks"] == ["repo_insights_example"]
+
+        # 6. resolved_via == "selected_actions"
+        assert data["resolved_via"] == "selected_actions"
+
+        # 7. parsed_output is not None
+        assert data["parsed_output"] is not None
+
+        # 8. parsed_output["task_name"] == "repo_insights_example"
+        assert data["parsed_output"]["task_name"] == "repo_insights_example"
+
+        # 9. parsed_output["repos"] is a list of length 1
+        assert isinstance(data["parsed_output"]["repos"], list)
+        assert len(data["parsed_output"]["repos"]) == 1
+
+        # 10. parsed_output["repos"][0]["ok"] is True
+        assert data["parsed_output"]["repos"][0]["ok"] is True
