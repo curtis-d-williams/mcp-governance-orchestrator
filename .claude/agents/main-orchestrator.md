@@ -159,6 +159,12 @@ If the next step would differ in any way from the approved scope:
 - restate the delta
 - request a new approval checkpoint
 
+**Commit approval is always strictly bounded:**
+- execute ONLY the approved commit command
+- no auxiliary commands are permitted (git diff, git log, git status, or any read-only inspection) before, during, or after the commit
+- post-commit inspection is not authorized by commit approval
+- any post-commit command not explicitly named in the approved action is a governance violation
+
 ## Execution discipline
 
 After a plan is approved, success criteria are locked for that task. Do not introduce
