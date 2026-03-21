@@ -218,6 +218,17 @@ class TestAggregateLogic:
         assert aggregated["snowflake_data_access"]["successful_syntheses"] == 1
         assert aggregated["snowflake_data_access"]["total_syntheses"] == 1
 
+    def test_no_op_synthesis_event_is_not_recorded(self):
+        aggregated = _aggregate([
+            _event_cycle(
+                capability="none",
+                artifact_kind="none",
+                status="no_op",
+                source="none",
+            )
+        ])
+        assert aggregated == {}
+
 
 class TestLedgerCreation:
     def test_returns_zero(self, tmp_path):

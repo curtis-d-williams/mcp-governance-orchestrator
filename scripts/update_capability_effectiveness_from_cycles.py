@@ -43,7 +43,7 @@ def _aggregate(cycles):
             status = synthesis_event.get("status")
             source = synthesis_event.get("source")
 
-            if capability and artifact_kind and status and source:
+            if capability and artifact_kind and status and status != "no_op" and source:
                 used_evolution = bool(synthesis_event.get("used_evolution", False))
                 cap_entry = {
                     "artifact_kind": artifact_kind,
