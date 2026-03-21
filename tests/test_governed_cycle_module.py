@@ -1252,6 +1252,106 @@ class TestEnforceGovernancePolicyRealHandoff:
         assert data["decision"] == "continue"
         assert data["regression_detected"] is False
 
+    def test_governance_decision_written_for_idle_cycle(self, tmp_path):
+        """Phase L runs and writes governance_decision.json even when governed_result is idle.
+
+        governed_result["idle"]=True causes governed_cycle.py to skip Phase D
+        (run_execute_governed_actions) but does NOT short-circuit Phase L.
+        This test confirms that enforce_governance_policy is called and
+        governance_decision.json is written with decision="continue" for an
+        idle cycle with no regression.
+        """
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        # idle_governed_result: no capability_effectiveness_ledger key
+        idle_governed_result = {
+            "status": "ok",
+            "idle": True,
+            "selected_offset": 0,
+            "attempts": [],
+            "result": {},
+        }
+        Path(arts["governed_result"]).write_text(
+            json.dumps(idle_governed_result), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history.json (Phase I output) directly.
+        cycle_history = {
+            "cycles": [
+                {
+                    "ledger_source": None,
+                    "selected_tasks": None,
+                    "status": "ok",
+                    "timestamp": "2026-01-01T00:00:00.000000Z",
+                }
+            ]
+        }
+        Path(arts["cycle_history"]).write_text(
+            json.dumps(cycle_history), encoding="utf-8"
+        )
+
+        # Pre-condition: write cycle_history_summary.json (Phase J output) directly.
+        cycle_history_summary = {
+            "cycles_total": 1,
+            "success_rate": 1.0,
+            "status_counts": {"ok": 1},
+        }
+        Path(arts["cycle_history_summary"]).write_text(
+            json.dumps(cycle_history_summary), encoding="utf-8"
+        )
+
+        # Pre-condition: write a minimal policy file.
+        policy = {"on_regression": "warn", "abort_on_signals": [], "allow_if_only": []}
+        policy_path = str(tmp_path / "_test_policy_idle.json")
+        Path(policy_path).write_text(json.dumps(policy), encoding="utf-8")
+
+        _egp_mod = _load_enforce_governance_policy()
+
+        def _real_run_enforce_governance_policy_shim(artifacts, policy_file=None):
+            """Thin shim: calls enforce_governance_policy() directly."""
+            rc = _egp_mod.enforce_governance_policy(
+                artifacts["cycle_history"],
+                artifacts["cycle_history_summary"],
+                policy_path,
+                artifacts["governance_decision"],
+            )
+            if rc != 0:
+                raise RuntimeError("enforce_governance_policy returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=_real_run_enforce_governance_policy_shim,
+        ):
+            run_cycle(args)
+
+        decision_path = Path(arts["governance_decision"])
+        assert decision_path.exists(), "governance_decision.json was not written for idle cycle"
+        data = json.loads(decision_path.read_text(encoding="utf-8"))
+        assert data["decision"] == "continue"
+        assert data["regression_detected"] is False
+
+        # Final cycle.json must contain governance_decision as a non-None dict.
+        cycle_data = json.loads(Path(args.output).read_text(encoding="utf-8"))
+        assert cycle_data["governance_decision"] is not None
+        assert isinstance(cycle_data["governance_decision"], dict)
+
 
 # ---------------------------------------------------------------------------
 # run_cycle — Phase L abort path: CalledProcessError → status=aborted
