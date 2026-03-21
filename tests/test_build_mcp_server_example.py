@@ -45,3 +45,10 @@ def test_task_registry_entry_present():
 
 def test_action_to_task_routes_build_mcp_server():
     assert ACTION_TO_TASK["build_mcp_server"] == "build_mcp_server_example"
+
+
+def test_run_result_has_no_synthesis_event():
+    with patch("agent_tasks.build_mcp_server_example.build_mcp_server") as mock_builder:
+        mock_builder.return_value = _MOCK_BUILDER_RESULT
+        result = run()
+    assert "synthesis_event" not in result

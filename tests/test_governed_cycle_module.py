@@ -176,6 +176,10 @@ class TestArtifactPaths:
         arts = artifact_paths(tmp_path)
         assert all(isinstance(v, str) for v in arts.values())
 
+    def test_synthesis_event_absent(self, tmp_path):
+        arts = artifact_paths(tmp_path)
+        assert "synthesis_event" not in arts
+
 
 # ---------------------------------------------------------------------------
 # resolve_planner_ledger
