@@ -1181,3 +1181,36 @@ class TestLoadCapabilityLedgerRoundTrip:
     def test_missing_ledger_file_returns_empty_dict(self):
         result = load_capability_effectiveness_ledger("/nonexistent/path/cap_ledger.json")
         assert result == {}
+
+    def test_evolution_penalty_reduces_adjustment_vs_no_evolution(self, tmp_path):
+        # File-sourced path: same history, only successful_evolved_syntheses differs.
+        # Confirms load_capability_effectiveness_ledger preserves the field and the
+        # evolution penalty branch measurably lowers the adjustment.
+        no_evo_path = tmp_path / "no_evo_ledger.json"
+        no_evo_path.write_text(
+            json.dumps({"capabilities": {"my_cap": {
+                "total_syntheses": 5,
+                "successful_syntheses": 5,
+                "successful_evolved_syntheses": 0,
+            }}}),
+            encoding="utf-8",
+        )
+        with_evo_path = tmp_path / "with_evo_ledger.json"
+        with_evo_path.write_text(
+            json.dumps({"capabilities": {"my_cap": {
+                "total_syntheses": 5,
+                "successful_syntheses": 5,
+                "successful_evolved_syntheses": 5,
+            }}}),
+            encoding="utf-8",
+        )
+        loaded_no_evo = load_capability_effectiveness_ledger(str(no_evo_path))
+        loaded_with_evo = load_capability_effectiveness_ledger(str(with_evo_path))
+        action = {
+            "action_type": "build_capability_artifact",
+            "args": {"capability": "my_cap"},
+            "priority": 0.5,
+        }
+        adj_no_evo = _compute_capability_reliability_adjustment(action, loaded_no_evo)
+        adj_with_evo = _compute_capability_reliability_adjustment(action, loaded_with_evo)
+        assert adj_with_evo < adj_no_evo
