@@ -1323,3 +1323,39 @@ class TestUpdateFromCyclesRoundTrip:
         assert cap["similarity_score"] == 0.91
         assert cap["previous_similarity_score"] == 0.75
         assert cap["similarity_delta"] == 0.16
+
+    def test_priority_score_decreases_after_failed_synthesis_across_cycles(self, tmp_path):
+        cycle_history = {
+            "cycles": [{
+                "cycle_result": {
+                    "synthesis_event": {
+                        "capability": "api_gateway",
+                        "artifact_kind": "mcp_server",
+                        "status": "failed",
+                        "source": "builder",
+                        "used_evolution": False,
+                    }
+                }
+            }]
+        }
+        ch_path = tmp_path / "cycle_history.json"
+        ch_path.write_text(json.dumps(cycle_history), encoding="utf-8")
+        out_path = tmp_path / "cap_ledger_apigw.json"
+
+        rc = update_capability_effectiveness_from_cycles(str(ch_path), str(out_path))
+        assert rc == 0
+
+        ledger = load_capability_effectiveness_ledger(str(out_path))
+
+        action = {
+            "action_type": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": "aid-1",
+            "repo_id": "repo-1",
+            "args": {"capability": "api_gateway"},
+        }
+
+        bd_baseline = _compute_priority_breakdown(action, {}, {}, {}, capability_ledger={})
+        bd_after_failure = _compute_priority_breakdown(action, {}, {}, {}, capability_ledger=ledger)
+
+        assert bd_after_failure.capability_reliability_component < 0.0
