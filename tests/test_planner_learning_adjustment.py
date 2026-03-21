@@ -1359,3 +1359,43 @@ class TestUpdateFromCyclesRoundTrip:
         bd_after_failure = _compute_priority_breakdown(action, {}, {}, {}, capability_ledger=ledger)
 
         assert bd_after_failure.capability_reliability_component < 0.0
+
+    def test_evolved_synthesis_history_activates_evolution_penalty(self, tmp_path):
+        cycle_history = {
+            "cycles": [{
+                "cycle_result": {
+                    "synthesis_event": {
+                        "capability": "test_cap_evo",
+                        "artifact_kind": "mcp_server",
+                        "status": "ok",
+                        "source": "builder",
+                        "used_evolution": True,
+                        "similarity_delta": 0.20,
+                    }
+                }
+            }]
+        }
+        ch_path = tmp_path / "cycle_history_evo.json"
+        ch_path.write_text(json.dumps(cycle_history), encoding="utf-8")
+        out_path = tmp_path / "cap_ledger_evo.json"
+
+        rc = update_capability_effectiveness_from_cycles(str(ch_path), str(out_path))
+        assert rc == 0
+
+        ledger = load_capability_effectiveness_ledger(str(out_path))
+
+        cap_row = ledger.get("capabilities", {}).get("test_cap_evo", {})
+        assert cap_row.get("successful_evolved_syntheses", 0) >= 1
+
+        action = {
+            "action_type": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": "aid-1",
+            "repo_id": "repo-1",
+            "args": {"capability": "test_cap_evo"},
+        }
+
+        bd_baseline = _compute_priority_breakdown(action, {}, {}, {}, capability_ledger={})
+        bd_after_evolution = _compute_priority_breakdown(action, {}, {}, {}, capability_ledger=ledger)
+
+        assert bd_after_evolution.capability_reliability_component < bd_baseline.capability_reliability_component
