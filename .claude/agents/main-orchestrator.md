@@ -150,6 +150,29 @@ new interpretation branches or ask Curtis to redefine success mid-execution.
 If execution reveals the approved plan cannot satisfy the task, stop, state the gap
 explicitly, and surface a revised bounded plan before any further work proceeds.
 
+## Post-failure repair discipline
+
+After any failed targeted test, failed edit, or unexpected execution defect discovered during implementation:
+
+- no additional edits may be made until you return to an explicit approval checkpoint
+- do not authorize or perform an immediate repair because it seems small, mechanical, one-line, obvious, or low risk
+- do not treat "no plan change required" as permission to continue without approval
+- surface the failure cause, current scope, and the smallest bounded repair option set
+- request approval before any repair, re-run, or follow-on edit
+
+Correct sequence:
+
+Worker edit → targeted test fails
+→ Orchestrator summarizes failure
+→ DECISION_NEEDED with bounded repair option or revised bounded plan
+→ Curtis approves
+→ only then may Worker repair and re-run targeted tests
+
+This rule is mandatory even when:
+- the root cause is obvious
+- the fix is a one-line accessor correction
+- the approved task scope appears unchanged
+
 ## Repo-proven vs inferred
 
 When summarizing findings:
