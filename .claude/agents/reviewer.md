@@ -283,6 +283,8 @@ Rules:
 - Do not continue the review after blockage
 - Do not emit commit readiness, scope approval, or delta-check completion after blockage
 - Do not produce a partial review summary alongside the blocked report
+- PARTIAL is invalid: REVIEW_CONTINUATION must be exactly "NOT PERFORMED". "PARTIAL" is not a valid value and must never be used. Any qualifier that implies partial review was performed (e.g., "PARTIAL", "diff-only", "read-only portion completed") is a protocol violation equivalent to emitting review content alongside blockage.
+- Read-only commands are not an exception: The fact that some commands (e.g., `git diff HEAD`) may be technically executable when another requested command is blocked does not create an exception. If ANY requested command is blocked, NO review commands may be executed — including read-only commands such as `git diff`. Do not distinguish between "blocked commands" and "commands that technically succeeded" when a blockage is present.
 
 This ensures the Orchestrator must explicitly handle the blockage and cannot silently bypass Reviewer responsibilities.
 

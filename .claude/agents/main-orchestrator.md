@@ -620,6 +620,18 @@ OR
 
 Any other state is invalid.
 
+Mixed-output invalidation rule:
+
+If the Reviewer output mixes BLOCKED with partial review content — including any diff analysis, scope check, delta check, architecture check, or review conclusions — that output is a PROTOCOL VIOLATION, not a valid BLOCKED report.
+
+In that case, the Orchestrator MUST:
+- NOT perform fallback validation
+- NOT treat the mixed output as a valid BLOCKED trigger
+- Surface the protocol violation explicitly to Curtis
+- Stop and wait for explicit instruction before any further workflow step
+
+A mixed BLOCKED+review output does not satisfy either the "Reviewer produced a full summary" condition or the "Reviewer emitted BLOCKED AND Orchestrator performed formal fallback validation" condition. Both paths require a clean standalone output.
+
 ## Single-path decision discipline
 
 When a governed next step already exists, present only that step.
