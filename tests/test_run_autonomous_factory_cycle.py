@@ -1612,3 +1612,115 @@ def test_run_autonomous_factory_cycle_skips_ledger_when_both_paths_none(
     assert len(calls) == 0, (
         f"update_capability_effectiveness_ledger should NOT have been called; calls={calls}"
     )
+
+
+def test_multi_cycle_failed_synthesis_lowers_ordinal_rank_in_cycle_2(tmp_path, monkeypatch):
+    """After two failed syntheses for cap_x, the planner's learning signal
+    deprioritizes cap_x below cap_y (no history).  At total=1 failure the
+    exploration bonus (+0.004) outweighs the reliability penalty (-0.003), so
+    the signal only activates on the second failure (net -0.007 at total=2).
+    The ledger is pre-seeded with one prior failure to put cycle 1 over the
+    threshold."""
+    import json as _json
+    from planner_runtime import _apply_learning_adjustments, load_capability_effectiveness_ledger
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "mcp_server",
+                                            "capability": "cap_x",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "failed",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+
+    # Pre-seed ledger with one prior failure so cycle 1 pushes total to 2,
+    # crossing the threshold where reliability penalty > exploration bonus.
+    pre_seed = {
+        "capabilities": {
+            "cap_x": {
+                "capability": "cap_x",
+                "total_syntheses": 1,
+                "successful_syntheses": 0,
+                "failed_syntheses": 1,
+                "last_synthesis_status": "error",
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    # Cycle 1: reads the pre-seeded ledger, fails for cap_x, writes total=2/failed=2.
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle1.json"),
+    )
+
+    # Verify ledger was written with accumulated failure.
+    assert capability_ledger.exists(), "ledger file must be written after cycle 1"
+    loaded_ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps = loaded_ledger.get("capabilities", {})
+    assert "cap_x" in caps, f"cap_x must appear in ledger; got {list(caps.keys())}"
+    assert caps["cap_x"]["failed_syntheses"] == 2
+
+    # Assert learning signal: cap_x (2 failures, net -0.007) ranks below
+    # cap_y (no history, net 0.0).
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_y = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-y",
+        "args": {"capability": "cap_y"},
+    }
+
+    ranked = _apply_learning_adjustments(
+        [action_cap_x, action_cap_y], {}, capability_ledger=loaded_ledger
+    )
+
+    assert ranked[-1]["args"]["capability"] == "cap_x", (
+        f"cap_x (2 failures) must rank last; got {[a['args']['capability'] for a in ranked]}"
+    )
+    assert ranked[0]["args"]["capability"] != "cap_x", (
+        f"cap_y (no history) must rank first; got {ranked[0]['args']['capability']}"
+    )
