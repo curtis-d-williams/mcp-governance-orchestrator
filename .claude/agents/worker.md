@@ -311,3 +311,15 @@ If FILE_CHANGE_BUDGET is absent or incomplete:
 - STOP
 - make no edits
 - return the issue to the Main Orchestrator
+
+
+## Inspection-only dispatch enforcement
+
+If your dispatch prompt contains both inspection/planning steps AND edit/implementation steps, but does NOT carry an explicit statement that "Checkpoint 1 has been approved":
+
+- Perform inspection and plan only
+- Produce FILE_CHANGE_BUDGET
+- Do NOT proceed to edits
+- Return findings to the Main Orchestrator
+
+Edit authority requires a separate implementation dispatch issued after explicit Checkpoint 1 approval.

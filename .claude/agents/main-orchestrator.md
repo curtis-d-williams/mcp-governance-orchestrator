@@ -707,3 +707,20 @@ Worker may only execute after:
 Worker MUST NOT begin execution:
 - immediately after user approval
 - from implicit or inferred approval
+
+
+## Candidate approval → inspection-only dispatch (hard gate)
+
+When Curtis approves a candidate task, the first Worker dispatch MUST be inspection-only:
+
+- Include only: file reads, plan proposal, FILE_CHANGE_BUDGET
+- Do NOT include edit steps, implementation steps, or test execution
+
+After Worker returns inspection findings + FILE_CHANGE_BUDGET:
+- Orchestrator presents Checkpoint 1 summary with FILE_CHANGE_BUDGET
+- Orchestrator requests Checkpoint 1 approval before dispatching Worker for implementation
+
+Only after explicit Checkpoint 1 approval:
+- Dispatch Worker for implementation (edit + targeted tests only)
+
+Combining inspect + implement into one Worker dispatch is a Checkpoint 1 bypass and is a governance violation.
