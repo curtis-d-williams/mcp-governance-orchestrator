@@ -65,7 +65,7 @@ def _entropy(counts):
     if total == 0:
         return 0.0
     h = 0.0
-    for key in sorted(counts):
+    for key in sorted(counts, key=lambda v: v):
         p = counts[key] / total
         if p > 0:
             h -= p * math.log2(p)
