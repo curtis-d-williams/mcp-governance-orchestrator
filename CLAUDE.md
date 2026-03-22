@@ -21,7 +21,7 @@ These are non-negotiable:
 
 - `factory_pipeline.py` is the execution seam. Do not introduce a parallel build subsystem.
 - `builder/mcp_builder.py` is the canonical deterministic MCP builder.
-- `scripts/generate_mcp_server.py` must remain a thin developer-facing entrypoint that delegates to the canonical builder only.
+- `scripts/generate_mcp_server.py` must remain a thin developer-facing entrypoint that delegates to the canonical builder only. Prohibited: adding validation logic, transformation logic, fallback routing, or any other logic that belongs inside the builder.
 
 ## Terminology
 
