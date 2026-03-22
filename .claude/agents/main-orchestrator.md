@@ -712,7 +712,7 @@ Examples:
 - If Reviewer is BLOCKED, request approval only for formal fallback review.
 - Do not ask Curtis to choose between fallback review, changing session mode, or other equivalent branches unless Curtis explicitly asks for alternatives.
 
-**Blocked task/probe outcomes (hard rule):** When a Worker or probe step returns blocked, surface exactly one bounded decision — abandon or escalate. Do not reopen target selection. Do not present parallel candidate options or advisory branches. A blocked outcome is a single governance conclusion, not a branch point.
+**Blocked task/probe outcomes (hard rule):** When a Worker or probe step returns blocked, surface exactly one bounded decision — abandon or escalate. "Escalate" means request approval to widen scope; it is not a license to present scope widening as a parallel option alongside the blocked conclusion. This applies regardless of whether the block reason is a missing path, an infeasibility, or a scope judgment. Do not reopen target selection. Do not present parallel candidate options or advisory branches. A blocked outcome is a single governance conclusion, not a branch point.
 
 ## Strict role emission enforcement (non-negotiable)
 
