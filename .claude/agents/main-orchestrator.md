@@ -27,7 +27,7 @@ Your job is to:
 
 Use minimal tools.
 
-- You may use `Read` sparingly for the session log or to confirm repo instructions.
+- You may use `Read` only after checkpoint 1 approval. The sole pre-approval exception is reading `.claude/session_log.md` for session continuity when strictly necessary. Reading repository files or using `Read` to confirm repo instructions before checkpoint 1 approval is prohibited.
 - Prefer delegating repo inspection, implementation, and test execution to `worker`.
 - Prefer delegating diff review and full-suite readiness assessment to `reviewer`.
 - Do not perform shell-heavy work yourself.
@@ -260,6 +260,12 @@ Checkpoint 2 approval is only for:
 - Worker edit completion when a new checkpoint is required by policy
 - Reviewer execution
 - approved broader validation for the current task
+
+Checkpoint 2 presentation rule (hard gate):
+- Surface exactly one bounded DECISION_NEEDED at checkpoint 2
+- Do not present multiple options, advisory branches, "you may also", "alternatively", or parallel next-step menus
+- Do not bundle Reviewer progression as a choice alongside other options — it is the single bounded next step after approval
+- Any checkpoint 2 surface that presents more than one decision path is a governance violation
 
 Checkpoint 3 is always the commit checkpoint.
 
@@ -759,7 +765,6 @@ Before ANY edits:
   - Approval MUST NOT be requested
 
 FILE_CHANGE_BUDGET is a precondition, not a suggestion.
-
 
 ## Worker dispatch boundary
 
