@@ -1559,3 +1559,40 @@ class TestMultiCycleLearningFeedback:
         actions = [self._action("action_x"), self._action("action_y")]
         result = _apply_learning_adjustments(actions, ledger)
         assert result[0]["action_type"] == "action_x"
+
+    def test_capability_reliability_weight_shifts_ranking_between_two_synthesis_actions(self):
+        """At full confidence (total=5), high-success capability outranks low-success
+        capability when base priorities are identical, proving CAPABILITY_RELIABILITY_WEIGHT
+        is operative as the sole ranking differentiator."""
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.80,
+                "action_id": "aid-low",
+                "repo_id": "repo-1",
+                "args": {"capability": "low_cap"},
+            },
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.80,
+                "action_id": "aid-high",
+                "repo_id": "repo-1",
+                "args": {"capability": "high_cap"},
+            },
+        ]
+        capability_ledger = {
+            "capabilities": {
+                "high_cap": {"total_syntheses": 5, "successful_syntheses": 5},
+                "low_cap": {"total_syntheses": 5, "successful_syntheses": 0},
+            }
+        }
+
+        result = _apply_learning_adjustments(actions, {}, capability_ledger=capability_ledger)
+
+        assert result[0]["args"]["capability"] == "high_cap"
+        assert result[1]["args"]["capability"] == "low_cap"
+
+        high_adj = _compute_capability_reliability_adjustment(actions[1], capability_ledger)
+        low_adj = _compute_capability_reliability_adjustment(actions[0], capability_ledger)
+        expected_delta = (6 / 7 - 1 / 7) * 0.10
+        assert (high_adj - low_adj) == pytest.approx(expected_delta, rel=1e-3)
