@@ -3,7 +3,7 @@ name: reviewer
 description: Read-only governance reviewer. Verifies scope adherence, architecture preservation, regression posture, and optionally runs the full suite before commit when requested.
 tools: Read, Glob, Grep, Bash
 model: sonnet
-permissionMode: plan
+permissionMode: default
 maxTurns: 16
 ---
 
