@@ -750,6 +750,36 @@ class TestCapabilityReliabilityAdjustment:
         # Adjustment must be strictly monotonically increasing across cycles
         assert adj_c1 < adj_c2 < adj_c3
 
+    def test_mixed_signal_ranks_between_all_failure_and_all_success(self):
+        # total=3, success=1 (2 failures, 1 success — net-negative partial recovery)
+        # mixed_adj should rank strictly between all-failure and all-success
+        # for the same total count (total=3).
+        #
+        # all_failure: success_rate = (0+1)/(3+2) = 1/5 = 0.20
+        #   confidence = min(3/5, 1.0) = 0.6
+        #   all_failure_adj = 0.6 * ((0.20 - 0.5) * 0.10) = 0.6 * -0.030 = -0.018
+        #
+        # mixed: success_rate = (1+1)/(3+2) = 2/5 = 0.40
+        #   confidence = min(3/5, 1.0) = 0.6
+        #   mixed_adj = 0.6 * ((0.40 - 0.5) * 0.10) = 0.6 * -0.010 = -0.006
+        #
+        # all_success: success_rate = (3+1)/(3+2) = 4/5 = 0.80
+        #   confidence = min(3/5, 1.0) = 0.6
+        #   all_success_adj = 0.6 * ((0.80 - 0.5) * 0.10) = 0.6 * 0.030 = +0.018
+        action = self._action("cap_a")
+
+        ledger_all_failure = {"capabilities": {"cap_a": {"total_syntheses": 3, "successful_syntheses": 0}}}
+        ledger_mixed       = {"capabilities": {"cap_a": {"total_syntheses": 3, "successful_syntheses": 1}}}
+        ledger_all_success = {"capabilities": {"cap_a": {"total_syntheses": 3, "successful_syntheses": 3}}}
+
+        all_failure_adj = _compute_capability_reliability_adjustment(action, ledger_all_failure)
+        mixed_adj       = _compute_capability_reliability_adjustment(action, ledger_mixed)
+        all_success_adj = _compute_capability_reliability_adjustment(action, ledger_all_success)
+
+        assert mixed_adj > all_failure_adj   # -0.006 > -0.018
+        assert mixed_adj < all_success_adj   # -0.006 < +0.018
+        assert mixed_adj < 0.0              # net-negative history still penalizes
+
 
 class TestCapabilityExplorationAdjustment:
     def _action(self, capability):
