@@ -1723,3 +1723,89 @@ class TestMultiCycleLearningFeedback:
         low_adj = _compute_capability_reliability_adjustment(actions[0], capability_ledger)
         expected_delta = (6 / 7 - 1 / 7) * 0.10
         assert (high_adj - low_adj) == pytest.approx(expected_delta, rel=1e-3)
+
+    def test_top_ranked_action_shifts_across_three_cycles(self):
+        """Verify that the rank-0 action changes from action_beta to action_alpha
+        as action_alpha accumulates successive successes across three ledger snapshots."""
+        # Cycle 1 ledger: both actions tied at effectiveness_score=0.5
+        ledger_c1 = {
+            "action_alpha": {
+                "action_type": "action_alpha",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+            "action_beta": {
+                "action_type": "action_beta",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+
+        actions_c1 = [
+            self._action("action_alpha", priority=0.80),
+            self._action("action_beta", priority=0.85),
+        ]
+        result1 = _apply_learning_adjustments(actions_c1, ledger_c1)
+
+        # Cycle 2 ledger: action_alpha improves to s=3, f=1, score=0.75
+        ledger_c2 = {
+            "action_alpha": {
+                "action_type": "action_alpha",
+                "times_executed": 4,
+                "success_count": 3,
+                "failure_count": 1,
+                "effectiveness_score": 0.75,
+                "effect_deltas": {},
+            },
+            "action_beta": {
+                "action_type": "action_beta",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+
+        actions_c2 = [
+            self._action("action_alpha", priority=0.80),
+            self._action("action_beta", priority=0.85),
+        ]
+        result2 = _apply_learning_adjustments(actions_c2, ledger_c2)
+
+        # Cycle 3 ledger: action_alpha further improves to s=6, f=1, score≈0.857143
+        ledger_c3 = {
+            "action_alpha": {
+                "action_type": "action_alpha",
+                "times_executed": 7,
+                "success_count": 6,
+                "failure_count": 1,
+                "effectiveness_score": round(6 / 7, 6),
+                "effect_deltas": {},
+            },
+            "action_beta": {
+                "action_type": "action_beta",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+
+        actions_c3 = [
+            self._action("action_alpha", priority=0.80),
+            self._action("action_beta", priority=0.85),
+        ]
+        result3 = _apply_learning_adjustments(actions_c3, ledger_c3)
+
+        assert result1[0]["action_type"] == "action_beta"
+        assert result2[0]["action_type"] == "action_alpha"
+        assert result3[0]["action_type"] == "action_alpha"
+        assert result3[0]["action_type"] != result1[0]["action_type"]  # rank-0 shifted
