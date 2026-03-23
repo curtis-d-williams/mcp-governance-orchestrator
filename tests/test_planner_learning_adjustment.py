@@ -1859,3 +1859,69 @@ class TestMultiCycleLearningFeedback:
 
         assert result[0]["action_type"] == "action_high_success"
         assert result[1]["action_type"] == "action_high_fail"
+
+
+class TestComputeExplorationBonus:
+    """Unit tests for compute_exploration_bonus (action-level exploration signal).
+
+    Covers: decay across times_executed steps, boundary values, absent/invalid
+    input handling. Formula: uncertainty = 1/(1+times_executed),
+    bonus = clamp(uncertainty * EXPLORATION_WEIGHT, ±EXPLORATION_CLAMP).
+    """
+
+    def test_absent_action_type_returns_full_bonus(self):
+        from planner_runtime import EXPLORATION_WEIGHT, EXPLORATION_CLAMP  # noqa: F401
+        ledger = {}
+        result = compute_exploration_bonus("build_capability_artifact", ledger)
+        assert result == pytest.approx(EXPLORATION_WEIGHT * 1.0)
+
+    def test_times_executed_zero_returns_full_bonus(self):
+        from planner_runtime import EXPLORATION_WEIGHT, EXPLORATION_CLAMP  # noqa: F401
+        ledger = {"build_capability_artifact": {"times_executed": 0}}
+        result = compute_exploration_bonus("build_capability_artifact", ledger)
+        assert result == pytest.approx(EXPLORATION_WEIGHT * 1.0)
+
+    def test_bonus_decays_strictly_across_steps_zero_through_three(self):
+        bonuses = []
+        for n in range(4):
+            ledger = {"build_capability_artifact": {"times_executed": n}}
+            bonuses.append(compute_exploration_bonus("build_capability_artifact", ledger))
+        for i in range(3):
+            assert bonuses[i] > bonuses[i + 1], (
+                f"expected bonus[{i}]={bonuses[i]} > bonus[{i+1}]={bonuses[i+1]}"
+            )
+
+    def test_high_times_executed_asymptotically_approaches_zero(self):
+        from planner_runtime import EXPLORATION_WEIGHT
+        ledger = {"build_capability_artifact": {"times_executed": 999}}
+        result = compute_exploration_bonus("build_capability_artifact", ledger)
+        assert result > 0
+        assert result < EXPLORATION_WEIGHT * 0.01
+
+    def test_invalid_times_executed_string_treated_as_zero(self):
+        from planner_runtime import EXPLORATION_WEIGHT
+        ledger = {"build_capability_artifact": {"times_executed": "not_a_number"}}
+        result = compute_exploration_bonus("build_capability_artifact", ledger)
+        assert result == pytest.approx(EXPLORATION_WEIGHT * 1.0)
+
+    def test_negative_times_executed_clamped_to_zero(self):
+        from planner_runtime import EXPLORATION_WEIGHT
+        ledger = {"build_capability_artifact": {"times_executed": -5}}
+        result = compute_exploration_bonus("build_capability_artifact", ledger)
+        assert result == pytest.approx(EXPLORATION_WEIGHT * 1.0)
+
+    def test_bonus_never_exceeds_exploration_clamp(self):
+        from planner_runtime import EXPLORATION_CLAMP
+        ledger = {"build_capability_artifact": {"times_executed": 0}}
+        result = compute_exploration_bonus("build_capability_artifact", ledger)
+        assert result <= EXPLORATION_CLAMP
+
+    def test_exact_values_at_steps_one_two_three(self):
+        from planner_runtime import EXPLORATION_WEIGHT
+        for n in (1, 2, 3):
+            ledger = {"build_capability_artifact": {"times_executed": n}}
+            result = compute_exploration_bonus("build_capability_artifact", ledger)
+            expected = EXPLORATION_WEIGHT / (1 + n)
+            assert result == pytest.approx(expected), (
+                f"n={n}: expected {expected}, got {result}"
+            )
