@@ -1844,3 +1844,124 @@ def test_monotonic_rank_degradation_across_four_cycles(tmp_path, monkeypatch):
             f"prior {prev_cap_x_score}"
         )
         prev_cap_x_score = cap_x_score
+
+
+def test_monotonic_rank_reinforcement_across_four_cycles(tmp_path, monkeypatch):
+    """cap_x accumulates 1 success per cycle over 3 cycles (pre-seed total=1,
+    ending at total=4). At every step the reliability adjustment is strictly
+    more positive, so cap_x ranks strictly first vs cap_y (no history) and its
+    adjusted score rises monotonically."""
+    import json as _json
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_priority_breakdown,
+        load_capability_effectiveness_ledger,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "mcp_server",
+                                            "capability": "cap_x",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    # Pre-seed ledger: cap_x total=1, successful=1.
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    pre_seed = {
+        "capabilities": {
+            "cap_x": {
+                "capability": "cap_x",
+                "total_syntheses": 1,
+                "successful_syntheses": 1,
+                "failed_syntheses": 0,
+                "last_synthesis_status": "ok",
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_y = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-y",
+        "args": {"capability": "cap_y"},
+    }
+
+    prev_cap_x_score = float("-inf")
+    for cycle_idx in range(1, 4):  # 3 cycles: totals become 2, 3, 4
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"cycle{cycle_idx}.json"),
+        )
+
+        loaded_ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+        caps = loaded_ledger.get("capabilities", {})
+        expected_total = cycle_idx + 1
+        assert caps["cap_x"]["total_syntheses"] == expected_total, (
+            f"cycle {cycle_idx}: expected total_syntheses={expected_total}, "
+            f"got {caps['cap_x']['total_syntheses']}"
+        )
+        assert caps["cap_x"]["successful_syntheses"] == expected_total, (
+            f"cycle {cycle_idx}: expected successful_syntheses={expected_total}, "
+            f"got {caps['cap_x']['successful_syntheses']}"
+        )
+
+        ranked = _apply_learning_adjustments(
+            [action_cap_x, action_cap_y], {}, capability_ledger=loaded_ledger
+        )
+        assert ranked[0]["args"]["capability"] == "cap_x", (
+            f"cycle {cycle_idx}: cap_x must rank first, got "
+            f"{[a['args']['capability'] for a in ranked]}"
+        )
+
+        bd = _compute_priority_breakdown(action_cap_x, {}, {}, {}, loaded_ledger)
+        cap_x_score = bd.final_priority
+        assert cap_x_score > prev_cap_x_score, (
+            f"cycle {cycle_idx}: cap_x score {cap_x_score} not strictly above "
+            f"prior {prev_cap_x_score}"
+        )
+        prev_cap_x_score = cap_x_score
