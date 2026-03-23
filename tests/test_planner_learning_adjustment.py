@@ -1399,3 +1399,163 @@ class TestUpdateFromCyclesRoundTrip:
         bd_after_evolution = _compute_priority_breakdown(action, {}, {}, {}, capability_ledger=ledger)
 
         assert bd_after_evolution.capability_reliability_component < bd_baseline.capability_reliability_component
+
+
+# ---------------------------------------------------------------------------
+# Multi-cycle learning feedback (cycle N ledger delta → cycle N+1 ranking)
+# ---------------------------------------------------------------------------
+
+class TestMultiCycleLearningFeedback:
+    """Verify that ledger state delta from Cycle N changes planner rankings in Cycle N+1."""
+
+    @staticmethod
+    def _recompute(row):
+        s, f = row["success_count"], row["failure_count"]
+        row["effectiveness_score"] = round(s / max(1, s + f), 6)
+
+    @staticmethod
+    def _action(action_type, priority=1.0):
+        return {
+            "action_type": action_type,
+            "priority": priority,
+            "action_id": f"aid-{action_type}",
+            "repo_id": "repo-test",
+        }
+
+    def test_ledger_delta_changes_ranking_cycle_n_plus_1(self):
+        ledger = {
+            "action_a": {
+                "action_type": "action_a",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+            "action_b": {
+                "action_type": "action_b",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+        # Simulate outcome: action_a succeeds 3 more times, action_b fails 3 more times
+        ledger["action_a"]["success_count"] += 3
+        ledger["action_a"]["times_executed"] += 3
+        self._recompute(ledger["action_a"])
+
+        ledger["action_b"]["failure_count"] += 3
+        ledger["action_b"]["times_executed"] += 3
+        self._recompute(ledger["action_b"])
+
+        # action_a: s=4, f=1 → score=0.8; action_b: s=1, f=4 → score=0.2
+        assert ledger["action_a"]["effectiveness_score"] > ledger["action_b"]["effectiveness_score"]
+
+        actions = [self._action("action_a"), self._action("action_b")]
+        result = _apply_learning_adjustments(actions, ledger)
+        types = [a["action_type"] for a in result]
+        assert types[0] == "action_a"
+        assert types[1] == "action_b"
+
+    def test_consistently_succeeding_action_rises_over_cycles(self):
+        ledger = {
+            "action_winner": {
+                "action_type": "action_winner",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+            "action_baseline": {
+                "action_type": "action_baseline",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+        adjustments = []
+        for _ in range(5):
+            ledger["action_winner"]["success_count"] += 1
+            ledger["action_winner"]["times_executed"] += 1
+            self._recompute(ledger["action_winner"])
+            adjustments.append(compute_learning_adjustment("action_winner", ledger))
+
+        assert adjustments[4] > adjustments[0]
+
+        actions = [self._action("action_baseline"), self._action("action_winner")]
+        result = _apply_learning_adjustments(actions, ledger)
+        types = [a["action_type"] for a in result]
+        assert types[0] == "action_winner"
+
+    def test_consistently_failing_action_falls_over_cycles(self):
+        ledger = {
+            "action_loser": {
+                "action_type": "action_loser",
+                "times_executed": 4,
+                "success_count": 2,
+                "failure_count": 2,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+            "action_stable": {
+                "action_type": "action_stable",
+                "times_executed": 4,
+                "success_count": 2,
+                "failure_count": 2,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+        adjustments = []
+        for _ in range(5):
+            ledger["action_loser"]["failure_count"] += 1
+            ledger["action_loser"]["times_executed"] += 1
+            self._recompute(ledger["action_loser"])
+            adjustments.append(compute_learning_adjustment("action_loser", ledger))
+
+        assert adjustments[4] < adjustments[0]
+
+        actions = [self._action("action_loser"), self._action("action_stable")]
+        result = _apply_learning_adjustments(actions, ledger)
+        types = [a["action_type"] for a in result]
+        assert types.index("action_loser") > types.index("action_stable")
+
+    def test_cycle_n_outcome_propagated_to_cycle_n_plus1_ledger(self):
+        ledger = {
+            "action_x": {
+                "action_type": "action_x",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+            "action_y": {
+                "action_type": "action_y",
+                "times_executed": 2,
+                "success_count": 1,
+                "failure_count": 1,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+        # Simulate Cycle N outcome
+        ledger["action_x"]["success_count"] += 1
+        ledger["action_x"]["times_executed"] += 1
+        self._recompute(ledger["action_x"])
+
+        ledger["action_y"]["failure_count"] += 1
+        ledger["action_y"]["times_executed"] += 1
+        self._recompute(ledger["action_y"])
+
+        assert ledger["action_x"]["effectiveness_score"] > 0.5
+        assert ledger["action_y"]["effectiveness_score"] < 0.5
+
+        actions = [self._action("action_x"), self._action("action_y")]
+        result = _apply_learning_adjustments(actions, ledger)
+        assert result[0]["action_type"] == "action_x"
