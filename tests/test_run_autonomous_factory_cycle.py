@@ -1965,3 +1965,173 @@ def test_monotonic_rank_reinforcement_across_four_cycles(tmp_path, monkeypatch):
             f"prior {prev_cap_x_score}"
         )
         prev_cap_x_score = cap_x_score
+
+
+def test_cross_capability_competition_rankings_cross(tmp_path, monkeypatch):
+    """cap_y accumulates 3 failed cycles; cap_x accumulates 3 successful cycles.
+    After phase 1 (cap_y failures) cap_x already ranks above cap_y via the
+    exploration bonus.  After phase 2 (cap_x successes) the gap widens: cap_x
+    carries a positive reliability adjustment and cap_y a negative one, with
+    cap_x ranked first throughout."""
+    import json as _json
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_reliability_adjustment,
+        _compute_priority_breakdown,
+        load_capability_effectiveness_ledger,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+
+    # Mutable state drives both the governed result and the builder response
+    # so that phase 1 and phase 2 differ only in which capability is built and
+    # whether the build succeeds.
+    state = {"capability": "cap_y", "status": "failed"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    capability_ledger.write_text(_json.dumps({"capabilities": {}}), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_y = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-y",
+        "args": {"capability": "cap_y"},
+    }
+
+    # --- Phase 1: 3 failure cycles for cap_y ---
+    state["capability"] = "cap_y"
+    state["status"] = "failed"
+    for i in range(1, 4):
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"phase1_cycle{i}.json"),
+        )
+
+    ledger_after_p1 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_p1 = ledger_after_p1.get("capabilities", {})
+
+    assert caps_p1.get("cap_y", {}).get("failed_syntheses") == 3, (
+        f"phase 1: expected cap_y failed_syntheses=3, got {caps_p1.get('cap_y')}"
+    )
+    assert "cap_x" not in caps_p1, (
+        f"phase 1: cap_x must not appear in ledger yet; got {list(caps_p1.keys())}"
+    )
+
+    # cap_y has negative reliability adjustment; cap_x has exploration bonus only.
+    cap_y_adj_p1 = _compute_capability_reliability_adjustment(action_cap_y, ledger_after_p1)
+    assert cap_y_adj_p1 < 0.0, (
+        f"phase 1: cap_y reliability adjustment must be negative; got {cap_y_adj_p1}"
+    )
+
+    ranked_p1 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_y], {}, capability_ledger=ledger_after_p1
+    )
+    assert ranked_p1[0]["args"]["capability"] == "cap_x", (
+        f"phase 1: cap_x (exploration bonus) must rank above cap_y (negative adj); "
+        f"got {[a['args']['capability'] for a in ranked_p1]}"
+    )
+
+    # --- Phase 2: 3 success cycles for cap_x ---
+    state["capability"] = "cap_x"
+    state["status"] = "ok"
+    for i in range(1, 4):
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"phase2_cycle{i}.json"),
+        )
+
+    ledger_after_p2 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_p2 = ledger_after_p2.get("capabilities", {})
+
+    assert caps_p2.get("cap_x", {}).get("successful_syntheses") == 3, (
+        f"phase 2: expected cap_x successful_syntheses=3, got {caps_p2.get('cap_x')}"
+    )
+    assert caps_p2.get("cap_y", {}).get("failed_syntheses") == 3, (
+        f"phase 2: cap_y failed_syntheses must remain 3; got {caps_p2.get('cap_y')}"
+    )
+
+    # cap_x carries a positive reliability adjustment; cap_y remains negative.
+    cap_x_adj_p2 = _compute_capability_reliability_adjustment(action_cap_x, ledger_after_p2)
+    cap_y_adj_p2 = _compute_capability_reliability_adjustment(action_cap_y, ledger_after_p2)
+    assert cap_x_adj_p2 > 0.0, (
+        f"phase 2: cap_x reliability adjustment must be positive; got {cap_x_adj_p2}"
+    )
+    assert cap_y_adj_p2 < 0.0, (
+        f"phase 2: cap_y reliability adjustment must remain negative; got {cap_y_adj_p2}"
+    )
+
+    ranked_p2 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_y], {}, capability_ledger=ledger_after_p2
+    )
+    assert ranked_p2[0]["args"]["capability"] == "cap_x", (
+        f"phase 2: cap_x (positive adj) must rank above cap_y (negative adj); "
+        f"got {[a['args']['capability'] for a in ranked_p2]}"
+    )
+    assert ranked_p2[-1]["args"]["capability"] == "cap_y", (
+        f"phase 2: cap_y must rank last; "
+        f"got {[a['args']['capability'] for a in ranked_p2]}"
+    )
+
+    # Score gap must have widened from phase 1 to phase 2.
+    bd_x_p1 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_after_p1)
+    bd_y_p1 = _compute_priority_breakdown(action_cap_y, {}, {}, {}, ledger_after_p1)
+    bd_x_p2 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_after_p2)
+    bd_y_p2 = _compute_priority_breakdown(action_cap_y, {}, {}, {}, ledger_after_p2)
+    gap_p1 = bd_x_p1.final_priority - bd_y_p1.final_priority
+    gap_p2 = bd_x_p2.final_priority - bd_y_p2.final_priority
+    assert gap_p2 > gap_p1 > 0.0, (
+        f"score gap must widen across phases: phase1={gap_p1:.6f}, phase2={gap_p2:.6f}"
+    )
