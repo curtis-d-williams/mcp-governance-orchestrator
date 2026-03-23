@@ -695,6 +695,23 @@ class TestCapabilityReliabilityAdjustment:
 
         assert adj == pytest.approx(expected)
 
+    def test_near_threshold_total4_full_success_exact_value(self):
+        action = self._action("cap_a")
+        ledger = {"capabilities": {"cap_a": {"total_syntheses": 4, "successful_syntheses": 4}}}
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+        assert adj == pytest.approx(0.8 * ((5 / 6 - 0.5) * 0.10))
+
+    def test_near_threshold_total4_less_than_full_confidence_total5(self):
+        action = self._action("cap_a")
+        ledger_4 = {"capabilities": {"cap_a": {"total_syntheses": 4, "successful_syntheses": 4}}}
+        ledger_5 = {"capabilities": {"cap_a": {"total_syntheses": 5, "successful_syntheses": 5}}}
+        adj_4 = _compute_capability_reliability_adjustment(action, ledger_4)
+        adj_5 = _compute_capability_reliability_adjustment(action, ledger_5)
+        assert adj_4 == pytest.approx(0.8 * ((5 / 6 - 0.5) * 0.10))
+        assert adj_5 == pytest.approx(1.0 * ((6 / 7 - 0.5) * 0.10))
+        assert adj_4 < adj_5
+        assert adj_5 - adj_4 == pytest.approx(0.5 / 14 - 0.08 / 3)
+
 
 class TestCapabilityExplorationAdjustment:
     def _action(self, capability):
