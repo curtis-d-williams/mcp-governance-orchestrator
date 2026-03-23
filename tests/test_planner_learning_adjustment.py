@@ -1828,3 +1828,34 @@ class TestMultiCycleLearningFeedback:
         assert result2[0]["action_type"] == "action_alpha"
         assert result3[0]["action_type"] == "action_alpha"
         assert result3[0]["action_type"] != result1[0]["action_type"]  # rank-0 shifted
+
+    def test_failed_capability_deprioritized(self):
+        """Verify that an action with a high failure rate ranks below an action
+        with a high success rate when both share equal base priority."""
+        ledger = {
+            "action_high_success": {
+                "action_type": "action_high_success",
+                "times_executed": 10,
+                "success_count": 9,
+                "failure_count": 1,
+                "effectiveness_score": round(9 / 10, 6),
+                "effect_deltas": {},
+            },
+            "action_high_fail": {
+                "action_type": "action_high_fail",
+                "times_executed": 10,
+                "success_count": 1,
+                "failure_count": 9,
+                "effectiveness_score": round(1 / 10, 6),
+                "effect_deltas": {},
+            },
+        }
+
+        actions = [
+            self._action("action_high_success", priority=1.0),
+            self._action("action_high_fail", priority=1.0),
+        ]
+        result = _apply_learning_adjustments(actions, ledger)
+
+        assert result[0]["action_type"] == "action_high_success"
+        assert result[1]["action_type"] == "action_high_fail"
