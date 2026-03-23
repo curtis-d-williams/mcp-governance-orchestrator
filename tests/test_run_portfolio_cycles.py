@@ -474,3 +474,25 @@ class TestCollisionSafeArchiving:
 
         for p in archive_dir.glob(f"{fixed_ts}_cycle*.json"):
             assert p.read_text(encoding="utf-8") == _CYCLE_JSON
+
+
+# ---------------------------------------------------------------------------
+# I. Ledger threading across all cycle invocations
+# ---------------------------------------------------------------------------
+
+class TestLedgerThreading:
+    def test_explicit_ledger_present_in_every_cycle_invocation(self, tmp_path):
+        ledger = str(tmp_path / "ledger.json")
+        args = _make_args(tmp_path, cycles=3, ledger=ledger)
+        captured_cmds = []
+
+        def recording(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            return MagicMock(returncode=0)
+
+        run_cycles(args, subprocess_run=recording, sleep_fn=_noop_sleep)
+
+        assert len(captured_cmds) == 3
+        for cmd in captured_cmds:
+            assert "--ledger" in cmd
+            assert ledger in cmd
