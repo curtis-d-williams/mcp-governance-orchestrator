@@ -210,3 +210,47 @@ def test_last_comparison_status_propagates_from_cycle(tmp_path):
     row = result["capabilities"]["github_repository_management"]
 
     assert row["last_comparison_status"] == "ok"
+
+
+class TestLedgerCounterCompounding:
+    def test_counters_compound_across_two_cycle_calls(self, tmp_path):
+        ledger_path = tmp_path / "ledger.json"
+        ledger_path.write_text(json.dumps({"capabilities": {}}), encoding="utf-8")
+
+        cycle1_payload = {
+            "capability_effectiveness_ledger": {
+                "capabilities": {
+                    "mcp_tool_a": {
+                        "artifact_kind": "mcp_server",
+                        "total_syntheses": 1,
+                        "successful_syntheses": 1,
+                        "failed_syntheses": 0,
+                        "successful_evolved_syntheses": 0,
+                        "last_synthesis_source": "builder",
+                        "last_synthesis_status": "ok",
+                        "last_synthesis_used_evolution": False,
+                    }
+                }
+            }
+        }
+        cycle1_path = tmp_path / "cycle1.json"
+        cycle1_path.write_text(json.dumps(cycle1_payload), encoding="utf-8")
+
+        update_capability_effectiveness_ledger(str(ledger_path), str(cycle1_path))
+
+        result = _read_json(ledger_path)
+        cap = result["capabilities"]["mcp_tool_a"]
+        assert cap["total_syntheses"] == 1
+        assert cap["successful_syntheses"] == 1
+
+        cycle2_path = tmp_path / "cycle2.json"
+        cycle2_path.write_text(json.dumps(cycle1_payload), encoding="utf-8")
+
+        update_capability_effectiveness_ledger(str(ledger_path), str(cycle2_path))
+
+        result = _read_json(ledger_path)
+        cap = result["capabilities"]["mcp_tool_a"]
+        assert cap["total_syntheses"] == 2
+        assert cap["successful_syntheses"] == 2
+        assert cap["failed_syntheses"] == 0
+        assert cap["last_synthesis_status"] == "ok"
