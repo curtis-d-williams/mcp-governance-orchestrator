@@ -2336,3 +2336,136 @@ def test_end_to_end_learning_loop_integrated_sequence(tmp_path, monkeypatch):
         f"checkpoint 2: cap_x final_priority ({bd_x_c2.final_priority:.6f}) must exceed "
         f"cap_y final_priority ({bd_y_c2.final_priority:.6f})"
     )
+
+
+def test_exploration_bonus_decays_as_successful_syntheses_accumulate_via_cycle(
+    tmp_path, monkeypatch
+):
+    """cap_x starts with no ledger history (blank slate). Five successful cycles
+    are executed via run_autonomous_factory_cycle. After each cycle the
+    capability exploration bonus (_compute_capability_exploration_adjustment)
+    must be strictly less than the previous value. At cycle 5 (total_syntheses
+    == CAPABILITY_CONFIDENCE_THRESHOLD == 5) the bonus must equal exactly 0.0
+    (full maturity). Validates the live decay path through the full
+    cycle-artifact -> capability_effectiveness_ledger -> planner pipeline.
+    """
+    import json as _json
+    from planner_runtime import (
+        _compute_capability_exploration_adjustment,
+        _compute_priority_breakdown,
+        load_capability_effectiveness_ledger,
+        CAPABILITY_CONFIDENCE_THRESHOLD,
+        CAPABILITY_EXPLORATION_WEIGHT,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "mcp_server",
+                                            "capability": "cap_x",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    # Blank ledger: no prior history for cap_x.
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    capability_ledger.write_text(_json.dumps({"capabilities": {}}), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+
+    # Maximum theoretical bonus before any history exists (total=0 row absent -> 0.0
+    # from _compute_capability_exploration_adjustment, but the theoretical max if a
+    # row with total=0 existed would be CAPABILITY_EXPLORATION_WEIGHT). We use
+    # CAPABILITY_EXPLORATION_WEIGHT as the starting sentinel because cycle 1
+    # (total=1) must produce a strictly smaller value than that maximum.
+    prev_exploration_adj = CAPABILITY_EXPLORATION_WEIGHT  # 0.005
+
+    for cycle_idx in range(1, 6):  # 5 cycles: totals become 1, 2, 3, 4, 5
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"cycle{cycle_idx}.json"),
+        )
+
+        loaded_ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+        caps = loaded_ledger.get("capabilities", {})
+
+        assert caps["cap_x"]["total_syntheses"] == cycle_idx, (
+            f"cycle {cycle_idx}: expected total_syntheses={cycle_idx}, "
+            f"got {caps['cap_x']['total_syntheses']}"
+        )
+        assert caps["cap_x"]["successful_syntheses"] == cycle_idx, (
+            f"cycle {cycle_idx}: expected successful_syntheses={cycle_idx}, "
+            f"got {caps['cap_x']['successful_syntheses']}"
+        )
+
+        exploration_adj = _compute_capability_exploration_adjustment(
+            action_cap_x, loaded_ledger
+        )
+
+        assert exploration_adj < prev_exploration_adj, (
+            f"cycle {cycle_idx}: exploration bonus {exploration_adj} must be strictly "
+            f"less than previous {prev_exploration_adj}"
+        )
+        prev_exploration_adj = exploration_adj
+
+        if cycle_idx == 5:
+            assert exploration_adj == pytest.approx(0.0), (
+                f"cycle {cycle_idx}: at total_syntheses == CAPABILITY_CONFIDENCE_THRESHOLD "
+                f"({int(CAPABILITY_CONFIDENCE_THRESHOLD)}), exploration bonus must be 0.0; "
+                f"got {exploration_adj}"
+            )
+            # At maturity the capability exploration component is 0.0; the breakdown's
+            # exploration_component must equal the baseline (blank capability ledger),
+            # which carries only the action-level exploration portion.
+            bd = _compute_priority_breakdown(action_cap_x, {}, {}, {}, loaded_ledger)
+            bd_baseline = _compute_priority_breakdown(
+                action_cap_x, {}, {}, {}, {"capabilities": {}}
+            )
+            assert bd.exploration_component == pytest.approx(
+                bd_baseline.exploration_component
+            ), (
+                f"at maturity, capability exploration must be zero; "
+                f"bd.exploration_component={bd.exploration_component}, "
+                f"baseline={bd_baseline.exploration_component}"
+            )
