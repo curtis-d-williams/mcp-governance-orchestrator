@@ -1630,6 +1630,28 @@ class TestMultiCycleLearningFeedback:
 
         assert adjustments[0] > adjustments[1] > adjustments[2] > adjustments[3]
 
+    def test_action_effectiveness_reinforcement_is_monotonic_per_cycle(self):
+        ledger = {
+            "action_winner": {
+                "action_type": "action_winner",
+                "times_executed": 4,
+                "success_count": 2,
+                "failure_count": 2,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+        adjustments = []
+        for _ in range(4):
+            ledger["action_winner"]["success_count"] += 1
+            ledger["action_winner"]["times_executed"] += 1
+            self._recompute(ledger["action_winner"])
+            adjustments.append(compute_learning_adjustment("action_winner", ledger))
+
+        assert adjustments[0] < adjustments[1] < adjustments[2] < adjustments[3]
+        assert all(a > 0 for a in adjustments)
+        assert adjustments[3] > adjustments[0]
+
     def test_cycle_n_outcome_propagated_to_cycle_n_plus1_ledger(self):
         ledger = {
             "action_x": {
