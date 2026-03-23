@@ -830,6 +830,25 @@ class TestCapabilityExplorationAdjustment:
         adj = _compute_capability_exploration_adjustment(action, ledger)
         assert adj == pytest.approx(0.0)
 
+    def test_exploration_bonus_strictly_decreasing_steps_zero_through_five(self):
+        """Verify exploration bonus decreases strictly at each integer step 0→5
+        and reaches exactly 0.0 at the maturity threshold (total_syntheses=5)."""
+        action = self._action("cap_a")
+        adjustments = []
+        for total in range(6):
+            ledger = {
+                "capabilities": {
+                    "cap_a": {"total_syntheses": total, "successful_syntheses": 0}
+                }
+            }
+            adjustments.append(_compute_capability_exploration_adjustment(action, ledger))
+
+        for i in range(5):
+            assert adjustments[i] > adjustments[i + 1], (
+                f"expected adj[{i}]={adjustments[i]} > adj[{i+1}]={adjustments[i+1]}"
+            )
+        assert adjustments[5] == pytest.approx(0.0)
+
 
 class TestExtractCapabilityHistory:
     def _action(self, capability="cap_a", action_type="build_capability_artifact"):
