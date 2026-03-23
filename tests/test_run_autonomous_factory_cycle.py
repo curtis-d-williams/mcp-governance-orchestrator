@@ -2135,3 +2135,204 @@ def test_cross_capability_competition_rankings_cross(tmp_path, monkeypatch):
     assert gap_p2 > gap_p1 > 0.0, (
         f"score gap must widen across phases: phase1={gap_p1:.6f}, phase2={gap_p2:.6f}"
     )
+
+
+def test_end_to_end_learning_loop_integrated_sequence(tmp_path, monkeypatch):
+    """Validates the complete feedback loop as a single uninterrupted sequence
+    starting from a blank ledger.
+
+    Three explicit checkpoints:
+      0 — baseline: empty ledger, both capabilities absent, both adj == 0.0
+      1 — after cap_x success cycle: ledger updated, reliability_adj > 0,
+          cap_x ranks above cap_y
+      2 — after cap_y failure cycle: ledger updated, cap_y reliability_adj < 0
+          (signal direction confirmed even while exploration partially offsets it),
+          cap_x net > cap_y net, cap_x still ranks above cap_y
+
+    Unique coverage: blank-slate start; two capabilities receive interleaved
+    opposing signals in the same sequence; reliability component sign is asserted
+    directly at each checkpoint.
+    """
+    import json as _json
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_reliability_adjustment,
+        _compute_priority_breakdown,
+        load_capability_effectiveness_ledger,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+
+    state = {"capability": "cap_x", "status": "ok"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    capability_ledger.write_text(_json.dumps({"capabilities": {}}), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_y = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-y",
+        "args": {"capability": "cap_y"},
+    }
+
+    # --- Checkpoint 0: baseline — blank ledger, both adjustments must be zero ---
+    ledger_baseline = load_capability_effectiveness_ledger(str(capability_ledger))
+    assert _compute_capability_reliability_adjustment(action_cap_x, ledger_baseline) == 0.0, (
+        "baseline: cap_x reliability adjustment must be 0.0 with no history"
+    )
+    assert _compute_capability_reliability_adjustment(action_cap_y, ledger_baseline) == 0.0, (
+        "baseline: cap_y reliability adjustment must be 0.0 with no history"
+    )
+    assert "cap_x" not in ledger_baseline.get("capabilities", {}), (
+        "baseline: cap_x must be absent from ledger"
+    )
+    assert "cap_y" not in ledger_baseline.get("capabilities", {}), (
+        "baseline: cap_y must be absent from ledger"
+    )
+
+    # --- Cycle 1: cap_x succeeds ---
+    state["capability"] = "cap_x"
+    state["status"] = "ok"
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle1.json"),
+    )
+
+    # --- Checkpoint 1: cap_x positive signal recorded and reflected in ranking ---
+    ledger_c1 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_c1 = ledger_c1.get("capabilities", {})
+
+    assert caps_c1.get("cap_x", {}).get("total_syntheses") == 1, (
+        f"checkpoint 1: cap_x total_syntheses must be 1; got {caps_c1.get('cap_x')}"
+    )
+    assert caps_c1.get("cap_x", {}).get("successful_syntheses") == 1, (
+        f"checkpoint 1: cap_x successful_syntheses must be 1; got {caps_c1.get('cap_x')}"
+    )
+    assert "cap_y" not in caps_c1, (
+        f"checkpoint 1: cap_y must still be absent from ledger; got {list(caps_c1.keys())}"
+    )
+
+    cap_x_rel_c1 = _compute_capability_reliability_adjustment(action_cap_x, ledger_c1)
+    assert cap_x_rel_c1 > 0.0, (
+        f"checkpoint 1: cap_x reliability_adj must be positive; got {cap_x_rel_c1}"
+    )
+
+    ranked_c1 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_y], {}, capability_ledger=ledger_c1
+    )
+    assert ranked_c1[0]["args"]["capability"] == "cap_x", (
+        f"checkpoint 1: cap_x must rank above cap_y (no history); "
+        f"got {[a['args']['capability'] for a in ranked_c1]}"
+    )
+
+    bd_x_c1 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_c1)
+    bd_y_c1 = _compute_priority_breakdown(action_cap_y, {}, {}, {}, ledger_c1)
+    assert bd_x_c1.final_priority > bd_y_c1.final_priority, (
+        f"checkpoint 1: cap_x final_priority ({bd_x_c1.final_priority:.6f}) must exceed "
+        f"cap_y final_priority ({bd_y_c1.final_priority:.6f})"
+    )
+
+    # --- Cycle 2: cap_y fails ---
+    state["capability"] = "cap_y"
+    state["status"] = "failed"
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle2.json"),
+    )
+
+    # --- Checkpoint 2: cap_y negative reliability signal; cap_x still leads ---
+    ledger_c2 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_c2 = ledger_c2.get("capabilities", {})
+
+    assert caps_c2.get("cap_y", {}).get("total_syntheses") == 1, (
+        f"checkpoint 2: cap_y total_syntheses must be 1; got {caps_c2.get('cap_y')}"
+    )
+    assert caps_c2.get("cap_y", {}).get("failed_syntheses") == 1, (
+        f"checkpoint 2: cap_y failed_syntheses must be 1; got {caps_c2.get('cap_y')}"
+    )
+    assert caps_c2.get("cap_x", {}).get("successful_syntheses") == 1, (
+        f"checkpoint 2: cap_x ledger must be unchanged; got {caps_c2.get('cap_x')}"
+    )
+
+    # Reliability component is negative even though exploration bonus partially offsets
+    # it in the net score at total=1 (exploration bonus > reliability penalty at low total).
+    cap_y_rel_c2 = _compute_capability_reliability_adjustment(action_cap_y, ledger_c2)
+    assert cap_y_rel_c2 < 0.0, (
+        f"checkpoint 2: cap_y reliability_adj must be negative after 1 failure; "
+        f"got {cap_y_rel_c2}"
+    )
+
+    # cap_x reliability component unchanged.
+    cap_x_rel_c2 = _compute_capability_reliability_adjustment(action_cap_x, ledger_c2)
+    assert cap_x_rel_c2 == cap_x_rel_c1, (
+        f"checkpoint 2: cap_x reliability_adj must be unchanged; "
+        f"got {cap_x_rel_c2}, expected {cap_x_rel_c1}"
+    )
+
+    ranked_c2 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_y], {}, capability_ledger=ledger_c2
+    )
+    assert ranked_c2[0]["args"]["capability"] == "cap_x", (
+        f"checkpoint 2: cap_x must still rank above cap_y; "
+        f"got {[a['args']['capability'] for a in ranked_c2]}"
+    )
+
+    bd_x_c2 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_c2)
+    bd_y_c2 = _compute_priority_breakdown(action_cap_y, {}, {}, {}, ledger_c2)
+    assert bd_x_c2.final_priority > bd_y_c2.final_priority, (
+        f"checkpoint 2: cap_x final_priority ({bd_x_c2.final_priority:.6f}) must exceed "
+        f"cap_y final_priority ({bd_y_c2.final_priority:.6f})"
+    )
