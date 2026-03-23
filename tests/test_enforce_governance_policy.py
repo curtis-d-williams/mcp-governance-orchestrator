@@ -27,6 +27,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from cycle_history_runtime import detect_cycle_history_regression
+
 _SCRIPT = _REPO_ROOT / "scripts" / "enforce_governance_policy.py"
 _spec = importlib.util.spec_from_file_location("enforce_governance_policy", _SCRIPT)
 _mod = importlib.util.module_from_spec(_spec)
@@ -712,3 +714,35 @@ class TestMapOnRegression:
 
     def test_ignore_maps_to_continue(self):
         assert _map_on_regression("ignore") == "continue"
+
+
+# ---------------------------------------------------------------------------
+# K. Phase K / Phase L signal consistency
+# ---------------------------------------------------------------------------
+
+class TestKLSignalConsistency:
+    """Phase L must surface the same regression_detected and signals as Phase K."""
+
+    def _setup(self, tmp_path):
+        h = _write_history(tmp_path, [_CYCLE_OK_A, _CYCLE_ABORTED])
+        s = _write_summary(tmp_path)
+        pol = _write_policy(tmp_path, _POLICY_STANDARD)
+
+        k_out = tmp_path / "k_regression.json"
+        k_rc = detect_cycle_history_regression(str(h), str(s), str(k_out))
+        assert k_rc == 0, f"Phase K failed with rc={k_rc}"
+        k_data = json.loads(k_out.read_text(encoding="utf-8"))
+
+        l_out = tmp_path / "l_decision.json"
+        enforce_governance_policy(str(h), str(s), str(pol), str(l_out))
+        l_data = json.loads(l_out.read_text(encoding="utf-8"))
+
+        return k_data, l_data
+
+    def test_phase_l_regression_detected_matches_phase_k(self, tmp_path):
+        k_data, l_data = self._setup(tmp_path)
+        assert l_data["regression_detected"] == k_data["regression_detected"]
+
+    def test_phase_l_signals_match_phase_k(self, tmp_path):
+        k_data, l_data = self._setup(tmp_path)
+        assert l_data["signals"] == k_data["signals"]
