@@ -1580,6 +1580,26 @@ class TestMultiCycleLearningFeedback:
         types = [a["action_type"] for a in result]
         assert types.index("action_loser") > types.index("action_stable")
 
+    def test_action_effectiveness_degradation_is_monotonic_per_cycle(self):
+        ledger = {
+            "action_loser": {
+                "action_type": "action_loser",
+                "times_executed": 4,
+                "success_count": 2,
+                "failure_count": 2,
+                "effectiveness_score": 0.5,
+                "effect_deltas": {},
+            },
+        }
+        adjustments = []
+        for _ in range(4):
+            ledger["action_loser"]["failure_count"] += 1
+            ledger["action_loser"]["times_executed"] += 1
+            self._recompute(ledger["action_loser"])
+            adjustments.append(compute_learning_adjustment("action_loser", ledger))
+
+        assert adjustments[0] > adjustments[1] > adjustments[2] > adjustments[3]
+
     def test_cycle_n_outcome_propagated_to_cycle_n_plus1_ledger(self):
         ledger = {
             "action_x": {
