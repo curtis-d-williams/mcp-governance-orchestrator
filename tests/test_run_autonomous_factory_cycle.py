@@ -2469,3 +2469,216 @@ def test_exploration_bonus_decays_as_successful_syntheses_accumulate_via_cycle(
                 f"bd.exploration_component={bd.exploration_component}, "
                 f"baseline={bd_baseline.exploration_component}"
             )
+
+
+def test_maturity_state_ranking_exploration_removed_reliability_dominates(
+    tmp_path, monkeypatch
+):
+    """cap_x is pre-seeded at full maturity (total=5, success=5, exploration=0.0).
+    cap_z starts blank. Phase 1: three cap_z success cycles accumulate
+    total=3; cap_z gains a positive exploration bonus (+0.002) but cap_x
+    reliability (+0.035714) still dominates — cap_x ranks above. Phase 2: one
+    more cap_z success cycle (total=4); cap_z exploration decays to +0.001
+    (strictly less than Phase 1); cap_x still ranks above. Validates that
+    once exploration is removed at maturity, reliability alone sustains rank
+    supremacy against a capability still in its exploration window.
+    """
+    import json as _json
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_exploration_adjustment,
+        _compute_capability_reliability_adjustment,
+        _compute_priority_breakdown,
+        load_capability_effectiveness_ledger,
+        CAPABILITY_CONFIDENCE_THRESHOLD,
+        CAPABILITY_EXPLORATION_WEIGHT,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    state = {"capability": "cap_z", "status": "ok"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    pre_seed = {
+        "capabilities": {
+            "cap_x": {
+                "capability": "cap_x",
+                "total_syntheses": 5,
+                "successful_syntheses": 5,
+                "failed_syntheses": 0,
+                "last_synthesis_status": "ok",
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_z = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-z",
+        "args": {"capability": "cap_z"},
+    }
+
+    # Baseline assertions (before any cycles)
+    baseline_ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+
+    cap_x_exploration_baseline = _compute_capability_exploration_adjustment(action_cap_x, baseline_ledger)
+    assert cap_x_exploration_baseline == pytest.approx(0.0), (
+        f"baseline: cap_x at full maturity must have exploration=0.0; got {cap_x_exploration_baseline}"
+    )
+
+    cap_x_reliability_baseline = _compute_capability_reliability_adjustment(action_cap_x, baseline_ledger)
+    assert cap_x_reliability_baseline > 0.0, (
+        f"baseline: cap_x with all-success history must have positive reliability; got {cap_x_reliability_baseline}"
+    )
+
+    ranked_baseline = _apply_learning_adjustments(
+        [action_cap_x, action_cap_z], {}, capability_ledger=baseline_ledger
+    )
+    assert ranked_baseline[0]["args"]["capability"] == "cap_x", (
+        f"baseline: cap_x reliability must rank above blank cap_z; "
+        f"got {[a['args']['capability'] for a in ranked_baseline]}"
+    )
+
+    # Phase 1: three successful cap_z cycles -> total=3, success=3
+    state["capability"] = "cap_z"
+    state["status"] = "ok"
+    for cycle_idx in range(1, 4):
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"phase1_cycle{cycle_idx}.json"),
+        )
+
+    ledger_p1 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_p1 = ledger_p1.get("capabilities", {})
+
+    assert caps_p1.get("cap_z", {}).get("total_syntheses") == 3, (
+        f"phase 1: cap_z total_syntheses must be 3; got {caps_p1.get('cap_z')}"
+    )
+    assert caps_p1.get("cap_z", {}).get("successful_syntheses") == 3, (
+        f"phase 1: cap_z successful_syntheses must be 3; got {caps_p1.get('cap_z')}"
+    )
+
+    # cap_x ledger unchanged (no cap_x cycles were run)
+    assert caps_p1.get("cap_x", {}).get("total_syntheses") == 5, (
+        f"phase 1: cap_x total_syntheses must be unchanged at 5; got {caps_p1.get('cap_x')}"
+    )
+
+    cap_z_exploration_p1 = _compute_capability_exploration_adjustment(action_cap_z, ledger_p1)
+    assert cap_z_exploration_p1 > 0.0, (
+        f"phase 1: cap_z must have positive exploration bonus at total=3; got {cap_z_exploration_p1}"
+    )
+
+    cap_x_exploration_p1 = _compute_capability_exploration_adjustment(action_cap_x, ledger_p1)
+    assert cap_x_exploration_p1 == pytest.approx(0.0), (
+        f"phase 1: cap_x exploration must remain 0.0 at full maturity; got {cap_x_exploration_p1}"
+    )
+
+    ranked_p1 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_z], {}, capability_ledger=ledger_p1
+    )
+    assert ranked_p1[0]["args"]["capability"] == "cap_x", (
+        f"phase 1: cap_x reliability must dominate cap_z exploration+reliability; "
+        f"got {[a['args']['capability'] for a in ranked_p1]}"
+    )
+
+    bd_x_p1 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_p1)
+    bd_z_p1 = _compute_priority_breakdown(action_cap_z, {}, {}, {}, ledger_p1)
+    assert bd_x_p1.final_priority > bd_z_p1.final_priority, (
+        f"phase 1: cap_x final_priority ({bd_x_p1.final_priority:.6f}) must exceed "
+        f"cap_z final_priority ({bd_z_p1.final_priority:.6f})"
+    )
+
+    # Phase 2: one more successful cap_z cycle -> total=4, success=4
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "phase2_cycle1.json"),
+    )
+
+    ledger_p2 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_p2 = ledger_p2.get("capabilities", {})
+
+    assert caps_p2.get("cap_z", {}).get("total_syntheses") == 4, (
+        f"phase 2: cap_z total_syntheses must be 4; got {caps_p2.get('cap_z')}"
+    )
+
+    cap_z_exploration_p2 = _compute_capability_exploration_adjustment(action_cap_z, ledger_p2)
+    assert cap_z_exploration_p2 > 0.0, (
+        f"phase 2: cap_z must still have positive exploration at total=4; got {cap_z_exploration_p2}"
+    )
+    assert cap_z_exploration_p2 < cap_z_exploration_p1, (
+        f"phase 2: cap_z exploration must decay from phase 1 ({cap_z_exploration_p1}) "
+        f"to phase 2 ({cap_z_exploration_p2})"
+    )
+
+    cap_x_exploration_p2 = _compute_capability_exploration_adjustment(action_cap_x, ledger_p2)
+    assert cap_x_exploration_p2 == pytest.approx(0.0), (
+        f"phase 2: cap_x exploration must remain 0.0; got {cap_x_exploration_p2}"
+    )
+
+    ranked_p2 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_z], {}, capability_ledger=ledger_p2
+    )
+    assert ranked_p2[0]["args"]["capability"] == "cap_x", (
+        f"phase 2: cap_x reliability must still dominate over cap_z; "
+        f"got {[a['args']['capability'] for a in ranked_p2]}"
+    )
+
+    bd_x_p2 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_p2)
+    bd_z_p2 = _compute_priority_breakdown(action_cap_z, {}, {}, {}, ledger_p2)
+    assert bd_x_p2.final_priority > bd_z_p2.final_priority, (
+        f"phase 2: cap_x final_priority ({bd_x_p2.final_priority:.6f}) must still exceed "
+        f"cap_z final_priority ({bd_z_p2.final_priority:.6f})"
+    )
