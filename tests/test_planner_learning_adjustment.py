@@ -731,6 +731,25 @@ class TestCapabilityReliabilityAdjustment:
         # Adjustment must be strictly monotonically decreasing across cycles
         assert adj_c1 > adj_c2 > adj_c3
 
+    def test_successful_capability_reinforcement_is_monotonic_across_three_cycles(self):
+        action = self._action("cap_a")
+
+        ledger_c1 = {"capabilities": {"cap_a": {"total_syntheses": 1, "successful_syntheses": 1}}}
+        ledger_c2 = {"capabilities": {"cap_a": {"total_syntheses": 2, "successful_syntheses": 2}}}
+        ledger_c3 = {"capabilities": {"cap_a": {"total_syntheses": 3, "successful_syntheses": 3}}}
+
+        adj_c1 = _compute_capability_reliability_adjustment(action, ledger_c1)
+        adj_c2 = _compute_capability_reliability_adjustment(action, ledger_c2)
+        adj_c3 = _compute_capability_reliability_adjustment(action, ledger_c3)
+
+        # All adjustments must be positive (reinforcing the capability)
+        assert adj_c1 > 0.0
+        assert adj_c2 > 0.0
+        assert adj_c3 > 0.0
+
+        # Adjustment must be strictly monotonically increasing across cycles
+        assert adj_c1 < adj_c2 < adj_c3
+
 
 class TestCapabilityExplorationAdjustment:
     def _action(self, capability):
