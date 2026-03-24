@@ -39,6 +39,7 @@ from planner_runtime import (  # noqa: E402
     _compute_exploration_adjustment_raw,
     _compute_priority_breakdown,
     _compute_repair_pressure_adjustment,
+    _compute_task_reliability,
     _extract_capability_history,
     compute_exploration_bonus,
     compute_learning_adjustment,
@@ -1925,3 +1926,38 @@ class TestComputeExplorationBonus:
             assert result == pytest.approx(expected), (
                 f"n={n}: expected {expected}, got {result}"
             )
+
+
+class TestPhaseFFledgerFormatAlignment:
+    """Documents the Phase F -> Planner ledger format boundary.
+
+    Phase F (update_action_effectiveness_from_history.py) writes:
+        {"actions": {"task_name": {...}}}   -- task-keyed, no effectiveness_score
+
+    load_effectiveness_ledger returns {"actions": {...}} for this format.
+    compute_learning_adjustment calls ledger.get(action_type) -> {} -> 0.0.
+    _compute_task_reliability reads ledger.get("actions") -> resolves success_rate.
+    """
+
+    _PHASE_F_LEDGER = {
+        "actions": {
+            "build_portfolio_dashboard": {
+                "total_runs": 5,
+                "success_count": 4,
+                "failure_count": 1,
+                "last_status": "ok",
+            }
+        }
+    }
+
+    def test_phase_f_format_learning_adjustment_is_zero(self, tmp_path):
+        path = tmp_path / "phase_f_ledger.json"
+        path.write_text(json.dumps(self._PHASE_F_LEDGER))
+        ledger = load_effectiveness_ledger(str(path))
+        assert compute_learning_adjustment("build_portfolio_dashboard", ledger) == 0.0
+
+    def test_phase_f_format_task_reliability_resolves(self, tmp_path):
+        path = tmp_path / "phase_f_ledger.json"
+        path.write_text(json.dumps(self._PHASE_F_LEDGER))
+        ledger = load_effectiveness_ledger(str(path))
+        assert _compute_task_reliability("build_portfolio_dashboard", ledger) == pytest.approx(0.8)
