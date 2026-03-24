@@ -2682,3 +2682,161 @@ def test_maturity_state_ranking_exploration_removed_reliability_dominates(
         f"phase 2: cap_x final_priority ({bd_x_p2.final_priority:.6f}) must still exceed "
         f"cap_z final_priority ({bd_z_p2.final_priority:.6f})"
     )
+
+
+def test_mixed_signal_convergence_reliability_approaches_neutral(tmp_path, monkeypatch):
+    """Validates learning-loop equilibrium under interleaved success/failure signals.
+
+    A single capability (cap_x) receives 6 alternating synthesis outcomes:
+    ok / failed / ok / failed / ok / failed → total=6, success=3, failed=3.
+
+    At each cycle the reliability adjustment is computed via the live cycle path:
+        run_autonomous_factory_cycle → capability_effectiveness_ledger → planner scoring
+
+    Expected per-cycle sign pattern (Laplace smoothing, no evolution penalty):
+        cycle 1 (ok):     total=1, success=1, success_rate=2/3,   confidence=0.2 → adj > 0
+        cycle 2 (fail):   total=2, success=1, success_rate=2/4,   confidence=0.4 → adj == 0
+        cycle 3 (ok):     total=3, success=2, success_rate=3/5,   confidence=0.6 → adj > 0
+        cycle 4 (fail):   total=4, success=2, success_rate=3/6,   confidence=0.8 → adj == 0
+        cycle 5 (ok):     total=5, success=3, success_rate=4/7,   confidence=1.0 → adj > 0
+        cycle 6 (fail):   total=6, success=3, success_rate=4/8,   confidence=1.0 → adj == 0.0 exact
+
+    At cycle 6: Laplace rate = (3+1)/(6+2) = 4/8 = 0.5 exactly.
+    reliability_adj = 1.0 * (0.5 - 0.5) * 0.10 = 0.0.
+    Confirms the system reaches neutral equilibrium — no compounding bias.
+    """
+    import json as _json
+    from planner_runtime import (
+        _compute_capability_exploration_adjustment,
+        _compute_capability_reliability_adjustment,
+        _compute_priority_breakdown,
+        load_capability_effectiveness_ledger,
+        CAPABILITY_CONFIDENCE_THRESHOLD,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    state = {"capability": "cap_x", "status": "ok"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    capability_ledger.write_text(_json.dumps({"capabilities": {}}), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+
+    statuses = ["ok", "failed", "ok", "failed", "ok", "failed"]
+    reliability_adjs = []
+
+    for cycle_idx, status in enumerate(statuses, start=1):
+        state["status"] = status
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"cycle{cycle_idx}.json"),
+        )
+
+        ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+        caps = ledger.get("capabilities", {})
+        cap_x_row = caps.get("cap_x", {})
+        total = cap_x_row.get("total_syntheses", 0)
+        success = cap_x_row.get("successful_syntheses", 0)
+
+        rel_adj = _compute_capability_reliability_adjustment(action_cap_x, ledger)
+        reliability_adjs.append(rel_adj)
+
+        assert total == cycle_idx, (
+            f"cycle {cycle_idx}: total_syntheses must be {cycle_idx}; got {total}"
+        )
+        assert success == (cycle_idx + 1) // 2, (
+            f"cycle {cycle_idx}: successful_syntheses must be {(cycle_idx + 1) // 2}; got {success}"
+        )
+
+        # Per-cycle sign assertion: odd cycles end with success > failure → positive adj;
+        # even cycles end with equal success/failure → Laplace gives exact 0.5 → adj == 0.
+        if cycle_idx % 2 == 1:
+            assert rel_adj > 0.0, (
+                f"cycle {cycle_idx} (ok): reliability_adj must be positive; got {rel_adj}"
+            )
+        else:
+            assert rel_adj == pytest.approx(0.0), (
+                f"cycle {cycle_idx} (fail): reliability_adj must be 0.0 at equal success/failure; "
+                f"got {rel_adj}"
+            )
+
+    # --- Terminal assertions at cycle 6 ---
+    ledger_c6 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_c6 = ledger_c6.get("capabilities", {})
+
+    assert caps_c6.get("cap_x", {}).get("total_syntheses") == 6, (
+        f"terminal: total_syntheses must be 6; got {caps_c6.get('cap_x')}"
+    )
+    assert caps_c6.get("cap_x", {}).get("successful_syntheses") == 3, (
+        f"terminal: successful_syntheses must be 3; got {caps_c6.get('cap_x')}"
+    )
+
+    terminal_rel_adj = reliability_adjs[-1]
+    assert terminal_rel_adj == pytest.approx(0.0), (
+        f"terminal: reliability_adj must be exactly 0.0 at neutral equilibrium "
+        f"(total=6, success=3); got {terminal_rel_adj}"
+    )
+
+    terminal_exp_adj = _compute_capability_exploration_adjustment(action_cap_x, ledger_c6)
+    assert terminal_exp_adj == pytest.approx(0.0), (
+        f"terminal: exploration_adj must be 0.0 at full maturity (total=6 >= threshold=5); "
+        f"got {terminal_exp_adj}"
+    )
+
+    # Confirm no compounding bias: final_priority with full history equals
+    # final_priority against blank ledger within float tolerance.
+    blank_ledger = {"capabilities": {}}
+    bd_blank = _compute_priority_breakdown(action_cap_x, {}, {}, {}, blank_ledger)
+    bd_c6 = _compute_priority_breakdown(action_cap_x, {}, {}, {}, ledger_c6)
+    assert bd_c6.final_priority == pytest.approx(bd_blank.final_priority), (
+        f"terminal: final_priority with neutral history ({bd_c6.final_priority:.8f}) must equal "
+        f"final_priority with blank ledger ({bd_blank.final_priority:.8f}) — no compounding bias"
+    )
