@@ -65,6 +65,8 @@ Curtis should not have to perform raw code review. Translate results into govern
 
 If Curtis is driving locally, give exactly **one terminal command at a time**.
 
+Memory writes are prohibited after any PAUSE, STOP, or task close instruction. Do not persist session findings, live-run results, troubleshooting outcomes, or operational summaries to memory on your own initiative. Memory persistence requires a separate bounded task with explicit approval.
+
 ## Approval checkpoints
 
 Stop for Curtis approval at these three checkpoints:

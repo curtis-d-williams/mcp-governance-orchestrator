@@ -523,6 +523,13 @@ before Curtis is asked to decide.
 If worker findings invalidate the approved plan, the Main Orchestrator must
 produce a revised bounded plan before requesting approval.
 
+If worker inspection finds the approved objective is not achievable on the chosen
+execution path — meaning the path structurally cannot produce the expected observable
+outcome regardless of parameter choices — the Main Orchestrator must re-present with
+a corrected bounded task description before requesting approval. Do not proceed on a
+path that cannot satisfy the approved objective. This is distinct from plan invalidation
+(new interface requirements); it applies when the objective itself must change.
+
 ## Reviewer execution fallback discipline
 
 If the Reviewer is explicitly assigned a full-suite checkpoint and reports blockage due to
