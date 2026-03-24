@@ -3202,3 +3202,181 @@ def test_failure_deprioritization_persists_after_single_recovery_cycle(tmp_path,
         f"phase 2: cap_x must still rank below blank-slate cap_z after single recovery; "
         f"got {[a['args']['capability'] for a in ranked_p2]}"
     )
+
+
+def test_multi_cycle_recovery_converges_to_neutral_then_positive(tmp_path, monkeypatch):
+    """Validates multi-cycle recovery convergence arc from negative to neutral to positive.
+
+    cap_x is pre-seeded with total=2, success=0 (2 prior failures).
+
+    Phase 1 (1 failure cycle): total=3, success=0.
+        Expected: strictly negative reliability adjustment.
+
+    Phase 2 (5 consecutive recovery success cycles):
+        R1: total=4, success=1 → success_rate=2/6, confidence=0.8 → adj < 0 (still negative)
+        R2: total=5, success=2 → success_rate=3/7, confidence ≈ 0.857 → adj < 0 (still negative)
+        R3: total=6, success=3 → success_rate=4/8=0.5 exact (Laplace), confidence ≈ 0.889
+            → adj == 0.0 exactly (neutral crossover)
+        R4: total=7, success=4 → success_rate=5/9 > 0.5 → adj > 0 (positive)
+        R5: total=8, success=5 → success_rate=6/10=0.6 → adj > 0 (positive, increasing)
+
+    Recovery adjustments must be strictly monotonically increasing across R1..R5.
+    """
+    import json as _json
+    from planner_runtime import (
+        _compute_capability_reliability_adjustment,
+        load_capability_effectiveness_ledger,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    state = {"capability": "cap_x", "status": "failed"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    pre_seed = {
+        "capabilities": {
+            "cap_x": {
+                "total_syntheses": 2,
+                "successful_syntheses": 0,
+                "failed_syntheses": 2,
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+
+    # --- Phase 1: one failure cycle → total=3, success=0 ---
+    state["status"] = "failed"
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "phase1.json"),
+    )
+
+    ledger_p1 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps = ledger_p1.get("capabilities", {})
+
+    assert caps.get("cap_x", {}).get("total_syntheses") == 3, (
+        f"phase 1: total_syntheses must be 3; got {caps.get('cap_x')}"
+    )
+    assert caps.get("cap_x", {}).get("successful_syntheses") == 0, (
+        f"phase 1: successful_syntheses must be 0; got {caps.get('cap_x')}"
+    )
+
+    phase1_adj = _compute_capability_reliability_adjustment(action_cap_x, ledger_p1)
+    assert phase1_adj < 0.0, (
+        f"phase 1: reliability_adj must be negative after 3 failures (0 successes); "
+        f"got {phase1_adj}"
+    )
+
+    # --- Phase 2: 5 consecutive recovery success cycles ---
+    state["status"] = "ok"
+    recovery_adjs = []
+
+    for cycle_idx in range(1, 6):
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"recovery{cycle_idx}.json"),
+        )
+
+        ledger_r = load_capability_effectiveness_ledger(str(capability_ledger))
+        caps = ledger_r.get("capabilities", {})
+
+        assert caps.get("cap_x", {}).get("total_syntheses") == 3 + cycle_idx, (
+            f"R{cycle_idx}: total_syntheses must be {3 + cycle_idx}; "
+            f"got {caps.get('cap_x')}"
+        )
+        assert caps.get("cap_x", {}).get("successful_syntheses") == cycle_idx, (
+            f"R{cycle_idx}: successful_syntheses must be {cycle_idx}; "
+            f"got {caps.get('cap_x')}"
+        )
+
+        adj = _compute_capability_reliability_adjustment(action_cap_x, ledger_r)
+        recovery_adjs.append(adj)
+
+    import pytest as _pytest
+
+    # R1 starts moving toward phase1_adj (monotonic improvement begins)
+    assert recovery_adjs[0] > phase1_adj, (
+        f"R1 adj ({recovery_adjs[0]:.8f}) must be greater than phase1_adj "
+        f"({phase1_adj:.8f}) — recovery must move in positive direction"
+    )
+
+    # R1, R2: still strictly negative
+    assert recovery_adjs[0] < 0.0, (
+        f"R1 adj ({recovery_adjs[0]:.8f}) must still be negative after 1 recovery"
+    )
+    assert recovery_adjs[1] < 0.0, (
+        f"R2 adj ({recovery_adjs[1]:.8f}) must still be negative after 2 recoveries"
+    )
+
+    # R3: exact Laplace neutral (success_rate = 4/8 = 0.5 → adj == 0.0)
+    assert recovery_adjs[2] == _pytest.approx(0.0), (
+        f"R3 adj ({recovery_adjs[2]:.8f}) must be exactly 0.0 (Laplace 4/8=0.5 neutral); "
+        f"got {recovery_adjs[2]}"
+    )
+
+    # R4, R5: strictly positive
+    assert recovery_adjs[3] > 0.0, (
+        f"R4 adj ({recovery_adjs[3]:.8f}) must be positive after 4 recoveries"
+    )
+    assert recovery_adjs[4] > 0.0, (
+        f"R5 adj ({recovery_adjs[4]:.8f}) must be positive after 5 recoveries"
+    )
+
+    # Strict monotonic increase throughout R1..R5
+    assert all(recovery_adjs[i + 1] > recovery_adjs[i] for i in range(4)), (
+        f"recovery adjustments must be strictly monotonically increasing across R1..R5; "
+        f"got {[f'{a:.8f}' for a in recovery_adjs]}"
+    )
