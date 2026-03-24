@@ -2840,3 +2840,192 @@ def test_mixed_signal_convergence_reliability_approaches_neutral(tmp_path, monke
         f"terminal: final_priority with neutral history ({bd_c6.final_priority:.8f}) must equal "
         f"final_priority with blank ledger ({bd_blank.final_priority:.8f}) — no compounding bias"
     )
+
+
+def test_post_maturity_rank_stability_additional_cycles(tmp_path, monkeypatch):
+    """Validates that a capability at full maturity sustains stable ranking
+    across N>1 additional success cycles with no unbounded compounding.
+
+    cap_x is pre-seeded at full maturity (total=5, success=5). Three additional
+    success cycles are run via the live run_autonomous_factory_cycle path.
+
+    Expected behavior (Laplace smoothing, confidence clamped at 1.0):
+        pre-seed:  total=5, success=5  → reliability_adj ≈ 0.035714 (baseline)
+        cycle 1:   total=6, success=6  → reliability_adj = 0.037500  (> baseline)
+        cycle 2:   total=7, success=7  → reliability_adj ≈ 0.038889  (> cycle 1)
+        cycle 3:   total=8, success=8  → reliability_adj = 0.040000  (> cycle 2)
+
+    Convergence: monotonically increasing toward asymptote 0.050 (never reached).
+    Exploration bonus stays exactly 0.0 at all post-maturity checkpoints.
+    Rank over blank-slate competitor is sustained at every checkpoint.
+    """
+    import json as _json
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_exploration_adjustment,
+        _compute_capability_reliability_adjustment,
+        load_capability_effectiveness_ledger,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    state = {"capability": "cap_x", "status": "ok"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    pre_seed = {
+        "capabilities": {
+            "cap_x": {
+                "capability": "cap_x",
+                "total_syntheses": 5,
+                "successful_syntheses": 5,
+                "failed_syntheses": 0,
+                "last_synthesis_status": "ok",
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_z = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-z",
+        "args": {"capability": "cap_z"},
+    }
+
+    # Compute pre-seed baseline reliability before any additional cycles
+    baseline_ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+    pre_seed_reliability = _compute_capability_reliability_adjustment(
+        action_cap_x, baseline_ledger
+    )
+    assert pre_seed_reliability > 0.0, (
+        f"pre-seed: cap_x reliability must be positive at total=5, success=5; "
+        f"got {pre_seed_reliability}"
+    )
+    assert _compute_capability_exploration_adjustment(action_cap_x, baseline_ledger) == pytest.approx(0.0), (
+        "pre-seed: exploration bonus must be 0.0 at full maturity (total=5 >= threshold=5)"
+    )
+
+    # Run 3 additional success cycles for cap_x
+    reliability_adjs = []
+    for cycle_idx in range(1, 4):
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / f"cycle{cycle_idx}.json"),
+        )
+
+        ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+        caps = ledger.get("capabilities", {})
+        cap_x_row = caps.get("cap_x", {})
+        total = cap_x_row.get("total_syntheses", 0)
+        success = cap_x_row.get("successful_syntheses", 0)
+
+        rel_adj = _compute_capability_reliability_adjustment(action_cap_x, ledger)
+        exp_adj = _compute_capability_exploration_adjustment(action_cap_x, ledger)
+        reliability_adjs.append(rel_adj)
+
+        assert total == 5 + cycle_idx, (
+            f"cycle {cycle_idx}: total_syntheses must be {5 + cycle_idx}; got {total}"
+        )
+        assert success == 5 + cycle_idx, (
+            f"cycle {cycle_idx}: successful_syntheses must be {5 + cycle_idx}; got {success}"
+        )
+
+        # Exploration stays at 0.0 post-maturity (primary stability claim)
+        assert exp_adj == pytest.approx(0.0), (
+            f"cycle {cycle_idx}: exploration_adj must remain 0.0 post-maturity; got {exp_adj}"
+        )
+
+        # Reliability grows above pre-seed baseline (positive signal preserved)
+        assert rel_adj > pre_seed_reliability, (
+            f"cycle {cycle_idx}: reliability_adj ({rel_adj:.8f}) must exceed pre-seed "
+            f"baseline ({pre_seed_reliability:.8f})"
+        )
+
+        # Reliability stays below asymptote ceiling 0.050 (no unbounded compounding)
+        assert rel_adj < 0.050, (
+            f"cycle {cycle_idx}: reliability_adj ({rel_adj:.8f}) must stay below "
+            f"asymptote ceiling 0.050"
+        )
+
+        # Rank over blank-slate cap_z is sustained
+        ranked = _apply_learning_adjustments(
+            [action_cap_x, action_cap_z], {}, capability_ledger=ledger
+        )
+        assert ranked[0]["args"]["capability"] == "cap_x", (
+            f"cycle {cycle_idx}: cap_x must rank above blank-slate cap_z; "
+            f"got {[a['args']['capability'] for a in ranked]}"
+        )
+
+    # --- Terminal assertions ---
+    ledger_final = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_final = ledger_final.get("capabilities", {})
+
+    assert caps_final.get("cap_x", {}).get("total_syntheses") == 8, (
+        f"terminal: total_syntheses must be 8 (pre-seed 5 + 3 cycles); "
+        f"got {caps_final.get('cap_x')}"
+    )
+    assert caps_final.get("cap_x", {}).get("successful_syntheses") == 8, (
+        f"terminal: successful_syntheses must be 8; got {caps_final.get('cap_x')}"
+    )
+
+    # Strict monotonicity: each post-maturity cycle nudges reliability upward
+    assert reliability_adjs[1] > reliability_adjs[0], (
+        f"terminal: reliability_adj must increase from cycle 1 ({reliability_adjs[0]:.8f}) "
+        f"to cycle 2 ({reliability_adjs[1]:.8f})"
+    )
+    assert reliability_adjs[2] > reliability_adjs[1], (
+        f"terminal: reliability_adj must increase from cycle 2 ({reliability_adjs[1]:.8f}) "
+        f"to cycle 3 ({reliability_adjs[2]:.8f})"
+    )
+    assert reliability_adjs[0] > pre_seed_reliability, (
+        f"terminal: cycle 1 reliability_adj ({reliability_adjs[0]:.8f}) must exceed "
+        f"pre-seed baseline ({pre_seed_reliability:.8f})"
+    )
