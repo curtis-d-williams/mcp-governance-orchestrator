@@ -3455,3 +3455,75 @@ def test_confidence_weighting_moderates_ranking_asymmetric_history():
     assert ranked[1]["args"]["capability"] == "cap_a", (
         f"deep-poor cap_a must rank second; got {[a['args']['capability'] for a in ranked]}"
     )
+
+
+def test_deep_failure_debt_resists_premature_positive_recovery():
+    """
+    Verify that deep failure debt (8 prior failures, zero successes) proportionally
+    delays positive recovery relative to a shallower failure baseline.
+
+    Pre-seed: total_syntheses=8, successful_syntheses=0 — deep failure debt
+    (8 consecutive prior failures, full confidence maturity already reached).
+
+    Recovery loop: k=0..10 consecutive successes are added one at a time.
+    Each iteration increments both total_syntheses and successful_syntheses by k.
+
+    Neutral crossing requires k=8: at k=8 the Laplace estimate is
+    (0+k+1)/(8+k+2) = 9/18 = 0.500 exactly — meaning 8 consecutive successes
+    are needed before the adjustment reaches neutral.
+
+    Contrast with test_multi_cycle_recovery_converges_to_neutral_then_positive,
+    where a shallower failure baseline (total=4, success=0) crosses neutral at k=3.
+    Here k=8 is required — proportional resistance to premature recovery is
+    demonstrated.
+
+    Confirms: depth of failure debt proportionally delays positive recovery;
+    no premature overshoot occurs before the debt is sufficiently offset.
+    """
+    from planner_runtime import _compute_capability_reliability_adjustment
+
+    action = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-deep",
+        "args": {"capability": "cap_deep"},
+    }
+
+    adjs = []
+    for k in range(11):
+        ledger = {
+            "capabilities": {
+                "cap_deep": {
+                    "total_syntheses": 8 + k,
+                    "successful_syntheses": k,
+                }
+            }
+        }
+        adjs.append(_compute_capability_reliability_adjustment(action, ledger))
+
+    # k=0..7: strictly negative (deep debt not yet recovered)
+    assert all(adjs[k] < 0.0 for k in range(8)), (
+        f"k=0..7 must all be negative; got {adjs[:8]}"
+    )
+
+    # k=8: exact Laplace neutral (9/18 = 0.500)
+    assert adjs[8] == pytest.approx(0.0, abs=1e-12), (
+        f"k=8 must be exact neutral (9/18=0.5); got {adjs[8]}"
+    )
+
+    # k=9, k=10: positive territory
+    assert adjs[9] > 0.0, f"k=9 must be positive; got {adjs[9]}"
+    assert adjs[10] > 0.0, f"k=10 must be positive; got {adjs[10]}"
+
+    # strict monotonic increase throughout k=0..10
+    assert all(adjs[i + 1] > adjs[i] for i in range(10)), (
+        f"adjustments must be strictly monotonically increasing; got {adjs}"
+    )
+
+    # boundary spot-checks
+    assert adjs[0] == pytest.approx(-0.04000), (
+        f"k=0 boundary: expected -0.04000, got {adjs[0]}"
+    )
+    assert adjs[10] == pytest.approx(0.00500), (
+        f"k=10 boundary: expected +0.00500, got {adjs[10]}"
+    )
