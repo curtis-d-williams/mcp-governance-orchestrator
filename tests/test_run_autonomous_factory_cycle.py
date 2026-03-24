@@ -3380,3 +3380,78 @@ def test_multi_cycle_recovery_converges_to_neutral_then_positive(tmp_path, monke
         f"recovery adjustments must be strictly monotonically increasing across R1..R5; "
         f"got {[f'{a:.8f}' for a in recovery_adjs]}"
     )
+
+
+def test_confidence_weighting_moderates_ranking_asymmetric_history():
+    """Verify that confidence weighting moderates capability reliability ranking.
+
+    cap_a: total_syntheses=8, successful=3, failed=5.
+        confidence=1.0 (mature, >= maturity threshold), success_rate = (3+1)/(8+2) = 0.40.
+        adj = -0.01000 (full-confidence negative signal; depth does not rescue poor reliability).
+
+    cap_b: total_syntheses=2, successful=2, failed=0.
+        confidence=0.4 (shallow, below maturity threshold), success_rate = (2+1)/(2+2) = 0.75.
+        adj = +0.01000 (confidence-moderated but still positive).
+
+    Key insight: confidence weighting means cap_b's smaller-magnitude positive signal (+0.01)
+    exactly cancels cap_a's full-confidence negative signal (-0.01); cap_a's depth advantage
+    does not rescue it from its poor reliability. Both start at equal base_priority=10.0;
+    ranking is determined purely by the capability_reliability_component.
+    """
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_reliability_adjustment,
+    )
+
+    capability_ledger = {
+        "capabilities": {
+            "cap_a": {
+                "total_syntheses": 8,
+                "successful_syntheses": 3,
+                "failed_syntheses": 5,
+            },
+            "cap_b": {
+                "total_syntheses": 2,
+                "successful_syntheses": 2,
+                "failed_syntheses": 0,
+            },
+        }
+    }
+
+    action_cap_a = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-a",
+        "args": {"capability": "cap_a"},
+    }
+    action_cap_b = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-b",
+        "args": {"capability": "cap_b"},
+    }
+
+    # Step 1: verify individual adjustments
+    adj_a = _compute_capability_reliability_adjustment(action_cap_a, capability_ledger)
+    adj_b = _compute_capability_reliability_adjustment(action_cap_b, capability_ledger)
+
+    assert adj_a < 0.0
+    assert adj_b > 0.0
+
+    assert adj_a == pytest.approx(-0.01000), (
+        f"cap_a adj: expected -0.01000, got {adj_a}"
+    )
+    assert adj_b == pytest.approx(+0.01000), (
+        f"cap_b adj: expected +0.01000, got {adj_b}"
+    )
+
+    # Step 2: verify ranking — shallow-perfect cap_b must rank above deep-poor cap_a
+    ranked = _apply_learning_adjustments(
+        [action_cap_a, action_cap_b], {}, capability_ledger=capability_ledger
+    )
+    assert ranked[0]["args"]["capability"] == "cap_b", (
+        f"shallow-perfect cap_b must rank first; got {[a['args']['capability'] for a in ranked]}"
+    )
+    assert ranked[1]["args"]["capability"] == "cap_a", (
+        f"deep-poor cap_a must rank second; got {[a['args']['capability'] for a in ranked]}"
+    )
