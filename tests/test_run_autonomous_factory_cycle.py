@@ -3029,3 +3029,176 @@ def test_post_maturity_rank_stability_additional_cycles(tmp_path, monkeypatch):
         f"terminal: cycle 1 reliability_adj ({reliability_adjs[0]:.8f}) must exceed "
         f"pre-seed baseline ({pre_seed_reliability:.8f})"
     )
+
+
+def test_failure_deprioritization_persists_after_single_recovery_cycle(tmp_path, monkeypatch):
+    """Validates that failure-induced deprioritization persists after a single recovery.
+
+    cap_x is pre-seeded with 2 failures (total=2, success=0). One additional
+    failure cycle is run (Phase 1: total=3, success=0), establishing a clear
+    negative reliability adjustment. One recovery success cycle is then run
+    (Phase 2: total=4, success=1).
+
+    Expected values (Laplace smoothing, no evolution penalty):
+        Phase 1 end: total=3, success=0 → success_rate=1/5, confidence=0.6
+                     reliability_adj = 0.6 * (0.2 - 0.5) * 0.10 = -0.018000
+        Phase 2 end: total=4, success=1 → success_rate=2/6, confidence=0.8
+                     reliability_adj = 0.8 * (0.333... - 0.5) * 0.10 = -0.013333
+
+    After Phase 2 the adjustment is still strictly negative: recovery is
+    directionally correct but the system resists premature promotion.
+    cap_x must not rank above blank-slate cap_z at either checkpoint.
+    """
+    import json as _json
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_reliability_adjustment,
+        load_capability_effectiveness_ledger,
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    state = {"capability": "cap_x", "status": "failed"}
+
+    def _dynamic_governed_result(args):
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": ["build_capability_artifact"],
+                            "selection_detail": {
+                                "ranked_action_window": ["build_capability_artifact"],
+                                "ranked_action_window_detail": [
+                                    {
+                                        "action_type": "build_capability_artifact",
+                                        "task_binding": {
+                                            "args": {
+                                                "artifact_kind": "mcp_server",
+                                                "capability": state["capability"],
+                                            }
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _dynamic_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": state["status"],
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+        }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _dynamic_builder)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    pre_seed = {
+        "capabilities": {
+            "cap_x": {
+                "capability": "cap_x",
+                "total_syntheses": 2,
+                "successful_syntheses": 0,
+                "failed_syntheses": 2,
+                "last_synthesis_status": "failed",
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x"},
+    }
+    action_cap_z = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-z",
+        "args": {"capability": "cap_z"},
+    }
+
+    # --- Phase 1: one additional failure cycle → total=3, success=0 ---
+    state["status"] = "failed"
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "phase1.json"),
+    )
+
+    ledger_p1 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_p1 = ledger_p1.get("capabilities", {})
+
+    assert caps_p1.get("cap_x", {}).get("total_syntheses") == 3, (
+        f"phase 1: total_syntheses must be 3; got {caps_p1.get('cap_x')}"
+    )
+    assert caps_p1.get("cap_x", {}).get("successful_syntheses") == 0, (
+        f"phase 1: successful_syntheses must be 0; got {caps_p1.get('cap_x')}"
+    )
+
+    phase1_adj = _compute_capability_reliability_adjustment(action_cap_x, ledger_p1)
+    assert phase1_adj < 0.0, (
+        f"phase 1: reliability_adj must be negative after 3 failures; got {phase1_adj}"
+    )
+
+    ranked_p1 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_z], {}, capability_ledger=ledger_p1
+    )
+    assert ranked_p1[-1]["args"]["capability"] == "cap_x", (
+        f"phase 1: cap_x must rank below blank-slate cap_z; "
+        f"got {[a['args']['capability'] for a in ranked_p1]}"
+    )
+
+    # --- Phase 2: one recovery success cycle → total=4, success=1 ---
+    state["status"] = "ok"
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "phase2.json"),
+    )
+
+    ledger_p2 = load_capability_effectiveness_ledger(str(capability_ledger))
+    caps_p2 = ledger_p2.get("capabilities", {})
+
+    assert caps_p2.get("cap_x", {}).get("total_syntheses") == 4, (
+        f"phase 2: total_syntheses must be 4; got {caps_p2.get('cap_x')}"
+    )
+    assert caps_p2.get("cap_x", {}).get("successful_syntheses") == 1, (
+        f"phase 2: successful_syntheses must be 1; got {caps_p2.get('cap_x')}"
+    )
+
+    phase2_adj = _compute_capability_reliability_adjustment(action_cap_x, ledger_p2)
+
+    # Primary: penalty persists — single recovery does not restore neutral rank
+    assert phase2_adj < 0.0, (
+        f"phase 2: reliability_adj must remain negative after single recovery; "
+        f"got {phase2_adj} (penalty must persist)"
+    )
+
+    # Secondary: direction of recovery is correct
+    assert phase2_adj > phase1_adj, (
+        f"phase 2: reliability_adj ({phase2_adj:.8f}) must be less negative than "
+        f"phase 1 ({phase1_adj:.8f}) — recovery direction must be correct"
+    )
+
+    # Rank not restored: cap_x still ranks below blank-slate cap_z
+    ranked_p2 = _apply_learning_adjustments(
+        [action_cap_x, action_cap_z], {}, capability_ledger=ledger_p2
+    )
+    assert ranked_p2[-1]["args"]["capability"] == "cap_x", (
+        f"phase 2: cap_x must still rank below blank-slate cap_z after single recovery; "
+        f"got {[a['args']['capability'] for a in ranked_p2]}"
+    )
