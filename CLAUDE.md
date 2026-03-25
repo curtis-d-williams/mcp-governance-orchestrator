@@ -136,7 +136,6 @@ Reviewer may:
 - assess architecture preservation
 - assess regression risk
 - run the full suite only when requested
-- update the session log
 
 Reviewer must not edit code.
 
