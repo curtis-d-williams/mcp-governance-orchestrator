@@ -573,6 +573,15 @@ class TestLoadLedger:
         with pytest.raises(ValueError, match="action_types"):
             _load_ledger(p)
 
+    def test_phase_f_new_format_accepted(self, tmp_path):
+        # Phase F's new output format includes both "action_types" (list) and
+        # "actions" (dict). _load_ledger must accept this format; the live demo
+        # confirmed acceptance. This test anchors that behavior as a regression target.
+        p = tmp_path / "phase_f_new.json"
+        p.write_text(json.dumps({"action_types": [], "actions": {}}), encoding="utf-8")
+        result = _load_ledger(p)
+        assert "action_types" in result
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: _annotate_with_ledger
