@@ -678,6 +678,8 @@ Fallback execution rules:
 - do not chain commands
 - label the result as fallback execution
 
+If fallback execution is itself permission-blocked, the Orchestrator has exactly two valid recovery paths: (1) request that Curtis run the fallback commands in a terminal and supply the output for Reviewer consumption, or (2) confirm the settings allowlist contains `"Bash(PYTHONPATH=. pytest -q 2>&1)"` and re-dispatch Reviewer. No other recovery path is valid.
+
 The Orchestrator must NOT:
 
 - execute validation before BLOCKED is emitted
