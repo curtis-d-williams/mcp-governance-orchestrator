@@ -21,7 +21,7 @@ For a given task:
 - propose the minimal change
 - after approval, implement only that approved change
 - run targeted tests only
-- maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1); do not write it during read-only inspection or candidate-selection passes
+- maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1); do not write it during read-only inspection or candidate-selection passes — a dispatch described as "read-only" never grants file-write authority
 
 Do not force Curtis to read raw code or long pasted excerpts unless absolutely necessary.
 

@@ -293,7 +293,7 @@ A clean review result does not itself authorize commit.
 
 ## Session log
 
-Maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1). Do not write it during read-only inspection or candidate-selection passes. Do not let session-log maintenance interrupt bounded oversight flow.
+Maintain `.claude/session_log.md` whenever the implementation workflow is active (any session that has advanced past checkpoint 1). Do not write it during read-only inspection or candidate-selection passes. A dispatch described as "read-only" never grants file-write authority; any session-log write requires an active implementation workflow past checkpoint 1. Do not let session-log maintenance interrupt bounded oversight flow.
 
 At minimum, ensure it reflects:
 
