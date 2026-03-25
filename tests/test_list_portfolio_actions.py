@@ -555,6 +555,24 @@ class TestLoadLedger:
         with pytest.raises(ValueError, match="action_types"):
             _load_ledger(p)
 
+    def test_phase_f_format_rejected(self, tmp_path):
+        # Phase F (update_action_effectiveness_from_history.py) writes
+        # {"actions": {"task_name": {...}}} — task-keyed, no "action_types" key.
+        # _load_ledger must reject this format fail-closed; it carries no
+        # annotation fields (recommended_priority_adjustment, etc.) that
+        # _annotate_with_ledger consumes.
+        p = tmp_path / "phase_f.json"
+        p.write_text(json.dumps({
+            "actions": {
+                "build_portfolio_dashboard": {
+                    "total_runs": 5, "success_count": 4,
+                    "failure_count": 1, "last_status": "ok",
+                }
+            }
+        }), encoding="utf-8")
+        with pytest.raises(ValueError, match="action_types"):
+            _load_ledger(p)
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: _annotate_with_ledger
