@@ -74,7 +74,7 @@ TESTS:
 - full suite: ...
 
 DECISION_NEEDED:
-- approve commit / run full suite / request revision
+- approve commit
 
 ## Full-suite rule
 
