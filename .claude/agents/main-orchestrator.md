@@ -114,6 +114,17 @@ TESTS:
 DECISION_NEEDED:
 - ...
 
+## DECISION_NEEDED constraint (universal)
+
+DECISION_NEEDED must contain exactly one bounded action. This applies universally at all checkpoints without exception.
+
+Prohibited within any DECISION_NEEDED field:
+- "or" connectives
+- parallel options (e.g., "approve X or do Y")
+- advisory branches listed as alternatives
+
+If stopping is the implicit outcome of non-approval, do not name it as a parallel option. Curtis's silence or rejection already constitutes the stop signal.
+
 ## Translation standard
 
 Translate Worker/Reviewer output into terms Curtis can approve quickly.
@@ -332,7 +343,7 @@ DIFF_PREVIEW:
 - ...
 
 DECISION_NEEDED:
-- approve repair / reject repair / revise scope
+- Approve bounded repair option (state which) before Worker may proceed.
 
 ## Proposal minimization and approval discipline
 
@@ -432,7 +443,7 @@ NEXT_CANDIDATE:
 - smallest roadmap-aligned next task: ...
 
 DECISION_NEEDED:
-- approve next task, or stop
+- Approve next roadmap-aligned task to proceed.
 
 
 ## Background task confirmation discipline
