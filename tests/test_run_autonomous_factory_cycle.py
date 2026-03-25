@@ -4,6 +4,7 @@
 import importlib.util
 import json
 import sys
+import unittest.mock
 from pathlib import Path
 
 import factory_pipeline as _pipeline
@@ -3527,3 +3528,223 @@ def test_deep_failure_debt_resists_premature_positive_recovery():
     assert adjs[10] == pytest.approx(0.00500), (
         f"k=10 boundary: expected +0.00500, got {adjs[10]}"
     )
+
+
+def test_negative_similarity_delta_blocks_evolution(tmp_path, monkeypatch):
+    """
+    Verify that a negative prior similarity_delta in the capability ledger blocks
+    the evolution path even when all five mock layers would otherwise fire.
+
+    Gate under test (factory_pipeline.py ~line 372-375):
+        evolution_blocked_by_similarity_regression = (
+            prior_similarity_delta is not None and float(prior_similarity_delta) < 0
+        )
+        used_evolution = bool(builder_overrides) and not evolution_blocked_by_similarity_regression
+
+    Expected:
+    - synthesis_event["used_evolution"] == False
+    - result["evolution_blocked_by_similarity_regression"] == True
+    - evolution loop was NOT entered: evolution_iterations absent / empty
+    """
+    # ------------------------------------------------------------------ setup
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [{"selected_actions": ["build_mcp_server"]}]
+            }
+        },
+    }
+
+    # Prior ledger: target capability has a negative similarity_delta
+    prior_ledger = {
+        "capabilities": {
+            "github_repository_management": {
+                "similarity_delta": -0.10,
+                "total_syntheses": 3,
+                "successful_syntheses": 2,
+            }
+        }
+    }
+    ledger_file = tmp_path / "prior_capability_ledger.json"
+    ledger_file.write_text(json.dumps(prior_ledger), encoding="utf-8")
+
+    # ----------------------------------------------------------- mock layer 1+2
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    # ----------------------------------------------------------- mock layer 3
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_mcp_server_github",
+            "tools": ["list_repositories", "get_repository", "create_issue"],
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    # ----------------------------------------------------------- mock layer 4
+    def _fake_compare(generated_path, reference_path, output_path=None):
+        return {
+            "similarity": {"overall_score": 0.75},
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.75, "missing_tools": ["get_me"]},
+            "capability_surface": {"coverage_ratio": 1.0, "missing_enabled": []},
+            "testability": {"coverage_ratio": 1.0},
+        }
+
+    monkeypatch.setattr(_pipeline, "compare_mcp_servers", _fake_compare)
+
+    # ----------------------------------------------------------- mock layer 5a
+    def _fake_derive_gaps(comparison):
+        return {
+            "capability_gaps": [
+                {
+                    "capability": "github_repository_management",
+                    "gap_source": "reference_mcp_comparison",
+                    "severity": 0.25,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        _pipeline, "derive_capability_gaps_from_comparison", _fake_derive_gaps
+    )
+
+    # ----------------------------------------------------------- mock layer 5b
+    def _fake_plan_evolution(comparison):
+        return {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]}
+
+    monkeypatch.setattr(_pipeline, "plan_capability_evolution", _fake_plan_evolution)
+
+    # ----------------------------------------------------------- mock layer 5c
+    evolution_loop_entered = {"value": False}
+
+    def _fake_build_evolution_execution(evolution_plan, *, artifact_kind, current_tools):
+        return {
+            "builder_overrides": {"tools": ["list_repositories", "get_repository", "create_issue", "get_me"]},
+            "evolution_actions": evolution_plan.get("evolution_actions", []),
+        }
+
+    monkeypatch.setattr(
+        _pipeline, "build_evolution_execution", _fake_build_evolution_execution
+    )
+
+    # ---------------------------------------------------------- invoke
+    output = tmp_path / "autonomous_factory_cycle.json"
+    artifact = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        ledger="action_effectiveness_ledger.json",
+        capability_ledger=str(ledger_file),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(output),
+    )
+
+    # ---------------------------------------------------------- assertions
+    cycle_result = artifact["cycle_result"]
+    synthesis_event = cycle_result["synthesis_event"]
+
+    assert synthesis_event["used_evolution"] is False, (
+        f"negative similarity_delta must block evolution; got used_evolution={synthesis_event['used_evolution']}"
+    )
+    assert cycle_result.get("evolution_blocked_by_similarity_regression") is True, (
+        "evolution_blocked_by_similarity_regression must be True in cycle_result"
+    )
+    # Evolution loop was NOT entered: no evolution_iterations key, or empty list
+    evolution_iterations = cycle_result.get("evolution_iterations", [])
+    assert evolution_iterations == [], (
+        f"evolution loop must not have been entered; got evolution_iterations={evolution_iterations}"
+    )
+
+    written = _read_json(output)
+    assert written == artifact
+
+
+def test_zero_and_none_similarity_delta_do_not_block_evolution(tmp_path, monkeypatch):
+    """
+    Boundary complement: similarity_delta == 0.0 and similarity_delta absent (None)
+    must NOT block evolution — the gate is strictly < 0.
+
+    Run twice via parametrized sub-cases inside the test body.
+    Both cases: synthesis_event["used_evolution"] == True.
+    """
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [{"selected_actions": ["build_mcp_server"]}]
+            }
+        },
+    }
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "generated_mcp_server_github",
+            "tools": ["list_repositories", "get_repository", "create_issue"],
+        }
+
+    def _fake_compare(generated_path, reference_path, output_path=None):
+        return {
+            "similarity": {"overall_score": 0.75},
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.75, "missing_tools": ["get_me"]},
+            "capability_surface": {"coverage_ratio": 1.0, "missing_enabled": []},
+            "testability": {"coverage_ratio": 1.0},
+        }
+
+    def _fake_derive_gaps(comparison):
+        return {"capability_gaps": []}
+
+    def _fake_plan_evolution(comparison):
+        return {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]}
+
+    def _fake_build_evolution_execution(evolution_plan, *, artifact_kind, current_tools):
+        return {
+            "builder_overrides": {"tools": ["list_repositories", "get_repository", "create_issue", "get_me"]},
+            "evolution_actions": evolution_plan.get("evolution_actions", []),
+        }
+
+    sub_cases = [
+        ("zero_delta", {"similarity_delta": 0.0, "total_syntheses": 2, "successful_syntheses": 2}),
+        ("absent_delta", {"total_syntheses": 2, "successful_syntheses": 2}),
+    ]
+
+    for label, cap_row in sub_cases:
+        prior_ledger = {
+            "capabilities": {"github_repository_management": cap_row}
+        }
+        ledger_file = tmp_path / f"prior_ledger_{label}.json"
+        ledger_file.write_text(json.dumps(prior_ledger), encoding="utf-8")
+
+        monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+        monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+        monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+        monkeypatch.setattr(_pipeline, "compare_mcp_servers", _fake_compare)
+        monkeypatch.setattr(_pipeline, "derive_capability_gaps_from_comparison", _fake_derive_gaps)
+        mock_plan = unittest.mock.MagicMock(side_effect=_fake_plan_evolution)
+        monkeypatch.setattr(_pipeline, "plan_capability_evolution", mock_plan)
+        monkeypatch.setattr(_pipeline, "build_evolution_execution", _fake_build_evolution_execution)
+
+        output = tmp_path / f"cycle_{label}.json"
+        artifact = _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            ledger="action_effectiveness_ledger.json",
+            capability_ledger=str(ledger_file),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(output),
+        )
+
+        assert mock_plan.called is True, (
+            f"[{label}] similarity_delta={cap_row.get('similarity_delta', 'absent')} "
+            f"must NOT block evolution; plan_capability_evolution was not called"
+        )
+        mock_plan.reset_mock()
