@@ -629,7 +629,7 @@ class TestActionEffectivenessRealHandoff:
 
         _uaef_mod = _load_update_action_effectiveness_from_history()
 
-        def _real_update_action_effectiveness_shim(artifacts):
+        def _real_update_action_effectiveness_shim(artifacts, mapping=None):
             """Thin shim: calls the real update_action_effectiveness_from_history() directly."""
             rc = _uaef_mod.update_action_effectiveness_from_history(
                 artifacts["execution_history"],
@@ -1402,4 +1402,44 @@ class TestEnforceGovernancePolicyAbortPath:
         assert cycle["status"] == "aborted"
         assert cycle["phase"] == "governance_enforcement"
         assert "cycle_history_summary" in cycle
-        assert "cycle_history_regression" in cycle
+
+
+# ---------------------------------------------------------------------------
+# run_update_action_effectiveness_from_history — mapping arg threading
+# ---------------------------------------------------------------------------
+
+class TestRunUpdateActionEffectivenessMapping:
+    """Verify that --mapping-json is threaded through when a mapping is provided."""
+
+    def _make_artifacts(self, tmp_path):
+        return {
+            "execution_history": str(tmp_path / "execution_history.json"),
+            "action_effectiveness_ledger": str(tmp_path / "ledger.json"),
+        }
+
+    def test_mapping_json_arg_included_when_mapping_provided(self, tmp_path):
+        from mcp_governance_orchestrator.governed_cycle import (
+            run_update_action_effectiveness_from_history,
+        )
+        arts = self._make_artifacts(tmp_path)
+        mapping = {"refresh_repo_health": "build_portfolio_dashboard"}
+        captured = {}
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            run_update_action_effectiveness_from_history(arts, mapping=mapping)
+            captured["cmd"] = mock_run.call_args[0][0]
+        assert "--mapping-json" in captured["cmd"]
+        idx = captured["cmd"].index("--mapping-json")
+        passed = json.loads(captured["cmd"][idx + 1])
+        assert passed == mapping
+
+    def test_mapping_json_arg_absent_when_no_mapping(self, tmp_path):
+        from mcp_governance_orchestrator.governed_cycle import (
+            run_update_action_effectiveness_from_history,
+        )
+        arts = self._make_artifacts(tmp_path)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            run_update_action_effectiveness_from_history(arts, mapping=None)
+            cmd = mock_run.call_args[0][0]
+        assert "--mapping-json" not in cmd

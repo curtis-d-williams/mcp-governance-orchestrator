@@ -23,6 +23,64 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_EFFECTIVENESS_WEIGHT = 0.15  # mirrors EFFECTIVENESS_WEIGHT in planner_runtime.py
+
+
+# ---------------------------------------------------------------------------
+# Mapping-aware helpers
+# ---------------------------------------------------------------------------
+
+def _classify(score):
+    """Map effectiveness score to a classification string."""
+    if score >= 0.75:
+        return "high"
+    if score >= 0.50:
+        return "medium"
+    return "low"
+
+
+def _derive_action_types(actions, mapping):
+    """Derive an action_types list by inverting mapping into task history.
+
+    mapping: {action_type: task_name} dict (e.g. ACTION_TO_TASK from the planner).
+
+    For each action_type in the mapping, looks up its task's history in actions.
+    Multiple action_types that share a task receive the same effectiveness data.
+    Action_types whose task has no history in actions are omitted.
+    Sorted by action_type for determinism.
+
+    Returns a list of action_type row dicts suitable for load_effectiveness_ledger
+    and list_portfolio_actions._build_ledger_index.
+    """
+    result = []
+    for action_type in sorted(mapping):
+        task_name = mapping[action_type]
+        row = actions.get(task_name)
+        if not isinstance(row, dict):
+            continue
+        total = row.get("total_runs", 0)
+        success = row.get("success_count", 0)
+        try:
+            total_f, success_f = float(total), float(success)
+        except (TypeError, ValueError):
+            continue
+        if total_f <= 0:
+            continue
+        score = max(0.0, min(1.0, success_f / total_f))
+        result.append({
+            "action_type": action_type,
+            "classification": _classify(score),
+            "effectiveness_score": round(score, 4),
+            "recommended_priority_adjustment": round(score * _EFFECTIVENESS_WEIGHT, 4),
+            "times_executed": int(total_f),
+        })
+    return result
+
+
+# ---------------------------------------------------------------------------
 # JSON helper
 # ---------------------------------------------------------------------------
 
@@ -76,12 +134,20 @@ def _aggregate(records):
 # Main
 # ---------------------------------------------------------------------------
 
-def update_action_effectiveness_from_history(execution_history_path, output_path):
+def update_action_effectiveness_from_history(execution_history_path, output_path,
+                                              mapping=None):
     """Aggregate execution history into an action effectiveness ledger.
 
     Args:
         execution_history_path: Path to execution_history.json.
         output_path:            Destination for action_effectiveness_ledger.json.
+        mapping:                Optional {action_type: task_name} dict.  When
+                                provided, an "action_types" array is derived and
+                                written alongside "actions", satisfying the format
+                                expected by list_portfolio_actions and
+                                load_effectiveness_ledger.  When absent, only the
+                                task-keyed "actions" dict is written (prior
+                                behaviour).
 
     Returns:
         0 on success, 1 on error.
@@ -100,7 +166,10 @@ def update_action_effectiveness_from_history(execution_history_path, output_path
         return 1
 
     actions = _aggregate(records)
-    _write_json(output_path, {"actions": actions})
+    output = {"actions": actions}
+    if mapping:
+        output["action_types"] = _derive_action_types(actions, mapping)
+    _write_json(output_path, output)
     return 0
 
 
@@ -117,10 +186,23 @@ def main(argv=None):
                         help="Path to execution_history.json.")
     parser.add_argument("--output", required=True, metavar="FILE",
                         help="Output path for action_effectiveness_ledger.json.")
+    parser.add_argument("--mapping-json", default=None, metavar="JSON",
+                        help="JSON object mapping action_type to task_name.  When "
+                             "provided, an 'action_types' array is derived and "
+                             "written alongside 'actions'.")
 
     args = parser.parse_args(argv)
+
+    mapping = None
+    if args.mapping_json is not None:
+        try:
+            mapping = json.loads(args.mapping_json)
+        except json.JSONDecodeError as exc:
+            sys.stderr.write(f"error: --mapping-json is not valid JSON: {exc}\n")
+            sys.exit(1)
+
     sys.exit(update_action_effectiveness_from_history(
-        args.execution_history, args.output
+        args.execution_history, args.output, mapping=mapping
     ))
 
 

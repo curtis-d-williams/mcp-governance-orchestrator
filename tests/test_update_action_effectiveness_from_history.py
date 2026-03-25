@@ -34,6 +34,8 @@ _spec.loader.exec_module(_mod)
 
 update_action_effectiveness_from_history = _mod.update_action_effectiveness_from_history
 _aggregate = _mod._aggregate
+_classify = _mod._classify
+_derive_action_types = _mod._derive_action_types
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +331,86 @@ class TestErrorCases:
         out = tmp_path / "ledger.json"
         rc = update_action_effectiveness_from_history(str(p), str(out))
         assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# G. Mapping-aware action_types derivation
+# ---------------------------------------------------------------------------
+
+class TestMappingAware:
+    """Tests for the optional mapping= parameter that emits action_types rows."""
+
+    _MAPPING = {
+        "regenerate_missing_artifact": "build_portfolio_dashboard",
+        "refresh_repo_health": "build_portfolio_dashboard",
+        "analyze_repo_insights": "repo_insights_example",
+    }
+
+    def test_action_types_emitted_when_mapping_provided(self, tmp_path):
+        h = _write_history(tmp_path, [_record(["build_portfolio_dashboard"], "ok")])
+        out = tmp_path / "ledger.json"
+        update_action_effectiveness_from_history(str(h), str(out), mapping=self._MAPPING)
+        data = json.loads(out.read_text())
+        assert "action_types" in data
+        assert isinstance(data["action_types"], list)
+
+    def test_action_types_absent_when_no_mapping(self, tmp_path):
+        h = _write_history(tmp_path, [_record(["build_portfolio_dashboard"], "ok")])
+        out = tmp_path / "ledger.json"
+        update_action_effectiveness_from_history(str(h), str(out))
+        data = json.loads(out.read_text())
+        assert "action_types" not in data
+
+    def test_multiple_action_types_share_task_history(self, tmp_path):
+        # regenerate_missing_artifact and refresh_repo_health both map to
+        # build_portfolio_dashboard — both receive the same effectiveness data.
+        h = _write_history(tmp_path, [
+            _record(["build_portfolio_dashboard"], "ok"),
+            _record(["build_portfolio_dashboard"], "aborted"),
+        ])
+        out = tmp_path / "ledger.json"
+        update_action_effectiveness_from_history(str(h), str(out), mapping=self._MAPPING)
+        data = json.loads(out.read_text())
+        rows = {r["action_type"]: r for r in data["action_types"]}
+        assert rows["regenerate_missing_artifact"]["effectiveness_score"] == pytest.approx(0.5)
+        assert rows["refresh_repo_health"]["effectiveness_score"] == pytest.approx(0.5)
+
+    def test_action_type_omitted_when_task_has_no_history(self, tmp_path):
+        # analyze_repo_insights maps to repo_insights_example which has no history.
+        h = _write_history(tmp_path, [_record(["build_portfolio_dashboard"], "ok")])
+        out = tmp_path / "ledger.json"
+        update_action_effectiveness_from_history(str(h), str(out), mapping=self._MAPPING)
+        data = json.loads(out.read_text())
+        action_types = [r["action_type"] for r in data["action_types"]]
+        assert "analyze_repo_insights" not in action_types
+
+    def test_action_types_sorted_deterministically(self, tmp_path):
+        h = _write_history(tmp_path, [
+            _record(["build_portfolio_dashboard", "repo_insights_example"], "ok"),
+        ])
+        out = tmp_path / "ledger.json"
+        update_action_effectiveness_from_history(str(h), str(out), mapping=self._MAPPING)
+        data = json.loads(out.read_text())
+        types = [r["action_type"] for r in data["action_types"]]
+        assert types == sorted(types)
+
+    def test_effectiveness_score_and_derived_fields(self, tmp_path):
+        # 3 ok + 1 aborted → score = 0.75
+        h = _write_history(tmp_path, [
+            _record(["build_portfolio_dashboard"], "ok"),
+            _record(["build_portfolio_dashboard"], "ok"),
+            _record(["build_portfolio_dashboard"], "ok"),
+            _record(["build_portfolio_dashboard"], "aborted"),
+        ])
+        out = tmp_path / "ledger.json"
+        update_action_effectiveness_from_history(
+            str(h), str(out),
+            mapping={"regenerate_missing_artifact": "build_portfolio_dashboard"},
+        )
+        data = json.loads(out.read_text())
+        row = data["action_types"][0]
+        assert row["action_type"] == "regenerate_missing_artifact"
+        assert row["effectiveness_score"] == pytest.approx(0.75)
+        assert row["recommended_priority_adjustment"] == pytest.approx(round(0.75 * 0.15, 4))
+        assert row["classification"] == "high"
+        assert row["times_executed"] == 4

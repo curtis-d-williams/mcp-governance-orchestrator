@@ -19,7 +19,7 @@ Public API:
     run_governed_loop(artifacts, top_k, exploration_offset, ...) -> CompletedProcess
     run_execute_governed_actions(artifacts, manifest) -> CompletedProcess
     run_update_execution_history(artifacts) -> CompletedProcess
-    run_update_action_effectiveness_from_history(artifacts) -> CompletedProcess
+    run_update_action_effectiveness_from_history(artifacts, mapping=None) -> CompletedProcess
     run_update_cycle_history(artifacts, cycle_artifact_path) -> CompletedProcess
     run_aggregate_cycle_history(artifacts) -> CompletedProcess
     run_detect_cycle_history_regression(artifacts) -> CompletedProcess
@@ -52,6 +52,20 @@ _cap_learn_mod = _load_script(
 update_capability_effectiveness_ledger = (
     _cap_learn_mod.update_capability_effectiveness_ledger
 )
+
+# Action-type → task mapping used by Phase F to derive action_types rows.
+# Mirrors ACTION_TO_TASK in scripts/claude_dynamic_planner_loop.py.
+# Must remain in sync with that definition when the planner mapping changes.
+_ACTION_TO_TASK = {
+    "analyze_repo_insights": "repo_insights_example",
+    "build_capability_artifact": "build_mcp_server_example",
+    "build_mcp_server": "build_mcp_server_example",
+    "recover_failed_workflow": "failure_recovery_example",
+    "refresh_repo_health": "build_portfolio_dashboard",
+    "regenerate_missing_artifact": "build_portfolio_dashboard",
+    "rerun_failed_task": "build_portfolio_dashboard",
+    "run_determinism_regression_suite": "build_portfolio_dashboard",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -337,8 +351,13 @@ def run_update_execution_history(artifacts):
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
-def run_update_action_effectiveness_from_history(artifacts):
+def run_update_action_effectiveness_from_history(artifacts, mapping=None):
     """Phase F: aggregate action effectiveness from execution_history.json.
+
+    When mapping is provided, passes --mapping-json so the script also
+    derives an action_types array keyed by action_type, enabling downstream
+    consumers (list_portfolio_actions, load_effectiveness_ledger) to resolve
+    per-action-type effectiveness data.
 
     Returns the subprocess.CompletedProcess result.
     Raises subprocess.CalledProcessError on non-zero exit.
@@ -349,6 +368,8 @@ def run_update_action_effectiveness_from_history(artifacts):
         "--execution-history", artifacts["execution_history"],
         "--output", artifacts["action_effectiveness_ledger"],
     ]
+    if mapping:
+        cmd += ["--mapping-json", json.dumps(mapping, sort_keys=True)]
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
@@ -616,7 +637,7 @@ def run_cycle(args):
 
     # --- Phase F: action effectiveness ---
     try:
-        run_update_action_effectiveness_from_history(arts)
+        run_update_action_effectiveness_from_history(arts, mapping=_ACTION_TO_TASK)
     except subprocess.CalledProcessError:
         cycle = {
             **base_artifact,
