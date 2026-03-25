@@ -439,13 +439,6 @@ If Curtis has already approved the full-suite step in bounded form and the only 
 - preserve the single canonical full-suite rule
 - avoid launching any additional suite variants or duplicate runs
 
-NEXT_CANDIDATE:
-- smallest roadmap-aligned next task: ...
-
-DECISION_NEEDED:
-- Approve next roadmap-aligned task to proceed.
-
-
 ## Background task confirmation discipline
 
 If the Reviewer has already reported a clean full-suite result and a background suite task subsequently completes with a matching result, acknowledge it with one line of confirmation only. Do not re-present it as a new governance checkpoint or re-request commit approval. The Reviewer's reported result is authoritative; the background task is confirmation.
