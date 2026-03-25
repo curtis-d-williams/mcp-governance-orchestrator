@@ -118,7 +118,23 @@ def load_effectiveness_ledger(path):
 
         actions = data.get("actions")
         if isinstance(actions, dict):
-            return {"actions": actions}
+            derived = {}
+            for task_name, row in actions.items():
+                if not isinstance(row, dict):
+                    continue
+                total = row.get("total_runs", 0)
+                success = row.get("success_count", 0)
+                try:
+                    total_f, success_f = float(total), float(success)
+                except (TypeError, ValueError):
+                    continue
+                if total_f > 0:
+                    derived[task_name] = {
+                        "effectiveness_score": success_f / total_f,
+                        "times_executed": total_f,
+                        "effect_deltas": {},
+                    }
+            return {"actions": actions, **derived}
 
         rows = data.get("action_types", [])
         return {

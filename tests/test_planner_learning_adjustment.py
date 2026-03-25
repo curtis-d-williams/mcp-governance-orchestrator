@@ -1929,14 +1929,15 @@ class TestComputeExplorationBonus:
 
 
 class TestPhaseFFledgerFormatAlignment:
-    """Documents the Phase F -> Planner ledger format boundary.
+    """Phase F -> Planner ledger normalization.
 
     Phase F (update_action_effectiveness_from_history.py) writes:
-        {"actions": {"task_name": {...}}}   -- task-keyed, no effectiveness_score
+        {"actions": {"task_name": {"total_runs": N, "success_count": N, ...}}}
 
-    load_effectiveness_ledger returns {"actions": {...}} for this format.
-    compute_learning_adjustment calls ledger.get(action_type) -> {} -> 0.0.
-    _compute_task_reliability reads ledger.get("actions") -> resolves success_rate.
+    load_effectiveness_ledger normalizes this to a merged dict:
+    - flat keys: {task_name: {"effectiveness_score": rate, "times_executed": total, ...}}
+      so compute_learning_adjustment can resolve action types.
+    - "actions" key preserved so _compute_task_reliability continues to resolve success_rate.
     """
 
     _PHASE_F_LEDGER = {
@@ -1950,11 +1951,12 @@ class TestPhaseFFledgerFormatAlignment:
         }
     }
 
-    def test_phase_f_format_learning_adjustment_is_zero(self, tmp_path):
+    def test_phase_f_format_learning_adjustment_derives_from_success_rate(self, tmp_path):
+        # effectiveness_score = 4/5 = 0.8; adj = min(0.8 * 0.15, 0.20) = 0.12
         path = tmp_path / "phase_f_ledger.json"
         path.write_text(json.dumps(self._PHASE_F_LEDGER))
         ledger = load_effectiveness_ledger(str(path))
-        assert compute_learning_adjustment("build_portfolio_dashboard", ledger) == 0.0
+        assert compute_learning_adjustment("build_portfolio_dashboard", ledger) == pytest.approx(0.12)
 
     def test_phase_f_format_task_reliability_resolves(self, tmp_path):
         path = tmp_path / "phase_f_ledger.json"
