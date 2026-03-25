@@ -122,6 +122,46 @@ class TestLoadEffectivenessLedger:
         result = load_effectiveness_ledger(str(p))
         assert set(result.keys()) == {"type_a", "type_b"}
 
+    def test_both_keys_prefers_action_types(self, tmp_path):
+        ledger = {
+            "actions": {
+                "build_portfolio_dashboard": {
+                    "total_runs": 1,
+                    "success_runs": 1,
+                    "effect_deltas": [],
+                }
+            },
+            "action_types": [
+                {
+                    "action_type": "refresh_repo_health",
+                    "effectiveness_score": 0.8,
+                    "times_executed": 3,
+                    "classification": "effective",
+                    "recommended_priority_adjustment": 0.1,
+                }
+            ],
+        }
+        p = tmp_path / "ledger.json"
+        p.write_text(json.dumps(ledger), encoding="utf-8")
+        result = load_effectiveness_ledger(str(p))
+        assert "refresh_repo_health" in result
+        assert "build_portfolio_dashboard" not in result
+
+    def test_only_actions_key_still_resolves(self, tmp_path):
+        ledger = {
+            "actions": {
+                "build_portfolio_dashboard": {
+                    "total_runs": 2,
+                    "success_runs": 2,
+                    "effect_deltas": [],
+                }
+            }
+        }
+        p = tmp_path / "ledger.json"
+        p.write_text(json.dumps(ledger), encoding="utf-8")
+        result = load_effectiveness_ledger(str(p))
+        assert "actions" in result
+
 
 # ---------------------------------------------------------------------------
 # compute_learning_adjustment

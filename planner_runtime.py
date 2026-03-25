@@ -116,6 +116,14 @@ def load_effectiveness_ledger(path):
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
 
+        rows = data.get("action_types")
+        if isinstance(rows, list) and rows:
+            return {
+                row["action_type"]: row
+                for row in rows
+                if isinstance(row, dict) and isinstance(row.get("action_type"), str)
+            }
+
         actions = data.get("actions")
         if isinstance(actions, dict):
             derived = {}
@@ -136,12 +144,7 @@ def load_effectiveness_ledger(path):
                     }
             return {"actions": actions, **derived}
 
-        rows = data.get("action_types", [])
-        return {
-            row["action_type"]: row
-            for row in rows
-            if isinstance(row, dict) and isinstance(row.get("action_type"), str)
-        }
+        return {}
     except Exception:
         return {}
 
