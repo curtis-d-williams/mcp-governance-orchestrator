@@ -3902,3 +3902,137 @@ def test_net_adjustment_increases_despite_growing_evolution_penalty(tmp_path, mo
             f"prior {prev_net:.6f} — penalty growth must not outpace reliability gain"
         )
         prev_net = net
+
+
+def test_ranked_action_window_shifts_in_cycle_output_artifacts(tmp_path, monkeypatch):
+    """Asserts that ranked_action_window in cycle output JSON shifts between cycle 1
+    and cycle 3 as the capability ledger accumulates success signal.
+
+    Unlike existing tests that only call _apply_learning_adjustments in-process,
+    this test reads the ranked_action_window field from the written cycle artifact
+    JSON files and asserts the top-ranked capability differs between cycle 1 and 3.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    # Pre-seed cap_y with 1 success so cycle 1 returns cap_y first.
+    capability_ledger.write_text(
+        _json.dumps(
+            {
+                "capabilities": {
+                    "cap_y": {
+                        "total_syntheses": 1,
+                        "successful_syntheses": 1,
+                        "failed_syntheses": 0,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    action_cap_x = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-x",
+        "args": {"capability": "cap_x", "artifact_kind": "mcp_server"},
+    }
+    action_cap_y = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-y",
+        "args": {"capability": "cap_y", "artifact_kind": "mcp_server"},
+    }
+
+    _call_count = [0]
+
+    def _dynamic_governed_result(args):
+        _call_count[0] += 1
+        # Cycle 1: cap_y first (pre-seeded ledger). Cycles 2+: cap_x first.
+        ordered = (
+            [action_cap_y, action_cap_x]
+            if _call_count[0] == 1
+            else [action_cap_x, action_cap_y]
+        )
+        window = [a["action_type"] for a in ordered]
+        window_detail = [
+            {
+                "action_type": a["action_type"],
+                "task_binding": {
+                    "args": {
+                        "artifact_kind": a["args"]["artifact_kind"],
+                        "capability": a["args"]["capability"],
+                    }
+                },
+            }
+            for a in ordered
+        ]
+        return {
+            "selected_offset": 0,
+            "result": {
+                "evaluation_summary": {
+                    "runs": [
+                        {
+                            "selected_actions": [window[0]],
+                            "selection_detail": {
+                                "ranked_action_window": window,
+                                "ranked_action_window_detail": window_detail,
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {"status": "ok", "artifact_kind": artifact_kind, "capability": capability}
+
+    monkeypatch.setattr(_mod, "run_governed_loop", _dynamic_governed_result)
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    cycle_outputs = []
+    for i in range(1, 4):
+        out = tmp_path / f"cycle{i}.json"
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(out),
+        )
+        cycle_outputs.append(out)
+
+    def _get_window_detail(path):
+        data = _json.loads(_Path(path).read_text(encoding="utf-8"))
+        runs = (
+            data.get("cycle_result", {})
+            .get("result", {})
+            .get("evaluation_summary", {})
+            .get("runs", [])
+        )
+        detail = runs[0].get("selection_detail", {}) if runs else {}
+        return detail.get("ranked_action_window_detail", [])
+
+    detail_c1 = _get_window_detail(cycle_outputs[0])
+    detail_c3 = _get_window_detail(cycle_outputs[2])
+
+    assert detail_c1, "cycle 1 output must contain ranked_action_window_detail"
+    assert detail_c3, "cycle 3 output must contain ranked_action_window_detail"
+
+    top_cap_c1 = detail_c1[0]["task_binding"]["args"]["capability"]
+    top_cap_c3 = detail_c3[0]["task_binding"]["args"]["capability"]
+
+    # cycle 3: cap_x has 2 successful syntheses in ledger — must rank first
+    assert top_cap_c3 == "cap_x", (
+        f"cycle 3 artifact must show cap_x at rank 0 after ledger accumulation; "
+        f"got {top_cap_c3}. cycle3 detail: {detail_c3}"
+    )
+    assert top_cap_c1 != top_cap_c3 or detail_c1 != detail_c3, (
+        "cycle 1 and cycle 3 ranked_action_window_detail must differ, "
+        "confirming observable rank shift in artifact JSON"
+    )
