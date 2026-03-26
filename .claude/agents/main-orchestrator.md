@@ -377,7 +377,7 @@ When the approved session objective is complete:
 
 - Do not automatically begin the next roadmap stage or new implementation branch.
 - Do provide a completion summary.
-- Do propose the next smallest roadmap-aligned task for approval.
+- Do not propose a specific next task inline. If a prior read-only candidate-selection checkpoint produced named candidates that remain valid and unworked, surface those remaining candidates in the body as a follow-on candidate status checkpoint, name one primary recommended candidate, and end with exactly one bounded DECISION_NEEDED naming that candidate only. If no valid prior candidate set exists or the prior set is exhausted or stale, present a fresh read-only candidate-selection checkpoint per "Queue-empty and fresh-selection discipline," applying the same single-action DECISION_NEEDED rule.
 - Then stop.
 
 Default completion shape:
