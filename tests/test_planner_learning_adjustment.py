@@ -2003,3 +2003,48 @@ class TestPhaseFFledgerFormatAlignment:
         path.write_text(json.dumps(self._PHASE_F_LEDGER))
         ledger = load_effectiveness_ledger(str(path))
         assert _compute_task_reliability("build_portfolio_dashboard", ledger) == pytest.approx(0.8)
+
+    def test_phase_f_format_high_success_action_ranks_first(self, tmp_path):
+        """Phase F ledger with high success rate boosts action above absent peer."""
+        # build_portfolio_dashboard: 4/5 → score=0.8 → adj=min(0.8*0.15, 0.20)=0.12
+        path = tmp_path / "phase_f_ledger.json"
+        path.write_text(json.dumps(self._PHASE_F_LEDGER))
+        ledger = load_effectiveness_ledger(str(path))
+
+        actions = [
+            {"action_type": "build_portfolio_dashboard", "priority": 1.0,
+             "action_id": "aid-1", "repo_id": "repo-test"},
+            {"action_type": "absent_action", "priority": 1.0,
+             "action_id": "aid-2", "repo_id": "repo-test"},
+        ]
+        result = _apply_learning_adjustments(actions, ledger)
+        assert result[0]["action_type"] == "build_portfolio_dashboard"
+        assert result[1]["action_type"] == "absent_action"
+
+    def test_phase_f_format_zero_success_action_receives_no_boost(self, tmp_path):
+        """Phase F ledger with zero successes adds no adjustment; tiebreaker governs."""
+        zero_ledger = {
+            "actions": {
+                "zero_success_action": {
+                    "total_runs": 3,
+                    "success_count": 0,
+                    "failure_count": 3,
+                    "last_status": "failed",
+                }
+            }
+        }
+        path = tmp_path / "zero_ledger.json"
+        path.write_text(json.dumps(zero_ledger))
+        ledger = load_effectiveness_ledger(str(path))
+
+        # Both actions at equal priority; "absent_action_a" < "zero_success_action" alphabetically
+        actions = [
+            {"action_type": "zero_success_action", "priority": 1.0,
+             "action_id": "aid-z", "repo_id": "repo-test"},
+            {"action_type": "absent_action_a", "priority": 1.0,
+             "action_id": "aid-a", "repo_id": "repo-test"},
+        ]
+        result = _apply_learning_adjustments(actions, ledger)
+        # zero-success adds no boost → alphabetical tiebreaker governs → absent_action_a first
+        assert result[0]["action_type"] == "absent_action_a"
+        assert result[1]["action_type"] == "zero_success_action"
