@@ -3748,3 +3748,157 @@ def test_zero_and_none_similarity_delta_do_not_block_evolution(tmp_path, monkeyp
             f"must NOT block evolution; plan_capability_evolution was not called"
         )
         mock_plan.reset_mock()
+
+
+def test_net_adjustment_increases_despite_growing_evolution_penalty(tmp_path, monkeypatch):
+    """
+    Verify that net capability_reliability_adjustment rises monotonically across 3
+    cycles even as the evolution penalty grows.
+
+    Pre-seed: total=2, successful=2, evolved=0 — no similarity_delta key so the
+    similarity-regression gate does not fire.
+
+    Each cycle: used_evolution=True increments both successful_syntheses and
+    successful_evolved_syntheses by 1.
+
+    Analytical expectations (WEIGHT=0.10, PENALTY=0.02, THRESHOLD=5.0):
+        cycle 1: total=3 s=3 e=1  net ~0.014000
+        cycle 2: total=4 s=4 e=2  net ~0.018667
+        cycle 3: total=5 s=5 e=3  net ~0.023714
+    """
+    import json as _json
+    from planner_runtime import (
+        _compute_capability_reliability_adjustment,
+        load_capability_effectiveness_ledger,
+    )
+
+    CAPABILITY = "github_repository_management"
+
+    # ------------------------------------------------------------------ mocks
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [{"selected_actions": ["build_mcp_server"]}]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": "mcp_server",
+            "capability": capability,
+            "generated_repo": "generated_mcp_server_github",
+            "tools": ["list_repositories", "get_repository"],
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    # get_reference_artifact_path must return a non-empty string to avoid the
+    # ValueError guard inside factory_pipeline.py Stage 5.
+    monkeypatch.setattr(
+        _pipeline,
+        "get_reference_artifact_path",
+        lambda capability: "reference_mcp_github_repository_management",
+    )
+
+    # compare_mcp_servers: first call per cycle returns 0.75; the evolution
+    # iteration call returns 0.80 — a positive delta commits evolution.
+    compare_call_count = {"value": 0}
+
+    def _fake_compare(generated_path, reference_path, output_path=None):
+        compare_call_count["value"] += 1
+        # Even calls (iteration loop) return higher score to commit evolution.
+        score = 0.80 if compare_call_count["value"] % 2 == 0 else 0.75
+        return {
+            "similarity": {"overall_score": score},
+            "structure": {"generated_capability": CAPABILITY},
+            "tool_surface": {"coverage_ratio": score, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": 1.0, "missing_enabled": []},
+            "testability": {"coverage_ratio": 1.0},
+        }
+
+    monkeypatch.setattr(_pipeline, "compare_mcp_servers", _fake_compare)
+
+    monkeypatch.setattr(
+        _pipeline,
+        "derive_capability_gaps_from_comparison",
+        lambda comparison: {"capability_gaps": []},
+    )
+
+    monkeypatch.setattr(
+        _pipeline,
+        "plan_capability_evolution",
+        lambda comparison: {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]},
+    )
+
+    def _fake_build_evolution_execution(evolution_plan, *, artifact_kind, current_tools):
+        return {
+            "builder_overrides": {"tools": current_tools + ["get_me"]},
+            "evolution_actions": evolution_plan.get("evolution_actions", []),
+        }
+
+    monkeypatch.setattr(
+        _pipeline, "build_evolution_execution", _fake_build_evolution_execution
+    )
+
+    # ---------------------------------------------------------------- pre-seed
+    capability_ledger = tmp_path / "capability_effectiveness_ledger.json"
+    pre_seed = {
+        "capabilities": {
+            CAPABILITY: {
+                "capability": CAPABILITY,
+                "total_syntheses": 2,
+                "successful_syntheses": 2,
+                "successful_evolved_syntheses": 0,
+                "failed_syntheses": 0,
+                "last_synthesis_status": "ok",
+            }
+        }
+    }
+    capability_ledger.write_text(_json.dumps(pre_seed), encoding="utf-8")
+
+    # ------------------------------------------------------------------ cycles
+    prev_net = float("-inf")
+    for cycle_idx in range(1, 4):
+        compare_call_count["value"] = 0  # reset per-cycle so pattern is stable
+
+        output = tmp_path / f"cycle{cycle_idx}.json"
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(output),
+        )
+
+        loaded_ledger = load_capability_effectiveness_ledger(str(capability_ledger))
+        caps = loaded_ledger.get("capabilities", {})
+        cap_row = caps.get(CAPABILITY, {})
+
+        expected_total = cycle_idx + 2
+        assert cap_row.get("total_syntheses") == expected_total, (
+            f"cycle {cycle_idx}: expected total_syntheses={expected_total}, "
+            f"got {cap_row.get('total_syntheses')}"
+        )
+        assert cap_row.get("successful_evolved_syntheses") == cycle_idx, (
+            f"cycle {cycle_idx}: expected successful_evolved_syntheses={cycle_idx}, "
+            f"got {cap_row.get('successful_evolved_syntheses')}"
+        )
+
+        action_probe = {
+            "action_type": "build_capability_artifact",
+            "args": {"capability": CAPABILITY},
+        }
+        net = _compute_capability_reliability_adjustment(action_probe, loaded_ledger)
+        assert net > prev_net, (
+            f"cycle {cycle_idx}: net adjustment {net:.6f} not strictly above "
+            f"prior {prev_net:.6f} — penalty growth must not outpace reliability gain"
+        )
+        prev_net = net
