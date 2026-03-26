@@ -232,6 +232,25 @@ class TestAggregateLogic:
     def test_idle_cycle_with_null_cycle_result_produces_empty_aggregation(self):
         assert _aggregate([{"cycle_result": None}]) == {}
 
+    def test_successful_evolved_syntheses_accumulates_across_evolution_cycles(self):
+        evolution_cycle = {
+            "cycle_result": {
+                "synthesis_event": {
+                    "capability": "cap_x",
+                    "artifact_kind": "mcp_server",
+                    "status": "ok",
+                    "source": "planner_request",
+                    "used_evolution": True,
+                }
+            }
+        }
+        aggregated = _aggregate([evolution_cycle, evolution_cycle, evolution_cycle])
+        cap = aggregated["cap_x"]
+        assert cap["successful_evolved_syntheses"] == 3
+        assert cap["successful_syntheses"] == 3
+        assert cap["total_syntheses"] == 3
+        assert cap["last_synthesis_used_evolution"] is True
+
 
 class TestLedgerCreation:
     def test_returns_zero(self, tmp_path):
