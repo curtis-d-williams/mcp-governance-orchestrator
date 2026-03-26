@@ -821,6 +821,65 @@ class TestCapabilityReliabilityAdjustment:
         assert mixed_adj < all_success_adj   # -0.006 < +0.018
         assert mixed_adj < 0.0              # net-negative history still penalizes
 
+    def test_failed_and_evolved_syntheses_produces_net_negative_adjustment(self):
+        # total=4, successful=1 (3 failures), evolved=2 (clamped to 1 by formula)
+        # success_rate = (1+1)/(4+2) = 2/6 = 1/3
+        # confidence = min(1.0, 4/5) = 0.8
+        # reliability_adj = 0.8 * ((1/3 - 0.5) * 0.10) = -0.013333...
+        # evolution_ratio = min(2,1)/1 = 1.0  →  evolution_penalty = 0.8 * 1.0 * 0.02 = 0.016
+        # result = -0.013333 - 0.016 = -0.029333...  (net negative)
+        action = self._action("cap_a")
+        ledger = {
+            "capabilities": {
+                "cap_a": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 1,
+                    "successful_evolved_syntheses": 2,
+                }
+            }
+        }
+        adj = _compute_capability_reliability_adjustment(action, ledger)
+        expected = 0.8 * ((2 / 6 - 0.5) * 0.10) - 0.8 * 1.0 * 0.02
+        assert adj == pytest.approx(expected)
+        assert adj < 0.0
+
+    def test_mixed_failure_and_evolution_ranks_below_clean_competitor(self):
+        # mixed_cap: total=4, success=1, evolved=2  → adj ≈ -0.029333 (net negative)
+        # clean_cap: total=4, success=4, evolved=0  → adj = 0.8 * ((5/6 - 0.5) * 0.10) ≈ +0.02667
+        # Both at equal base priority 0.5; clean_cap must rank first.
+        ledger = {
+            "capabilities": {
+                "mixed_cap": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 1,
+                    "successful_evolved_syntheses": 2,
+                },
+                "clean_cap": {
+                    "total_syntheses": 4,
+                    "successful_syntheses": 4,
+                    "successful_evolved_syntheses": 0,
+                },
+            }
+        }
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "args": {"capability": "mixed_cap"},
+                "priority": 0.5,
+                "action_id": "aid-mixed",
+                "repo_id": "repo-0",
+            },
+            {
+                "action_type": "build_capability_artifact",
+                "args": {"capability": "clean_cap"},
+                "priority": 0.5,
+                "action_id": "aid-clean",
+                "repo_id": "repo-0",
+            },
+        ]
+        sorted_actions = _apply_learning_adjustments(actions, {}, capability_ledger=ledger)
+        assert sorted_actions[0]["args"]["capability"] == "clean_cap"
+
 
 class TestCapabilityExplorationAdjustment:
     def _action(self, capability):
