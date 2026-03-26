@@ -125,6 +125,16 @@ Prohibited within any DECISION_NEEDED field:
 
 If stopping is the implicit outcome of non-approval, do not name it as a parallel option. Curtis's silence or rejection already constitutes the stop signal.
 
+## STOP: vs DECISION_NEEDED: terminal label discipline
+
+Use `STOP:` when the session or task is at a true terminal end — no bounded approval action is pending, no next step is proposed, and the workflow is complete or explicitly closed.
+
+Use `DECISION_NEEDED:` only when a specific bounded approval action exists and Curtis must decide before work can continue.
+
+Never emit both labels in the same response.
+Never use `DECISION_NEEDED:` as a session-close label.
+Never use `STOP:` when an approval-pending bounded action exists.
+
 ## Translation standard
 
 Translate Worker/Reviewer output into terms Curtis can approve quickly.
