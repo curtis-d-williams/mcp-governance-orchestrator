@@ -2362,3 +2362,69 @@ class TestDualLedgerRanking:
 
         assert result[0]["args"]["capability"] == "cap_a"
         assert result[1]["args"]["capability"] == "cap_b"
+
+    def test_task_name_reliability_stacks_with_dual_ledger_boost(self, tmp_path):
+        """task_name channel adds to an otherwise tied dual-ledger score.
+
+        Both actions share action_type="build_capability_artifact" (Phase F 5/5
+        -> effectiveness adj=0.15) and have identical capability history (5/5)
+        in the capability ledger -> same capability_reliability_component.
+
+        action_a carries task_name="build_capability_artifact" matching the ledger
+        -> reliability_boost = 1.0 -> contribution = 1.0 * 0.05 = 0.05.
+        action_b has no task_name -> reliability_boost = 0.0.
+
+        Equal base priority; two channels tied -> task_name channel (0.05) must
+        tip action_a to rank first.
+        """
+        ledger_data = {
+            "actions": {
+                "build_capability_artifact": {
+                    "total_runs": 5,
+                    "success_count": 5,
+                    "failure_count": 0,
+                    "last_status": "ok",
+                }
+            }
+        }
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps(ledger_data))
+        ledger = load_effectiveness_ledger(str(path))
+
+        cap_ledger = {
+            "capabilities": {
+                "cap_a": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 5,
+                    "successful_evolved_syntheses": 0,
+                },
+                "cap_b": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 5,
+                    "successful_evolved_syntheses": 0,
+                },
+            }
+        }
+
+        action_a = {
+            "action_type": "build_capability_artifact",
+            "task_name": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": "aid-a",
+            "repo_id": "repo-test",
+            "args": {"capability": "cap_a", "artifact_kind": "mcp_server"},
+        }
+        action_b = {
+            "action_type": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": "aid-b",
+            "repo_id": "repo-test",
+            "args": {"capability": "cap_b", "artifact_kind": "mcp_server"},
+        }
+
+        result = _apply_learning_adjustments(
+            [action_b, action_a], ledger, capability_ledger=cap_ledger
+        )
+
+        assert result[0]["args"]["capability"] == "cap_a"
+        assert result[1]["args"]["capability"] == "cap_b"
