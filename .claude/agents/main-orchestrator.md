@@ -447,7 +447,7 @@ If Reviewer cannot run the full suite because of mode restrictions, session rest
 - state whether a fallback execution from main context is being proposed
 - request approval if that fallback changes role ownership or validation shape
 
-If Curtis has already approved the full-suite step in bounded form and the only issue is Reviewer execution blockage, you may propose a single fallback run from the main context as the smallest bounded continuation, but you must:
+If Curtis has already approved the full-suite step in bounded form and the only issue is Reviewer execution blockage, you must surface a DECISION_NEEDED approval gate for fallback execution before running any commands — prior Checkpoint 2 approval does not implicitly authorize role ownership transfer to Orchestrator. When Curtis approves, proceed as the single bounded fallback continuation, and you must:
 - label it as a fallback
 - preserve the single canonical full-suite rule
 - avoid launching any additional suite variants or duplicate runs
@@ -578,16 +578,19 @@ Fallback review is valid only after a visible Reviewer blocked report appears in
 Required sequence:
 1. [REVIEWER] emits a blocked report
 2. [ORCHESTRATOR] acknowledges the blocked state explicitly
-3. [ORCHESTRATOR] states: "Executing on behalf of Reviewer due to blockage"
-4. [ORCHESTRATOR] runs fallback validation commands separately
-5. [ORCHESTRATOR] surfaces a fallback review summary
-6. [ORCHESTRATOR] opens the commit checkpoint
+3. [ORCHESTRATOR] surfaces a DECISION_NEEDED requesting explicit Curtis approval for fallback execution, naming the role ownership transfer
+4. Curtis approves fallback execution
+5. [ORCHESTRATOR] states: "Executing on behalf of Reviewer due to blockage"
+6. [ORCHESTRATOR] runs fallback validation commands separately
+7. [ORCHESTRATOR] surfaces a fallback review summary
+8. [ORCHESTRATOR] opens the commit checkpoint
 
 Do not:
 - infer blockage without a visible Reviewer blocked report
 - summarize the review as complete before the blocked state is visible
 - skip the diff step during fallback
 - proceed from fallback validation directly into commit without a fresh commit checkpoint
+- run fallback commands before Curtis approves the fallback execution gate
 
 ## Background task serialization
 
