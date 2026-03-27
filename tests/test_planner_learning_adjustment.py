@@ -2149,6 +2149,50 @@ class TestPhaseFFledgerFormatAlignment:
         assert result[0]["action_type"] == "perfect_task"
         assert result[1]["action_type"] == "absent_action"
 
+    def test_task_name_channel_independent_of_action_type_channel(self, tmp_path):
+        """action_type has no ledger entry (effectiveness=0) but task_name matches
+        (reliability_boost=1.0*0.05). Verifies reliability channel drives rank
+        independently of action-type effectiveness channel.
+
+        Ledger keyed by "reliable_task": 5/5 successes → reliability_boost = 1.0.
+        action_a: action_type="unrelated_action" (no ledger match), task_name="reliable_task"
+                  → reliability contribution = 1.0 * 0.05 = 0.05, effectiveness = 0.
+        action_b: action_type="absent_action", no task_name → both channels zero.
+        Equal base priority → action_a must rank first via reliability channel alone.
+        """
+        ledger_data = {
+            "actions": {
+                "reliable_task": {
+                    "total_runs": 5,
+                    "success_count": 5,
+                    "failure_count": 0,
+                    "last_status": "ok",
+                }
+            }
+        }
+        path = tmp_path / "reliable_task_ledger.json"
+        path.write_text(json.dumps(ledger_data))
+        ledger = load_effectiveness_ledger(str(path))
+
+        actions = [
+            {
+                "action_type": "unrelated_action",
+                "task_name": "reliable_task",
+                "priority": 1.0,
+                "action_id": "aid-a",
+                "repo_id": "repo-test",
+            },
+            {
+                "action_type": "absent_action",
+                "priority": 1.0,
+                "action_id": "aid-b",
+                "repo_id": "repo-test",
+            },
+        ]
+        result = _apply_learning_adjustments(actions, ledger)
+        assert result[0]["action_type"] == "unrelated_action"
+        assert result[1]["action_type"] == "absent_action"
+
 
 # ---------------------------------------------------------------------------
 # Dual-ledger combined path — action effectiveness + capability reliability
