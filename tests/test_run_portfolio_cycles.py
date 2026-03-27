@@ -496,3 +496,50 @@ class TestLedgerThreading:
         for cmd in captured_cmds:
             assert "--ledger" in cmd
             assert ledger in cmd
+
+
+# ---------------------------------------------------------------------------
+# J. Per-cycle operator status output
+# ---------------------------------------------------------------------------
+
+class TestCycleStatusOutput:
+    def test_status_ok_printed_on_success(self, tmp_path, capsys):
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(args, subprocess_run=_noop_subprocess, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert "[cycle 1]" in out
+        assert "ok" in out
+
+    def test_status_failed_printed_on_nonzero_returncode(self, tmp_path, capsys):
+        def failing(cmd, **kwargs):
+            return MagicMock(returncode=1, stdout="", stderr="")
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(args, subprocess_run=failing, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert "[cycle 1]" in out
+        assert "FAILED" in out
+
+    def test_archive_path_shown_when_output_exists(self, tmp_path, capsys):
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(
+            args,
+            subprocess_run=_subprocess_writing_output(args.output),
+            sleep_fn=_noop_sleep,
+        )
+        out = capsys.readouterr().out
+        assert "archived:" in out
+        assert "no output archived" not in out
+
+    def test_no_archive_path_shown_when_output_missing(self, tmp_path, capsys):
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(args, subprocess_run=_noop_subprocess, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert "no output archived" in out
+
+    def test_status_line_printed_for_each_iteration(self, tmp_path, capsys):
+        args = _make_args(tmp_path, cycles=3)
+        run_cycles(args, subprocess_run=_noop_subprocess, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert "[cycle 1]" in out
+        assert "[cycle 2]" in out
+        assert "[cycle 3]" in out

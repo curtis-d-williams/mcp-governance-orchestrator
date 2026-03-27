@@ -107,11 +107,17 @@ def run_cycles(args, subprocess_run=None, sleep_fn=None):
 
     iteration = 0
     while limit is None or iteration < limit:
-        subprocess_run(cmd, capture_output=True, text=True)
+        result = subprocess_run(cmd, capture_output=True, text=True)
 
         output_path = Path(args.output)
+        archived_to = None
         if output_path.exists():
-            _archive_artifact(str(output_path), args.archive_dir)
+            archive_result = _archive_artifact(str(output_path), args.archive_dir)
+            archived_to = archive_result.get("archived_to")
+
+        cycle_status = "ok" if result.returncode == 0 else f"FAILED (rc={result.returncode})"
+        archive_label = archived_to if archived_to else "no output archived"
+        print(f"[cycle {iteration + 1}] {cycle_status} | archived: {archive_label}", flush=True)
 
         iteration += 1
         # Sleep between iterations, not after the last one.
