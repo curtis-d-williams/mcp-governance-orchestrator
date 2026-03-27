@@ -543,3 +543,29 @@ class TestCycleStatusOutput:
         assert "[cycle 1]" in out
         assert "[cycle 2]" in out
         assert "[cycle 3]" in out
+
+    def test_inner_cycle_stdout_forwarded_when_nonempty(self, tmp_path, capsys):
+        def subprocess_with_stdout(cmd, **kwargs):
+            return MagicMock(returncode=0,
+                             stdout="[cycle] ok | output: governed_portfolio_cycle.json\n",
+                             stderr="")
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(args, subprocess_run=subprocess_with_stdout, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert "[cycle] ok" in out
+
+    def test_inner_cycle_stdout_not_forwarded_when_empty(self, tmp_path, capsys):
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(args, subprocess_run=_noop_subprocess, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert out.count("[cycle") == 1
+
+    def test_inner_cycle_stdout_forwarded_on_failed_cycle(self, tmp_path, capsys):
+        def failing_with_stdout(cmd, **kwargs):
+            return MagicMock(returncode=1,
+                             stdout="[cycle] ABORTED (phase: C) | output: governed_portfolio_cycle.json\n",
+                             stderr="")
+        args = _make_args(tmp_path, cycles=1)
+        run_cycles(args, subprocess_run=failing_with_stdout, sleep_fn=_noop_sleep)
+        out = capsys.readouterr().out
+        assert "[cycle] ABORTED" in out

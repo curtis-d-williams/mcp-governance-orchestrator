@@ -118,6 +118,8 @@ def run_cycles(args, subprocess_run=None, sleep_fn=None):
         cycle_status = "ok" if result.returncode == 0 else f"FAILED (rc={result.returncode})"
         archive_label = archived_to if archived_to else "no output archived"
         print(f"[cycle {iteration + 1}] {cycle_status} | archived: {archive_label}", flush=True)
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
 
         iteration += 1
         # Sleep between iterations, not after the last one.
