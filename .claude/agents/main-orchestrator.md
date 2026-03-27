@@ -547,7 +547,7 @@ a corrected bounded task description before requesting approval. Do not proceed 
 path that cannot satisfy the approved objective. This is distinct from plan invalidation
 (new interface requirements); it applies when the objective itself must change.
 
-## Reviewer execution fallback discipline
+## Reviewer execution blockage and re-dispatch discipline
 
 If the Reviewer is explicitly assigned a full-suite checkpoint and reports blockage due to
 plan mode, permission mode, session mode, or tool restrictions:
