@@ -2107,3 +2107,118 @@ class TestPhaseFFledgerFormatAlignment:
         # zero-success adds no boost → alphabetical tiebreaker governs → absent_action_a first
         assert result[0]["action_type"] == "absent_action_a"
         assert result[1]["action_type"] == "zero_success_action"
+
+
+# ---------------------------------------------------------------------------
+# Dual-ledger combined path — action effectiveness + capability reliability
+# ---------------------------------------------------------------------------
+
+
+class TestDualLedgerRanking:
+    """Verify _apply_learning_adjustments when both a Phase F action ledger and
+    a capability ledger are non-empty simultaneously.
+
+    Each prior test class exercises only one ledger at a time:
+    - TestPhaseFFledgerFormatAlignment: Phase F action ledger, empty capability ledger
+    - TestCapabilityReliabilityAdjustment: empty action ledger, capability ledger only
+
+    These tests close the combined path where both channels contribute.
+    """
+
+    _PHASE_F_LEDGER = {
+        "actions": {
+            "build_capability_artifact": {
+                "total_runs": 5,
+                "success_count": 5,
+                "failure_count": 0,
+                "last_status": "ok",
+            }
+        }
+    }
+
+    _CAP_LEDGER = {
+        "capabilities": {
+            "cap_a": {
+                "total_syntheses": 5,
+                "successful_syntheses": 5,
+                "successful_evolved_syntheses": 0,
+            }
+        }
+    }
+
+    def _action(self, capability, action_id):
+        return {
+            "action_type": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": action_id,
+            "repo_id": "repo-test",
+            "args": {"capability": capability, "artifact_kind": "mcp_server"},
+        }
+
+    def test_dual_ledger_stacked_boosts_rank_above_no_history_peer(self, tmp_path):
+        """Action with entries in both ledgers ranks above a peer absent from both.
+
+        cap_a: effectiveness_component ≈ +0.15 (Phase F 5/5) +
+               capability_reliability_component ≈ +0.036 (cap ledger 5/5)
+        cap_b: no entries in either ledger → 0 above base priority
+        """
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps(self._PHASE_F_LEDGER))
+        ledger = load_effectiveness_ledger(str(path))
+
+        actions = [self._action("cap_b", "aid-b"), self._action("cap_a", "aid-a")]
+        result = _apply_learning_adjustments(
+            actions, ledger, capability_ledger=self._CAP_LEDGER
+        )
+
+        assert result[0]["args"]["capability"] == "cap_a"
+        assert result[1]["args"]["capability"] == "cap_b"
+
+    def test_dual_ledger_larger_action_effectiveness_dominates_weaker_capability_reliability(
+        self, tmp_path
+    ):
+        """Action effectiveness boost (≈0.15) dominates capability reliability boost (≈0.036).
+
+        Phase F ledger is action-type-keyed; capability ledger is capability-keyed.
+        Different action_types isolate each channel to exactly one action:
+
+        cap_a (build_capability_artifact): Phase F hit → effectiveness ≈ +0.15; no cap entry
+        cap_b (build_mcp_server):          no Phase F hit; cap ledger 5/5 → reliability ≈ +0.036
+
+        Phase F effectiveness (0.15) > capability reliability (0.036) → cap_a ranks first.
+        """
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps(self._PHASE_F_LEDGER))
+        ledger = load_effectiveness_ledger(str(path))
+
+        cap_b_ledger = {
+            "capabilities": {
+                "cap_b": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 5,
+                    "successful_evolved_syntheses": 0,
+                }
+            }
+        }
+
+        action_a = {
+            "action_type": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": "aid-a",
+            "repo_id": "repo-test",
+            "args": {"capability": "cap_a", "artifact_kind": "mcp_server"},
+        }
+        action_b = {
+            "action_type": "build_mcp_server",
+            "priority": 1.0,
+            "action_id": "aid-b",
+            "repo_id": "repo-test",
+            "args": {"capability": "cap_b", "artifact_kind": "mcp_server"},
+        }
+
+        result = _apply_learning_adjustments(
+            [action_b, action_a], ledger, capability_ledger=cap_b_ledger
+        )
+
+        assert result[0]["args"]["capability"] == "cap_a"
+        assert result[1]["args"]["capability"] == "cap_b"
