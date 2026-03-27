@@ -2307,3 +2307,58 @@ class TestDualLedgerRanking:
 
         assert result[0]["args"]["capability"] == "cap_a"
         assert result[1]["args"]["capability"] == "cap_b"
+
+    def test_capability_reliability_dominates_weak_action_effectiveness(self, tmp_path):
+        """Capability reliability boost exceeds a weak action effectiveness boost.
+
+        cap_a (build_capability_artifact): cap ledger 5/5, no Phase F entry
+              -> capability_reliability_component approx +0.03571; effectiveness = 0
+        cap_b (build_mcp_server): Phase F 1/5 -> effectiveness_score=0.2
+              -> adj = 0.2*0.15 = 0.030; no cap entry
+        0.03571 > 0.030 -> cap_a must rank first despite no action effectiveness entry.
+        """
+        weak_ledger = {
+            "actions": {
+                "build_mcp_server": {
+                    "total_runs": 5,
+                    "success_count": 1,
+                    "failure_count": 4,
+                    "last_status": "failed",
+                }
+            }
+        }
+        path = tmp_path / "weak_ledger.json"
+        path.write_text(json.dumps(weak_ledger))
+        ledger = load_effectiveness_ledger(str(path))
+
+        cap_a_cap_ledger = {
+            "capabilities": {
+                "cap_a": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 5,
+                    "successful_evolved_syntheses": 0,
+                }
+            }
+        }
+
+        action_a = {
+            "action_type": "build_capability_artifact",
+            "priority": 1.0,
+            "action_id": "aid-a",
+            "repo_id": "repo-test",
+            "args": {"capability": "cap_a", "artifact_kind": "mcp_server"},
+        }
+        action_b = {
+            "action_type": "build_mcp_server",
+            "priority": 1.0,
+            "action_id": "aid-b",
+            "repo_id": "repo-test",
+            "args": {"capability": "cap_b", "artifact_kind": "mcp_server"},
+        }
+
+        result = _apply_learning_adjustments(
+            [action_b, action_a], ledger, capability_ledger=cap_a_cap_ledger
+        )
+
+        assert result[0]["args"]["capability"] == "cap_a"
+        assert result[1]["args"]["capability"] == "cap_b"
