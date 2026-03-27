@@ -2123,3 +2123,60 @@ class TestCycleAnalyticsPhases:
             run_cycle(args)
         data = json.loads(Path(args.output).read_text())
         assert data["cycle_history"] == _CYCLE_HISTORY_DATA
+
+
+# ---------------------------------------------------------------------------
+# TestPrintCycleStatus
+# ---------------------------------------------------------------------------
+
+_print_cycle_status = _mod._print_cycle_status
+
+
+class TestPrintCycleStatus:
+    """Unit tests for _print_cycle_status output formatting."""
+
+    def test_rc_zero_prints_ok_label(self, tmp_path, capsys):
+        output = tmp_path / "cycle.json"
+        output.write_text(json.dumps({"status": "ok"}), encoding="utf-8")
+        _print_cycle_status(str(output), 0)
+        captured = capsys.readouterr()
+        assert "[cycle] ok" in captured.out
+
+    def test_rc_nonzero_prints_aborted_label(self, tmp_path, capsys):
+        output = tmp_path / "cycle.json"
+        output.write_text(json.dumps({"status": "aborted"}), encoding="utf-8")
+        _print_cycle_status(str(output), 1)
+        captured = capsys.readouterr()
+        assert "[cycle] ABORTED" in captured.out
+
+    def test_rc_nonzero_with_phase_includes_phase(self, tmp_path, capsys):
+        output = tmp_path / "cycle.json"
+        output.write_text(json.dumps({"status": "aborted", "phase": "governed_loop"}), encoding="utf-8")
+        _print_cycle_status(str(output), 1)
+        captured = capsys.readouterr()
+        assert "(phase: governed_loop)" in captured.out
+
+    def test_governance_decision_appended(self, tmp_path, capsys):
+        output = tmp_path / "cycle.json"
+        output.write_text(
+            json.dumps({"status": "ok", "governance_decision": {"decision": "continue"}}),
+            encoding="utf-8",
+        )
+        _print_cycle_status(str(output), 0)
+        captured = capsys.readouterr()
+        assert "| governance: continue" in captured.out
+
+    def test_missing_output_file_does_not_raise(self, tmp_path, capsys):
+        missing = str(tmp_path / "nonexistent.json")
+        # Must not raise; label should still be printed.
+        _print_cycle_status(missing, 0)
+        captured = capsys.readouterr()
+        assert "[cycle]" in captured.out
+
+    def test_malformed_json_does_not_raise(self, tmp_path, capsys):
+        output = tmp_path / "cycle.json"
+        output.write_text("not valid json {{{", encoding="utf-8")
+        _print_cycle_status(str(output), 0)
+        captured = capsys.readouterr()
+        assert "[cycle] ok" in captured.out
+        assert "| governance:" not in captured.out
