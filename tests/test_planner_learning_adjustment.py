@@ -2108,6 +2108,47 @@ class TestPhaseFFledgerFormatAlignment:
         assert result[0]["action_type"] == "absent_action_a"
         assert result[1]["action_type"] == "zero_success_action"
 
+    def test_task_name_field_drives_reliability_boost_ranking(self, tmp_path):
+        """Action carrying task_name matching Phase F ledger gets reliability_boost.
+
+        5/5 success_rate → reliability_boost = 1.0 → contribution = 1.0 * 0.05 = 0.05.
+        action_type also matches → learning_adjustment = min(1.0 * 0.15, 0.20) = 0.15.
+        Action B has no task_name and no ledger entry → both channels zero.
+        Equal priority → Action A must rank first via combined boost.
+        """
+        perfect_ledger = {
+            "actions": {
+                "perfect_task": {
+                    "total_runs": 5,
+                    "success_count": 5,
+                    "failure_count": 0,
+                    "last_status": "ok",
+                }
+            }
+        }
+        path = tmp_path / "perfect_ledger.json"
+        path.write_text(json.dumps(perfect_ledger))
+        ledger = load_effectiveness_ledger(str(path))
+
+        actions = [
+            {
+                "action_type": "perfect_task",
+                "task_name": "perfect_task",
+                "priority": 1.0,
+                "action_id": "aid-a",
+                "repo_id": "repo-test",
+            },
+            {
+                "action_type": "absent_action",
+                "priority": 1.0,
+                "action_id": "aid-b",
+                "repo_id": "repo-test",
+            },
+        ]
+        result = _apply_learning_adjustments(actions, ledger)
+        assert result[0]["action_type"] == "perfect_task"
+        assert result[1]["action_type"] == "absent_action"
+
 
 # ---------------------------------------------------------------------------
 # Dual-ledger combined path — action effectiveness + capability reliability
