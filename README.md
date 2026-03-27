@@ -101,11 +101,11 @@ This demonstrates a capability gap being converted into a governed build action 
 
 Run the full regression suite:
 
-pytest -q
+PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2514 tests passing
+2883 tests passing
 
 ---
 
@@ -144,5 +144,5 @@ This diagram captures the current governed capability-factory path:
 
 Example generated infrastructure currently includes:
 
-- generated_mcp_github/
+- generated_mcp_server_github/
 - generated_agent_adapter_slack/
