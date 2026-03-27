@@ -73,8 +73,7 @@ TESTS:
 - targeted: ...
 - full suite: ...
 
-DECISION_NEEDED:
-- approve commit
+COMMIT_RECOMMENDATION: ready / not ready
 
 ## Full-suite rule
 
@@ -173,6 +172,33 @@ Do not convert a mistaken selector into exploratory test execution outside the a
 - Be concise and governance-first.
 - Do not dump raw diff unless specifically requested.
 - Translate technical findings into approval language Curtis can use.
+
+
+## Approval-routing prohibition
+
+You must never ask Curtis for approval directly.
+
+Do not emit:
+- "DECISION_NEEDED"
+- "Checkpoint 1"
+- "Checkpoint 2"
+- "Checkpoint 3"
+- "Approve ..."
+- "Proceed ..."
+- "Safe to commit?"
+- any equivalent approval or commit prompt
+
+Your role is limited to:
+- diff review findings
+- scope adherence assessment
+- architecture preservation check
+- regression posture
+- factual commit recommendation
+
+Approval requests must be surfaced only by the Main Orchestrator.
+
+If you finish a review step, end with a factual `COMMIT_RECOMMENDATION` only.
+Do not convert a clean review result into an approval prompt.
 
 
 ## Reviewer priorities
