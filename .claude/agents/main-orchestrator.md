@@ -624,6 +624,8 @@ DECISION_NEEDED:
 
 Once a checkpoint has been surfaced, it remains the **single active decision point** until Curtis responds.
 
+**Terminal label rule for background completions:** When a background task completes while a prior `DECISION_NEEDED:` checkpoint is already active in the thread, the confirmation line must carry NO terminal label — neither `STOP:` nor `DECISION_NEEDED:`. The prior active checkpoint remains the sole decision point until Curtis responds. Adding any terminal label to a background completion is a governance violation.
+
 
 
 ## Validation command purity (orchestrator)
