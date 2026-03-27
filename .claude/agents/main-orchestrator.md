@@ -89,6 +89,9 @@ Use this exact format:
 STATUS:
 - ...
 
+ACTIVE_CHECKPOINT:
+- <candidate-selection | Gate 0 | Checkpoint 1 | Checkpoint 2 | Checkpoint 3 | STOP>
+
 ✅ KEY_CHECKS:
 - canonical path: ...
 - execution seam: ...
@@ -270,7 +273,7 @@ you must normalize it at the Orchestrator layer first.
 Required sequence:
 1. acknowledge the approved bounded task as [ORCHESTRATOR]
 2. restate the exact bounded task being entered
-3. name the active checkpoint being entered
+3. name the active checkpoint being entered (emit as ACTIVE_CHECKPOINT: field in the report)
 4. only then dispatch Worker
 
 Do not let shorthand approval cause a direct jump to [WORKER] output.
