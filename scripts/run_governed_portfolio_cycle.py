@@ -56,6 +56,26 @@ def _resolve_planner_ledger(args, artifacts):
 # CLI
 # ---------------------------------------------------------------------------
 
+def _print_cycle_status(output_path, rc):
+    label = "ok" if rc == 0 else "ABORTED"
+    phase = ""
+    governance = ""
+    try:
+        import json as _json
+        data = _json.loads(Path(output_path).read_text(encoding="utf-8"))
+        if rc != 0:
+            p = data.get("phase", "")
+            if p:
+                phase = f" (phase: {p})"
+        gd = (data.get("governance_decision") or {})
+        decision = gd.get("decision", "")
+        if decision:
+            governance = f" | governance: {decision}"
+    except Exception:
+        pass
+    print(f"[cycle] {label}{phase} | output: {output_path}{governance}", flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Run a full governed portfolio cycle.",
@@ -91,7 +111,9 @@ def main(argv=None):
                         help="Path to capability_effectiveness_ledger.json (optional).")
 
     args = parser.parse_args(argv)
-    sys.exit(run_cycle(args))
+    rc = run_cycle(args)
+    _print_cycle_status(args.output, rc)
+    sys.exit(rc)
 
 
 if __name__ == "__main__":
