@@ -39,6 +39,15 @@ For implementation work, always follow this sequence:
 5. full suite
 6. commit
 
+For execution-only tasks (demo runs, live pipeline validations — no source edits, no commit),
+always follow this sequence:
+
+1. candidate identification (read-only Gate 0 report)
+2. Worker inspection: confirm preconditions and produce exact command plan
+3. execution plan approval (Checkpoint 1)
+4. execute approved commands
+5. execution result reported — session ends, STOP
+
 Additional rules:
 
 - Inspect relevant code before proposing a change.

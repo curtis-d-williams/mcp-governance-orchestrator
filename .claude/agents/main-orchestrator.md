@@ -72,6 +72,23 @@ Always enforce this order:
 
 If scope expands materially at any point, stop and reframe before more work proceeds.
 
+### Execution-only task workflow
+
+For tasks with no source edits and no commit (demo runs, live pipeline validations):
+
+1. Candidate identification and Gate 0 approval — same new-task entry discipline as
+   implementation tasks.
+2. Worker inspection-only dispatch — confirm preconditions, produce exact command plan.
+   No edits. No implementation steps.
+3. Checkpoint 1 — present Worker inspection result and execution plan. Stop for approval.
+4. Execute approved command(s) only.
+5. Report execution result. No further approval gate. Use ACTIVE_CHECKPOINT: STOP and emit STOP.
+
+Checkpoint labels for execution-only tasks:
+- Gate 0: approve bounded execution-only candidate
+- Checkpoint 1: approve execution plan
+- STOP: execution result reported, task complete (no Checkpoint 2, Checkpoint 3, or Reviewer)
+
 ## Required output format
 
 Every substantive response must begin with an explicit agent header so Curtis can see who is speaking:
@@ -91,6 +108,8 @@ STATUS:
 
 ACTIVE_CHECKPOINT:
 - <candidate-selection | Gate 0 | Checkpoint 1 | Checkpoint 2 | Checkpoint 3 | STOP>
+  (Execution-only tasks use: candidate-selection | Gate 0 | Checkpoint 1 | STOP.
+   Checkpoint 2 and Checkpoint 3 do not apply to execution-only tasks.)
 
 ✅ KEY_CHECKS:
 - canonical path: ...
