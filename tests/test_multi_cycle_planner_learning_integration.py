@@ -325,3 +325,53 @@ class TestMultiCyclePlannerLearningIntegration:
             result["refresh_repo_health"]["effectiveness_score"]
             > result["rerun_failed_task"]["effectiveness_score"]
         )
+
+    def test_select_actions_ranks_high_effectiveness_action_first(self):
+        import importlib.util as _ilu
+        from planner_runtime import load_effectiveness_ledger
+
+        _script = _REPO_ROOT / "scripts" / "claude_dynamic_planner_loop.py"
+        _spec = _ilu.spec_from_file_location("claude_dynamic_planner_loop", _script)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        select_actions = _mod.select_actions
+
+        ledger_data = {
+            "action_types": [
+                {
+                    "action_type": "refresh_repo_health",
+                    "effectiveness_score": 0.9,
+                    "times_executed": 10,
+                    "effect_deltas": {},
+                },
+                {
+                    "action_type": "rerun_failed_task",
+                    "effectiveness_score": 0.1,
+                    "times_executed": 10,
+                    "effect_deltas": {},
+                },
+            ]
+        }
+        import tempfile, json as _json, pathlib as _pl
+        with tempfile.TemporaryDirectory() as td:
+            p = _pl.Path(td) / "ledger.json"
+            p.write_text(_json.dumps(ledger_data), encoding="utf-8")
+            ledger = load_effectiveness_ledger(str(p))
+
+        raw_actions = [
+            {"action_type": "rerun_failed_task", "priority": 5},
+            {"action_type": "refresh_repo_health", "priority": 5},
+        ]
+
+        args = SimpleNamespace(top_k=2, exploration_offset=0)
+        _tasks, _selected, sorted_actions = select_actions(
+            args, raw_actions, ledger, signals={}, policy={}
+        )
+
+        ranked_types = [a["action_type"] for a in sorted_actions]
+        assert ranked_types[0] == "refresh_repo_health", (
+            f"expected refresh_repo_health ranked first, got: {ranked_types}"
+        )
+        assert ranked_types[-1] == "rerun_failed_task", (
+            f"expected rerun_failed_task ranked last, got: {ranked_types}"
+        )
