@@ -270,3 +270,58 @@ class TestMultiCyclePlannerLearningIntegration:
         assert ranked[-1] == "rerun_failed_task", (
             f"expected rerun_failed_task last by cycle 3, got: {ranked}"
         )
+
+    def test_load_effectiveness_ledger_resolves_action_types_array_format(
+        self, tmp_path
+    ):
+        from planner_runtime import load_effectiveness_ledger
+
+        ledger_data = {
+            "action_types": [
+                {
+                    "action_type": "refresh_repo_health",
+                    "effectiveness_score": 0.85,
+                    "times_executed": 7,
+                    "classification": "effective",
+                    "recommended_priority_adjustment": 0.1,
+                }
+            ]
+        }
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps(ledger_data), encoding="utf-8")
+
+        result = load_effectiveness_ledger(str(path))
+
+        assert result.get("refresh_repo_health") is not None
+        assert result["refresh_repo_health"]["effectiveness_score"] == pytest.approx(0.85)
+
+    def test_phase_f_action_types_format_feeds_planner_ledger_get(
+        self, tmp_path
+    ):
+        from planner_runtime import load_effectiveness_ledger
+
+        ledger_data = {
+            "action_types": [
+                {
+                    "action_type": "refresh_repo_health",
+                    "effectiveness_score": 0.9,
+                    "times_executed": 8,
+                },
+                {
+                    "action_type": "rerun_failed_task",
+                    "effectiveness_score": 0.1,
+                    "times_executed": 6,
+                },
+            ]
+        }
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps(ledger_data), encoding="utf-8")
+
+        result = load_effectiveness_ledger(str(path))
+
+        assert result.get("refresh_repo_health") is not None
+        assert result.get("rerun_failed_task") is not None
+        assert (
+            result["refresh_repo_health"]["effectiveness_score"]
+            > result["rerun_failed_task"]["effectiveness_score"]
+        )
