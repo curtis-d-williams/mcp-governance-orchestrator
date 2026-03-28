@@ -497,6 +497,54 @@ class TestLedgerThreading:
             assert "--ledger" in cmd
             assert ledger in cmd
 
+    def test_work_dir_ledger_replaces_explicit_ledger_in_next_cycle(self, tmp_path):
+        original_ledger = str(tmp_path / "original_ledger.json")
+        args = _make_args(tmp_path, cycles=2, ledger=original_ledger)
+        work_dir_ledger = (
+            Path(args.output).parent
+            / f"{Path(args.output).stem}_artifacts"
+            / "action_effectiveness_ledger.json"
+        )
+        work_dir_ledger.parent.mkdir(parents=True, exist_ok=True)
+        work_dir_ledger.write_text("{}")
+        captured_cmds = []
+
+        def recording(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            return MagicMock(returncode=0)
+
+        run_cycles(args, subprocess_run=recording, sleep_fn=_noop_sleep)
+
+        assert len(captured_cmds) == 2
+        idx1 = captured_cmds[0].index("--ledger")
+        assert captured_cmds[0][idx1 + 1] == original_ledger
+        idx2 = captured_cmds[1].index("--ledger")
+        assert captured_cmds[1][idx2 + 1] == str(work_dir_ledger)
+        assert captured_cmds[1].count("--ledger") == 1
+
+    def test_work_dir_ledger_appended_when_no_explicit_ledger(self, tmp_path):
+        args = _make_args(tmp_path, cycles=2, ledger=None)
+        work_dir_ledger = (
+            Path(args.output).parent
+            / f"{Path(args.output).stem}_artifacts"
+            / "action_effectiveness_ledger.json"
+        )
+        work_dir_ledger.parent.mkdir(parents=True, exist_ok=True)
+        work_dir_ledger.write_text("{}")
+        captured_cmds = []
+
+        def recording(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            return MagicMock(returncode=0)
+
+        run_cycles(args, subprocess_run=recording, sleep_fn=_noop_sleep)
+
+        assert len(captured_cmds) == 2
+        assert "--ledger" not in captured_cmds[0]
+        assert "--ledger" in captured_cmds[1]
+        assert captured_cmds[1][captured_cmds[1].index("--ledger") + 1] == str(work_dir_ledger)
+        assert captured_cmds[1].count("--ledger") == 1
+
 
 # ---------------------------------------------------------------------------
 # J. Per-cycle operator status output

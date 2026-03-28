@@ -121,6 +121,23 @@ def run_cycles(args, subprocess_run=None, sleep_fn=None):
         if result.stdout:
             print(result.stdout, end="", flush=True)
 
+        # After each cycle, check whether Phase F wrote a work-dir ledger.
+        # If found, pin it into the next iteration's cmd so planner learning
+        # carries forward without mutating args.
+        work_dir_ledger = (
+            Path(args.output).parent
+            / f"{Path(args.output).stem}_artifacts"
+            / "action_effectiveness_ledger.json"
+        )
+        if work_dir_ledger.exists():
+            cmd = _build_cycle_cmd(args)
+            # Replace or append --ledger with the work-dir path.
+            if "--ledger" in cmd:
+                ledger_idx = cmd.index("--ledger")
+                cmd[ledger_idx + 1] = str(work_dir_ledger)
+            else:
+                cmd += ["--ledger", str(work_dir_ledger)]
+
         iteration += 1
         # Sleep between iterations, not after the last one.
         if limit is None or iteration < limit:
