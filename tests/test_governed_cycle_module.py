@@ -1446,6 +1446,66 @@ class TestRunUpdateActionEffectivenessMapping:
 
 
 # ---------------------------------------------------------------------------
+# Phase F function → load_effectiveness_ledger roundtrip
+# ---------------------------------------------------------------------------
+
+
+class TestPhaseFLedgerRoundtrip:
+    """Verify the full Phase F write → load_effectiveness_ledger roundtrip.
+
+    The existing TestRunUpdateActionEffectivenessMapping tests assert only that
+    --mapping-json is present in the subprocess command.  They never call
+    load_effectiveness_ledger against the output file.  This class exercises the
+    actual function path (update_action_effectiveness_from_history with
+    mapping=_ACTION_TO_TASK) and confirms that load_effectiveness_ledger resolves
+    the resulting action_types array to action-type-keyed entries — the live path
+    that governed_cycle.py:640 exercises on every cycle.
+    """
+
+    def test_phase_f_to_ledger_roundtrip_resolves_action_type_keys(self, tmp_path):
+        import importlib.util as _ilu
+        from mcp_governance_orchestrator.governed_cycle import _ACTION_TO_TASK
+        from planner_runtime import load_effectiveness_ledger
+
+        _script = _REPO_ROOT / "scripts" / "update_action_effectiveness_from_history.py"
+        _spec = _ilu.spec_from_file_location("update_action_effectiveness_from_history", str(_script))
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+
+        exec_history_path = tmp_path / "execution_history.json"
+        exec_history_path.write_text(
+            json.dumps({
+                "records": [
+                    {"status": "ok", "selected_tasks": ["build_portfolio_dashboard"]},
+                ]
+            }),
+            encoding="utf-8",
+        )
+        ledger_path = tmp_path / "ledger.json"
+
+        rc = _mod.update_action_effectiveness_from_history(
+            str(exec_history_path),
+            str(ledger_path),
+            mapping=_ACTION_TO_TASK,
+        )
+        assert rc == 0, "Phase F function returned non-zero"
+        raw = json.loads(ledger_path.read_text(encoding="utf-8"))
+        assert "action_types" in raw, "action_types array missing from Phase F output"
+
+        resolved = load_effectiveness_ledger(str(ledger_path))
+
+        shared_actions = [at for at, t in _ACTION_TO_TASK.items() if t == "build_portfolio_dashboard"]
+        for action_type in shared_actions:
+            assert action_type in resolved, (
+                f"load_effectiveness_ledger did not resolve {action_type!r}; "
+                f"keys present: {sorted(resolved)}"
+            )
+            assert resolved[action_type].get("effectiveness_score") is not None, (
+                f"effectiveness_score missing for {action_type!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
 # _ACTION_TO_TASK cross-module sync guard
 # ---------------------------------------------------------------------------
 
