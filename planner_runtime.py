@@ -84,6 +84,7 @@ CAPABILITY_RELIABILITY_WEIGHT = 0.10
 CAPABILITY_CONFIDENCE_THRESHOLD = 5.0
 CAPABILITY_EXPLORATION_WEIGHT = 0.005
 CAPABILITY_EVOLUTION_PENALTY_WEIGHT = 0.02
+CAPABILITY_SIMILARITY_DELTA_PENALTY_WEIGHT = 0.01
 
 # ---------------------------------------------------------------------------
 # v0.35: Repair-pressure scoring constant
@@ -876,6 +877,12 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
         confidence = min(1.0, total_syntheses / CAPABILITY_CONFIDENCE_THRESHOLD)
         adjustment = confidence * raw_adjustment
 
+    A similarity_delta contribution is also applied using
+    CAPABILITY_SIMILARITY_DELTA_PENALTY_WEIGHT: positive delta boosts ranking
+    (improving similarity), negative delta penalizes it (regressing similarity).
+    The contribution is included in the early-return path so that failing
+    capabilities with negative delta still receive deprioritization signal.
+
     Examples:
         total=1, success=1 -> smoothed success_rate=2/3  -> +0.003333...
         total=5, success=5 -> smoothed success_rate=6/7  -> +0.035714...
@@ -907,18 +914,26 @@ def _compute_capability_reliability_adjustment(action, capability_ledger):
 
     evolved_success = max(0.0, min(evolved_success, success))
 
+    try:
+        similarity_delta_val = float(row.get("similarity_delta", 0.0))
+    except (TypeError, ValueError):
+        similarity_delta_val = 0.0
+    similarity_delta_val = max(-1.0, min(1.0, similarity_delta_val))
+
     success_rate = max(0.0, min(1.0, (success + 1.0) / (total + 2.0)))
     confidence = min(1.0, total / CAPABILITY_CONFIDENCE_THRESHOLD)
     reliability_adjustment = confidence * (
         (success_rate - 0.5) * CAPABILITY_RELIABILITY_WEIGHT
     )
 
+    similarity_delta_contribution = confidence * similarity_delta_val * CAPABILITY_SIMILARITY_DELTA_PENALTY_WEIGHT
+
     if success <= 0:
-        return reliability_adjustment
+        return reliability_adjustment + similarity_delta_contribution
 
     evolution_ratio = evolved_success / success
     evolution_penalty = confidence * evolution_ratio * CAPABILITY_EVOLUTION_PENALTY_WEIGHT
-    return reliability_adjustment - evolution_penalty
+    return reliability_adjustment - evolution_penalty + similarity_delta_contribution
 
 def _apply_learning_adjustments(actions, ledger, current_signals=None, policy=None,
                                 capability_ledger=None):

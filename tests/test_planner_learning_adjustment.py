@@ -26,6 +26,7 @@ if str(_REPO_ROOT) not in sys.path:
 from planner_runtime import (  # noqa: E402
     CAPABILITY_EVOLUTION_PENALTY_WEIGHT,
     CAPABILITY_EXPLORATION_WEIGHT,
+    CAPABILITY_SIMILARITY_DELTA_PENALTY_WEIGHT,
     EFFECTIVENESS_CLAMP,
     EFFECTIVENESS_WEIGHT,
     REPAIR_PRESSURE_WEIGHT,
@@ -2428,3 +2429,44 @@ class TestDualLedgerRanking:
 
         assert result[0]["args"]["capability"] == "cap_a"
         assert result[1]["args"]["capability"] == "cap_b"
+
+
+# ---------------------------------------------------------------------------
+# similarity_delta contribution
+# ---------------------------------------------------------------------------
+
+def test_similarity_delta_contribution_affects_capability_reliability_adjustment():
+    """similarity_delta in a capability ledger row adjusts the reliability score."""
+    base_row = {
+        "total_syntheses": 5,
+        "successful_syntheses": 5,
+        "failed_syntheses": 0,
+        "successful_evolved_syntheses": 2,
+    }
+
+    action = {
+        "action_type": "build_capability_artifact",
+        "task_name": "build_capability_artifact",
+        "priority": 1.0,
+        "action_id": "aid-sim",
+        "repo_id": "repo-test",
+        "args": {"capability": "cap_sim", "artifact_kind": "mcp_server"},
+    }
+
+    # Sub-case 1: no similarity_delta key — result equals baseline
+    cap_ledger_no_delta = {"capabilities": {"cap_sim": dict(base_row)}}
+    baseline = _compute_capability_reliability_adjustment(action, cap_ledger_no_delta)
+
+    # Sub-case 2: positive similarity_delta — result strictly greater than baseline
+    cap_ledger_pos = {"capabilities": {"cap_sim": {**base_row, "similarity_delta": 0.5}}}
+    result_pos = _compute_capability_reliability_adjustment(action, cap_ledger_pos)
+    assert result_pos > baseline, (
+        f"Expected positive similarity_delta to boost score: {result_pos} > {baseline}"
+    )
+
+    # Sub-case 3: negative similarity_delta — result strictly less than baseline
+    cap_ledger_neg = {"capabilities": {"cap_sim": {**base_row, "similarity_delta": -0.5}}}
+    result_neg = _compute_capability_reliability_adjustment(action, cap_ledger_neg)
+    assert result_neg < baseline, (
+        f"Expected negative similarity_delta to penalize score: {result_neg} < {baseline}"
+    )
