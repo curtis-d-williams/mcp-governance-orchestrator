@@ -997,6 +997,70 @@ class TestDetectRegressionRealHandoff:
 
 
 # ---------------------------------------------------------------------------
+# Phase K — seeded multi-cycle history: regression detection
+# ---------------------------------------------------------------------------
+
+class TestPhaseKRegressionSeededHistory:
+    """Verify detect_cycle_history_regression() with multi-cycle seeded input.
+
+    TestDetectRegressionRealHandoff covers the insufficient-history branch
+    (1 cycle → insufficient_history=True, regression_detected=False).
+    This class exercises the longitudinal path (>= 2 cycles) and confirms
+    both the regression-detected and the stable cases.
+    """
+
+    _CYCLE_OK_A = {
+        "ledger_source": None,
+        "selected_tasks": ["build_portfolio_dashboard"],
+        "status": "ok",
+        "timestamp": "2026-01-01T00:00:00.000000Z",
+    }
+    _CYCLE_ABORTED_B = {
+        "ledger_source": None,
+        "selected_tasks": ["build_portfolio_dashboard"],
+        "status": "aborted",
+        "timestamp": "2026-01-02T00:00:00.000000Z",
+    }
+    _CYCLE_OK_B = {**_CYCLE_OK_A, "timestamp": "2026-01-02T00:00:00.000000Z"}
+
+    def _detect(self, tmp_path, cycles, success_rate, status_counts):
+        _chr_mod = _load_cycle_history_runtime()
+        h = tmp_path / "cycle_history.json"
+        s = tmp_path / "cycle_history_summary.json"
+        o = tmp_path / "regression.json"
+        h.write_text(json.dumps({"cycles": cycles}), encoding="utf-8")
+        s.write_text(json.dumps({
+            "cycles_total": len(cycles),
+            "success_rate": success_rate,
+            "status_counts": status_counts,
+        }), encoding="utf-8")
+        assert _chr_mod.detect_cycle_history_regression(str(h), str(s), str(o)) == 0
+        return json.loads(o.read_text(encoding="utf-8"))
+
+    def test_regression_detected_when_status_regresses(self, tmp_path):
+        data = self._detect(
+            tmp_path,
+            cycles=[self._CYCLE_OK_A, self._CYCLE_ABORTED_B],
+            success_rate=0.5,
+            status_counts={"ok": 1, "aborted": 1},
+        )
+        assert data["insufficient_history"] is False
+        assert data["regression_detected"] is True
+        assert any(s["type"] == "status_regressed" for s in data["signals"])
+
+    def test_no_regression_when_status_stable(self, tmp_path):
+        data = self._detect(
+            tmp_path,
+            cycles=[self._CYCLE_OK_A, self._CYCLE_OK_B],
+            success_rate=1.0,
+            status_counts={"ok": 2},
+        )
+        assert data["insufficient_history"] is False
+        assert data["regression_detected"] is False
+        assert data["signals"] == []
+
+
+# ---------------------------------------------------------------------------
 # run_cycle — Phase I abort path: CalledProcessError → status=aborted
 # ---------------------------------------------------------------------------
 
