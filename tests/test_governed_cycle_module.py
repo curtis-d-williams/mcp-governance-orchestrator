@@ -1570,6 +1570,59 @@ class TestPhaseFLedgerRoundtrip:
 
 
 # ---------------------------------------------------------------------------
+# Phase F governed_cycle subprocess → ledger roundtrip
+# ---------------------------------------------------------------------------
+
+
+class TestPhaseFSubprocessRoundtrip:
+    """Verify run_update_action_effectiveness_from_history() fires the real subprocess.
+
+    TestPhaseFLedgerRoundtrip calls update_action_effectiveness_from_history()
+    directly via importlib (no subprocess).
+    TestRunUpdateActionEffectivenessMapping asserts --mapping-json appears in the
+    cmd but mocks subprocess.run.  This class lets governed_cycle's
+    run_update_action_effectiveness_from_history() invoke the real subprocess.run
+    (governed_cycle.py:373) and confirms the output ledger resolves correctly via
+    load_effectiveness_ledger.
+    """
+
+    def test_real_subprocess_writes_ledger_with_action_types(self, tmp_path):
+        from mcp_governance_orchestrator.governed_cycle import (
+            run_update_action_effectiveness_from_history,
+            _ACTION_TO_TASK,
+        )
+        from planner_runtime import load_effectiveness_ledger
+
+        exec_history_path = tmp_path / "execution_history.json"
+        exec_history_path.write_text(
+            json.dumps({
+                "records": [
+                    {"status": "ok", "selected_tasks": ["build_portfolio_dashboard"]},
+                ]
+            }),
+            encoding="utf-8",
+        )
+        arts = {
+            "execution_history": str(exec_history_path),
+            "action_effectiveness_ledger": str(tmp_path / "ledger.json"),
+        }
+
+        proc = run_update_action_effectiveness_from_history(arts, mapping=_ACTION_TO_TASK)
+        assert proc.returncode == 0
+
+        raw = json.loads(
+            Path(arts["action_effectiveness_ledger"]).read_text(encoding="utf-8")
+        )
+        assert "action_types" in raw
+
+        resolved = load_effectiveness_ledger(arts["action_effectiveness_ledger"])
+        bpd_actions = [at for at, t in _ACTION_TO_TASK.items() if t == "build_portfolio_dashboard"]
+        for action_type in bpd_actions:
+            assert action_type in resolved
+            assert resolved[action_type].get("effectiveness_score") is not None
+
+
+# ---------------------------------------------------------------------------
 # _ACTION_TO_TASK cross-module sync guard
 # ---------------------------------------------------------------------------
 
