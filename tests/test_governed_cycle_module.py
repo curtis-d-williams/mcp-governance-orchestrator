@@ -1443,3 +1443,30 @@ class TestRunUpdateActionEffectivenessMapping:
             run_update_action_effectiveness_from_history(arts, mapping=None)
             cmd = mock_run.call_args[0][0]
         assert "--mapping-json" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# _ACTION_TO_TASK cross-module sync guard
+# ---------------------------------------------------------------------------
+
+class TestActionToTaskSync:
+    """Assert governed_cycle._ACTION_TO_TASK equals ACTION_TO_TASK in the planner.
+
+    The comment at governed_cycle.py:57 acknowledges that the two dicts must
+    remain in sync.  Drift would cause Phase F to derive mismatched action_type
+    rows, silently disabling cross-cycle planner learning.
+    """
+
+    def test_governed_cycle_mapping_equals_planner_mapping(self):
+        import importlib.util as _ilu
+        from mcp_governance_orchestrator.governed_cycle import _ACTION_TO_TASK
+
+        _script = _REPO_ROOT / "scripts" / "claude_dynamic_planner_loop.py"
+        _spec = _ilu.spec_from_file_location("claude_dynamic_planner_loop", _script)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+
+        assert _ACTION_TO_TASK == _mod.ACTION_TO_TASK, (
+            "governed_cycle._ACTION_TO_TASK has drifted from "
+            "claude_dynamic_planner_loop.ACTION_TO_TASK — update both together"
+        )
