@@ -531,3 +531,46 @@ class TestCapabilityLedgerRankingEffect:
         assert result[0]["action_type"] == "refresh_repo_health", (
             f"Expected refresh_repo_health first after high-failure ledger penalty, got {result[0]['action_type']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestEffectivenessLedgerRankingEffect
+# ---------------------------------------------------------------------------
+
+class TestEffectivenessLedgerRankingEffect:
+    """Verify action_types-format effectiveness ledger alters ranking in _apply_learning_adjustments."""
+
+    _HIGH = {"action_type": "rerun_failed_task",  "base_priority": 1.0, "action_id": "a1", "repo_id": "r1"}
+    _LOW  = {"action_type": "refresh_repo_health", "base_priority": 1.0, "action_id": "a2", "repo_id": "r1"}
+
+    def _ledger(self, high_score, low_score):
+        # Omit times_executed → confidence=1.0 (backward-compat path, planner_runtime.py:168-169)
+        return {
+            "rerun_failed_task":   {"effectiveness_score": high_score},
+            "refresh_repo_health": {"effectiveness_score": low_score},
+        }
+
+    def test_high_effectiveness_action_ranks_first(self):
+        """High-effectiveness action type ranks above low-effectiveness type with equal base_priority.
+
+        Without ledger: refresh_repo_health sorts first (alphabetical tiebreaker).
+        With ledger: rerun_failed_task (score=1.0) gains effectiveness_component=0.15
+        and overtakes the alphabetical default, ranking first.
+        """
+        ledger = self._ledger(high_score=1.0, low_score=0.0)
+        # Place low-effectiveness action first to confirm ledger flips the order.
+        result = _apply_learning_adjustments([self._LOW, self._HIGH], ledger)
+        assert result[0]["action_type"] == "rerun_failed_task", (
+            f"Expected rerun_failed_task first with effectiveness_score=1.0, "
+            f"got {result[0]['action_type']}"
+        )
+
+    def test_equal_effectiveness_preserves_alphabetical_tiebreaker(self):
+        """Equal effectiveness scores preserve deterministic alphabetical tiebreaker."""
+        ledger = self._ledger(high_score=0.5, low_score=0.5)
+        # Equal adjustments → tiebreaker (action_type asc) decides: refresh < rerun.
+        result = _apply_learning_adjustments([self._HIGH, self._LOW], ledger)
+        assert result[0]["action_type"] == "refresh_repo_health", (
+            f"Expected alphabetical tiebreaker (refresh_repo_health) with equal scores, "
+            f"got {result[0]['action_type']}"
+        )
