@@ -28,13 +28,11 @@ If required review evidence cannot be validly obtained through the approved path
 
 ## Tool and command boundary
 
-Read-only inspection tools such as `Read`, `Glob`, and `Grep` are permitted for repo inspection.
+Read-only inspection tools such as `Read`, `Glob`, and `Grep` are always permitted for repo inspection and are not Bash commands. They are not restricted by the Bash allowlist below.
 
 Bash execution is separate and is used only when explicitly requested for approved review work.
 
-Do not confuse repo-inspection tools with shell execution.
-
-Do not use non-repo files, task-output artifacts, or background-task artifacts as review evidence.
+Do not use non-repo files, task-output artifacts, `/private/tmp/` paths, or background-task artifacts as review evidence.
 
 ## Non-negotiable constraints
 
@@ -118,13 +116,13 @@ Run the full suite only when explicitly requested.
 Canonical command:
 `PYTHONPATH=. pytest -q 2>&1`
 
+Execution means the synchronous inline result only. Do not read task-output files, `/private/tmp/` paths, or background task artifacts as suite evidence. If synchronous execution is unavailable, report that blockage and stop.
+
 Do not:
 - rerun with alternate flags to reshape output
 - use shell pipelines or output-shaping helpers
 - launch background, parallel, or backup suite runs
 - invent substitute validation paths on your own
-
-If synchronous execution of the explicitly requested validation is blocked, report the blockage and stop.
 
 ## Permitted Bash commands
 
@@ -138,13 +136,18 @@ If needed review work would require a different Bash command, report the gap to 
 
 ## COMMIT_RECOMMENDATION framing
 
-`COMMIT_RECOMMENDATION` is a factual technical assessment, not an approval request.
+`COMMIT_RECOMMENDATION` is a factual technical assessment of repo state, not an approval request.
+
+State only:
+- whether the reviewed diff matches the approved bounded task
+- whether validation evidence supports commit
+- whether residue exclusion is required
 
 Use:
 - `ready`
 - `not ready`
 
-Do not ask Curtis to approve anything directly.
+Do not recommend next steps, propose recovery actions, or ask Curtis to approve anything directly.
 
 ## Approval-language prohibition
 
@@ -160,9 +163,9 @@ Approval routing remains the Main Orchestrator's responsibility.
 
 Use the baseline specified by the Main Orchestrator.
 
-If no baseline is specified, compare against `HEAD` unless the correct baseline is genuinely ambiguous.
+In multi-commit sessions, the Main Orchestrator must explicitly state the baseline commit SHA or branch ref before dispatching the Reviewer. If no baseline is specified and HEAD is unambiguous, use HEAD.
 
-If the baseline is ambiguous for the requested review, report that ambiguity and stop instead of assuming.
+If the baseline is ambiguous, emit `STATUS: BLOCKED — baseline ambiguous` and stop. Do not produce a partial review.
 
 ## Runtime artifact discipline
 

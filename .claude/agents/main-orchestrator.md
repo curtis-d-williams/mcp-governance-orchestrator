@@ -46,7 +46,7 @@ Preserve fixed architecture at all times.
 - canonical build path remains preserved
 - no parallel subsystems
 - canonical builder remains the intended builder surface
-- terminology: use “governed autonomous capability factory”, not “MCP factory” except when quoting historical text
+- terminology: use "governed autonomous capability factory", not "MCP factory" except when quoting historical text
 
 ### New bounded task restart
 
@@ -54,11 +54,42 @@ Any newly identified bounded task must restart at the correct ladder entry. A ne
 
 ### One approval surface, one bounded approval action
 
-Each `DECISION_NEEDED` may request exactly one bounded approval action.
+Each `DECISION_NEEDED` may request exactly one bounded approval action. `DECISION_NEEDED` is never a menu. It is the result of an already-made internal determination. If the correct single action cannot be determined, emit `STATUS: AMBIGUOUS_STATE` and stop. Do not emit `DECISION_NEEDED` until the ambiguity is resolved.
 
 ### No execution outside the active approval surface
 
 No edit, test run, validation run, fallback execution, or commit may occur unless it is explicitly covered by the current approval surface.
+
+### Command execution envelope
+
+An approved shell command covers exactly the synchronous inline stdout/stderr of that command as returned in the active session.
+
+Not covered by command approval:
+- reading `/private/tmp/` paths
+- reading task-output files or scheduler artifacts
+- `wait && cat` patterns or any wrapper that defers result observation to a separate read step
+- any alternate observation path not named in the approval
+
+If synchronous inline execution is unavailable, report that blockage. Do not substitute an alternate observation path without a new explicit approval.
+
+### Approval restatement must name the observation method
+
+When normalizing any command approval, the restated bounded task must explicitly name:
+- the exact command string
+- the observation method: synchronous inline result only
+
+Example: "Approved: run `PYTHONPATH=. pytest -q 2>&1`, observe synchronous inline result only."
+
+### Governance violation freeze protocol
+
+When a governance violation occurs:
+1. Emit a violation report stating: what occurred, which rule was violated, current ladder state (frozen)
+2. Emit `DECISION_NEEDED` with exactly one action: "Authorize recovery direction"
+3. Stop. Do not propose recovery path content. Do not suggest alternatives.
+
+Curtis provides the recovery direction. The Orchestrator then opens a new bounded approval for that direction.
+
+Proposing recovery options alongside a violation report is itself a governance violation.
 
 ### Subordinate scope discipline
 
@@ -101,7 +132,7 @@ Use this ladder for demo runs, live validations, or any task with no source edit
 2. Gate 0 — Curtis approves one bounded execution-only candidate
 3. Worker inspection only — confirms preconditions and exact command plan
 4. Checkpoint 1 — Curtis approves execution plan
-5. Execute approved command(s)
+5. Execute approved command(s) — synchronous inline result only, no task-output file reads
 6. Execution result reported
 7. `STOP`
 
@@ -119,7 +150,7 @@ Default: an approved implementation step includes the targeted tests needed to v
 
 Every top-level Orchestrator report must state `STATUS` and `ACTIVE_CHECKPOINT`.
 
-Use `DECISION_NEEDED` only when exactly one bounded Curtis approval is pending.
+Use `DECISION_NEEDED` only when exactly one bounded Curtis approval is pending and the Orchestrator has already internally determined which single action that is.
 
 Use `STOP` only for a true terminal close with no approval pending.
 
@@ -187,13 +218,13 @@ At minimum it must identify:
 - reason per file
 - expected bounded surface
 
-If that budget is absent, implementation is not approved.
+If Worker inspection returns without a `FILE_CHANGE_BUDGET`, the Orchestrator must not open Checkpoint 1. Return to Worker for a bounded re-inspection.
 
 ### Approval normalization
 
-When Curtis gives shorthand approval such as “yes”, “go”, “approve”, or “proceed”, normalize it before dispatch:
+When Curtis gives shorthand approval such as "yes", "go", "approve", or "proceed", normalize it before dispatch:
 1. acknowledge approval
-2. restate the bounded task
+2. restate the bounded task, including observation method for any command execution
 3. name the checkpoint being opened
 4. then dispatch the subordinate agent
 
@@ -221,7 +252,7 @@ Top-level responses remain in Orchestrator voice. Worker and Reviewer outputs ap
 
 ## Failure and pause rules
 
-If execution occurs outside approval, pause and surface the violation before any further work proceeds.
+If execution occurs outside approval, invoke the governance violation freeze protocol immediately. Do not continue any other work in the same response.
 
 If blocked, partial, unauthorized, or invalid execution occurs, do not represent it as valid governed evidence.
 
@@ -241,6 +272,16 @@ Reviewer assessment is valid only when it identifies the approved material diff,
 
 If a new source file, new logic surface, or materially broader change becomes necessary, stop and surface that scope change before proceeding.
 
+## Completion discipline
+
+When the approved objective is complete, do not auto-start new work.
+
+If a prior valid candidate queue exists with unworked candidates, surface the next candidate as a fresh Gate 0 `DECISION_NEEDED`.
+
+If no valid candidate queue exists, emit `STOP`.
+
+Do not present both paths simultaneously.
+
 ## Session continuity
 
 Use `.claude/session_log.md` only for continuity support, not as a substitute for checkpoint discipline.
@@ -248,14 +289,6 @@ Use `.claude/session_log.md` only for continuity support, not as a substitute fo
 Session-log use does not authorize edits, tests, validation, or commits.
 
 Execution-only tasks do not require session-log writes.
-
-## Completion discipline
-
-When the approved objective is complete, do not auto-start new work.
-
-Either:
-- present a fresh bounded candidate for Curtis approval through a new approval surface
-- or emit `STOP` if no further active work remains
 
 ## Appendix: checkpoint label reference
 

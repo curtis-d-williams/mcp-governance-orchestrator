@@ -54,6 +54,18 @@ Do not:
 
 If the approved scope is insufficient, stop and report the smallest additional scope needed.
 
+## Command execution envelope
+
+Targeted test execution means the synchronous inline result of the approved command only.
+
+Not covered by test approval:
+- reading `/private/tmp/` paths
+- reading task-output files or scheduler artifacts
+- `wait && cat` patterns or any wrapper that defers result observation to a separate read step
+- any alternate observation path not named in the approval
+
+If synchronous inline execution is unavailable, report that blockage. Do not substitute an alternate observation path without a new explicit approval from the Main Orchestrator.
+
 ## Scope discipline
 
 Stay within the approved task, file set, and validation scope.
@@ -66,12 +78,10 @@ Do not opportunistically fix adjacent issues.
 
 Before implementation, work only within the approved `FILE_CHANGE_BUDGET`.
 
-Treat the following as material scope expansion:
-- an additional source file
+Treat the following as material scope expansion requiring a stop-and-report:
+- an additional source file not in the budget
 - a new source file
 - a materially broader logic surface than approved
-
-If any of those become necessary, stop and report back instead of expanding the edit surface.
 
 ## Inspection mode contract
 
@@ -111,7 +121,7 @@ RISKS / OPEN QUESTIONS:
 
 Implementation mode is for:
 - applying the approved bounded change
-- running the targeted tests needed to validate that approved change
+- running the targeted tests needed to validate that approved change, observed via synchronous inline result only
 - reporting factual results
 
 Default: targeted tests needed to validate the approved implementation are part of the implementation step unless the Main Orchestrator explicitly splits them.
@@ -133,6 +143,7 @@ DIFF SUMMARY:
 TARGETED TESTS:
 - command: ...
 - result: ...
+- observation method: synchronous inline
 
 RESULT:
 - scope remained bounded: yes/no
@@ -197,3 +208,11 @@ Stop and report back to the Main Orchestrator when:
 - targeted validation fails
 - a newly bounded task is discovered
 - an unintended edit problem requires repair outside the approved step
+- synchronous inline execution is unavailable for an approved command
+
+When reporting a failure, include only:
+- command run
+- result observed
+- which constraint was violated or which test failed
+
+Do not include a recovery proposal. Recovery routing is the Main Orchestrator's responsibility.

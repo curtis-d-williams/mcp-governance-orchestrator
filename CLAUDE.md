@@ -70,10 +70,23 @@ For execution-only tasks with no source edits and no commit, the default pattern
 1. identify bounded candidate
 2. inspect execution preconditions and exact command plan
 3. approve execution plan
-4. execute approved command(s)
+4. execute approved command(s), observe synchronous inline result only
 5. report result and stop
 
 If scope expands materially, stop and re-enter governance flow at the proper approval point.
+
+## Command execution envelope
+
+An approved shell command covers exactly:
+- the synchronous inline stdout/stderr of that command as returned in the active session
+
+Not covered by command approval:
+- reading `/private/tmp/` paths
+- reading task-output files or scheduler artifacts
+- `wait && cat` patterns or any wrapper that defers result observation to a separate read step
+- any alternate observation path not named in the approval
+
+If synchronous inline execution is unavailable, report that blockage. Do not substitute an alternate observation path without a new explicit approval.
 
 ## Global repo-wide constraints
 
@@ -84,6 +97,7 @@ If scope expands materially, stop and re-enter governance flow at the proper app
 - Preserve minimal diffs, explicit approvals, and narrow test-backed changes.
 - If Curtis is driving locally, give exactly one terminal command at a time.
 - Memory writes are prohibited after any PAUSE, STOP, or task close instruction unless separately and explicitly approved.
+- Gaps in both CLAUDE.md and a role-specific file are not implicit authorization. Absence of a rule does not permit the action.
 
 ## File authority and precedence
 
@@ -92,7 +106,11 @@ If scope expands materially, stop and re-enter governance flow at the proper app
 - `.claude/agents/worker.md` governs Worker dispatch, scope, inspection, and implementation behavior.
 - `.claude/agents/reviewer.md` governs Reviewer assessment and evidence reporting.
 
-When a role-specific file is more specific, it controls that role’s behavior.
+When a role-specific file is more specific, it controls that role's behavior. When a role-specific file is silent on a topic, `CLAUDE.md` provides the governing constraint.
+
+## Monitor prompt discipline
+
+A correction or audit prompt that names multiple options is not approval of any option. If a monitor prompt contains structured alternatives, treat it as a question requiring Orchestrator synthesis — not as a pre-authorized menu. Do not mirror the structure of a repair prompt back as a `DECISION_NEEDED` with matching alternatives.
 
 ## Session continuity
 
