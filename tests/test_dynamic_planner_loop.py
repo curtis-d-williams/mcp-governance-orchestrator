@@ -574,3 +574,51 @@ class TestEffectivenessLedgerRankingEffect:
             f"Expected alphabetical tiebreaker (refresh_repo_health) with equal scores, "
             f"got {result[0]['action_type']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestMultiCycleRankingEvolution
+# ---------------------------------------------------------------------------
+
+class TestMultiCycleRankingEvolution:
+    """Verify that Phase F action_types-array ledger drives ranking change across cycle boundary.
+
+    Exercises the file-backed load_effectiveness_ledger → _apply_learning_adjustments
+    path end-to-end: cycle 1 baseline (empty ledger, input order preserved) →
+    Phase F writes ledger → cycle 2 ranking flips to effectiveness order.
+    """
+
+    _HIGH = {"action_type": "rerun_failed_task",   "base_priority": 1.0, "action_id": "a1", "repo_id": "r1"}
+    _LOW  = {"action_type": "refresh_repo_health",  "base_priority": 1.0, "action_id": "a2", "repo_id": "r1"}
+
+    def test_cycle2_ranking_responds_to_cycle1_ledger_output(self, tmp_path):
+        """Ranking evolves from input order (cycle 1) to effectiveness-driven (cycle 2).
+
+        Cycle 1: empty ledger short-circuits (planner_runtime.py:957), preserving
+        input order → refresh_repo_health first.
+        Phase F writes action_types-array ledger (rerun_failed_task score=1.0).
+        Cycle 2: ledger loaded from file → rerun_failed_task ranks first.
+        """
+        # Cycle 1: empty ledger short-circuits, preserves input order
+        result_c1 = _apply_learning_adjustments([self._LOW, self._HIGH], {})
+        assert result_c1[0]["action_type"] == "refresh_repo_health", (
+            f"Cycle 1 baseline: expected input order preserved (refresh_repo_health first), "
+            f"got {result_c1[0]['action_type']}"
+        )
+
+        # Phase F writes action_types-array ledger after cycle 1
+        ledger_path = tmp_path / "effectiveness.json"
+        ledger_path.write_text(json.dumps({
+            "action_types": [
+                {"action_type": "rerun_failed_task",   "effectiveness_score": 1.0, "times_executed": 5},
+                {"action_type": "refresh_repo_health", "effectiveness_score": 0.0, "times_executed": 5},
+            ]
+        }), encoding="utf-8")
+
+        # Cycle 2: load ledger from file, verify ranking flips
+        ledger = _mod.load_effectiveness_ledger(str(ledger_path))
+        result_c2 = _apply_learning_adjustments([self._LOW, self._HIGH], ledger)
+        assert result_c2[0]["action_type"] == "rerun_failed_task", (
+            f"Cycle 2: expected rerun_failed_task first after effectiveness ledger load, "
+            f"got {result_c2[0]['action_type']}"
+        )
