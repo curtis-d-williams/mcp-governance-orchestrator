@@ -1469,6 +1469,123 @@ class TestEnforceGovernancePolicyAbortPath:
 
 
 # ---------------------------------------------------------------------------
+# run_cycle — governance_decision.decision == "abort" is assessment artifact,
+# not a control signal (cycle status must remain "ok", rc must be 0)
+# ---------------------------------------------------------------------------
+
+
+class TestGovernanceDecisionAbortCycleStatusOk:
+    """Assert that governance_decision.decision == "abort" does NOT set
+    cycle status to "aborted" and does NOT cause run_cycle to return 1.
+
+    The governance decision is an assessment artifact (governed_cycle.py:726-727).
+    cycle status reflects actual orchestration success, not governance outcome.
+
+    Also verifies that the outer cycle artifact's governance_decision field
+    is populated with the actual decision data — no existing test reads
+    args.output for governance_decision content after Phase L.
+    """
+
+    def _run_abort_scenario(self, tmp_path):
+        """Seed ok->aborted history, run real enforce shim, return (rc, outer_artifact)."""
+        args = _make_args(tmp_path)
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        Path(arts["governed_result"]).write_text(
+            json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        # ok->aborted cycle pair triggers status_regressed signal in Phase K.
+        history = {
+            "cycles": [
+                {
+                    "ledger_source": "work_dir",
+                    "selected_tasks": ["build_portfolio_dashboard"],
+                    "status": "ok",
+                    "timestamp": "2026-01-01T00:00:00.000000Z",
+                },
+                {
+                    "ledger_source": "none",
+                    "selected_tasks": None,
+                    "status": "aborted",
+                    "timestamp": "2026-03-01T00:00:00.000000Z",
+                },
+            ]
+        }
+        Path(arts["cycle_history"]).write_text(json.dumps(history), encoding="utf-8")
+        Path(arts["cycle_history_summary"]).write_text(
+            json.dumps({"cycles_total": 2, "success_rate": 0.5,
+                        "status_counts": {"ok": 1, "aborted": 1}}),
+            encoding="utf-8",
+        )
+
+        abort_policy = {
+            "on_regression": "warn",
+            "abort_on_signals": ["status_regressed"],
+            "allow_if_only": [],
+        }
+        policy_path = str(tmp_path / "_abort_policy.json")
+        Path(policy_path).write_text(json.dumps(abort_policy), encoding="utf-8")
+
+        _egp_mod = _load_enforce_governance_policy()
+
+        def _shim(artifacts, policy_file=None):
+            rc = _egp_mod.enforce_governance_policy(
+                artifacts["cycle_history"],
+                artifacts["cycle_history_summary"],
+                policy_path,
+                artifacts["governance_decision"],
+            )
+            if rc != 0:
+                raise RuntimeError("enforce_governance_policy returned non-zero")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = result.stderr = ""
+            return result
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=_shim,
+        ):
+            rc = run_cycle(args)
+
+        outer = json.loads(Path(args.output).read_text(encoding="utf-8"))
+        return rc, outer
+
+    def test_run_cycle_returns_zero_when_governance_decides_abort(self, tmp_path):
+        rc, _ = self._run_abort_scenario(tmp_path)
+        assert rc == 0, (
+            "run_cycle must return 0 when governance_decision.decision == 'abort'; "
+            "governance_decision is an assessment artifact, not a control signal"
+        )
+
+    def test_cycle_status_remains_ok_when_governance_decides_abort(self, tmp_path):
+        _, outer = self._run_abort_scenario(tmp_path)
+        assert outer["status"] == "ok", (
+            "cycle status must remain 'ok' when governance_decision.decision == 'abort'; "
+            "governed_cycle.py:726-727"
+        )
+
+    def test_governance_abort_decision_propagated_to_outer_artifact(self, tmp_path):
+        _, outer = self._run_abort_scenario(tmp_path)
+        gd = outer["governance_decision"]
+        assert gd is not None, "governance_decision field must be populated in outer cycle artifact"
+        assert gd["decision"] == "abort"
+        assert gd["reason"] == "status_regressed"
+
+
+# ---------------------------------------------------------------------------
 # run_update_action_effectiveness_from_history — mapping arg threading
 # ---------------------------------------------------------------------------
 
