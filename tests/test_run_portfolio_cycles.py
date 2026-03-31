@@ -424,6 +424,61 @@ class TestBuildCycleCmd:
 
 
 # ---------------------------------------------------------------------------
+# G2. Work-dir ledger threading tests
+# ---------------------------------------------------------------------------
+
+class TestWorkDirLedgerThreading:
+    def test_ledger_replaced_when_work_dir_ledger_exists(self, tmp_path):
+        """When work_dir_ledger is written by cycle N, cycle N+1 cmd uses it."""
+        args = _make_args(tmp_path, cycles=2, ledger=None)
+        output_stem = Path(args.output).stem
+        ledger_path = (
+            Path(args.output).parent
+            / f"{output_stem}_artifacts"
+            / "action_effectiveness_ledger.json"
+        )
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        captured_cmds = []
+
+        def _writing_subprocess(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            ledger_path.write_text('{"actions": {}}', encoding="utf-8")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        run_cycles(args, subprocess_run=_writing_subprocess, sleep_fn=_noop_sleep)
+
+        assert len(captured_cmds) == 2
+        assert "--ledger" not in captured_cmds[0]
+        assert "--ledger" in captured_cmds[1]
+        idx = captured_cmds[1].index("--ledger")
+        assert captured_cmds[1][idx + 1] == str(ledger_path)
+
+    def test_ledger_path_stem_matches_output_stem(self, tmp_path):
+        """Injected ledger path is <output_stem>_artifacts/action_effectiveness_ledger.json."""
+        args = _make_args(tmp_path, cycles=2, ledger=None)
+        output_stem = Path(args.output).stem
+        ledger_path = (
+            Path(args.output).parent
+            / f"{output_stem}_artifacts"
+            / "action_effectiveness_ledger.json"
+        )
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        captured_cmds = []
+
+        def _writing_subprocess(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            ledger_path.write_text('{"actions": {}}', encoding="utf-8")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        run_cycles(args, subprocess_run=_writing_subprocess, sleep_fn=_noop_sleep)
+
+        idx = captured_cmds[1].index("--ledger")
+        injected = captured_cmds[1][idx + 1]
+        assert injected.endswith("action_effectiveness_ledger.json")
+        assert f"{output_stem}_artifacts" in injected
+
+
+# ---------------------------------------------------------------------------
 # H. Collision-safe archiving across multiple iterations
 # ---------------------------------------------------------------------------
 
