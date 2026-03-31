@@ -74,6 +74,8 @@ def _build_cycle_cmd(args):
         cmd.append("--explain")
     if args.force:
         cmd.append("--force")
+    if args.governance_policy is not None:
+        cmd += ["--governance-policy", args.governance_policy]
     return cmd
 
 
@@ -175,6 +177,9 @@ def main(argv=None):
                         help="Pass --explain to the governed planner loop.")
     parser.add_argument("--force", action="store_true", default=False,
                         help="Pass --force to the governed planner loop.")
+    parser.add_argument("--governance-policy", default=None, metavar="FILE",
+                        dest="governance_policy",
+                        help="Path to governance_policy.json for Phase L (optional).")
     parser.add_argument("--archive-dir", default="artifacts/cycles", metavar="DIR",
                         help="Directory to write cycle archives into (default: artifacts/cycles).")
     parser.add_argument("--interval", type=int, required=True, metavar="INT",

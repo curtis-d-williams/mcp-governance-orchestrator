@@ -56,6 +56,7 @@ def _make_args(tmp_path, **kwargs):
         max_actions=None,
         explain=False,
         force=False,
+        governance_policy=None,
         archive_dir=str(tmp_path / "archives"),
         interval=60,
         cycles=1,
@@ -408,6 +409,18 @@ class TestBuildCycleCmd:
         args = _make_args(tmp_path, explain=False)
         cmd = _build_cycle_cmd(args)
         assert "--explain" not in cmd
+
+    def test_governance_policy_included_when_set(self, tmp_path):
+        args = _make_args(tmp_path, governance_policy="/some/policy.json")
+        cmd = _build_cycle_cmd(args)
+        assert "--governance-policy" in cmd
+        idx = cmd.index("--governance-policy")
+        assert cmd[idx + 1] == "/some/policy.json"
+
+    def test_governance_policy_absent_when_none(self, tmp_path):
+        args = _make_args(tmp_path, governance_policy=None)
+        cmd = _build_cycle_cmd(args)
+        assert "--governance-policy" not in cmd
 
 
 # ---------------------------------------------------------------------------
