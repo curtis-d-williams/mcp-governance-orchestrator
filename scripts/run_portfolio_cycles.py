@@ -40,6 +40,11 @@ _archive_spec.loader.exec_module(_archive_mod)
 
 _archive_artifact = _archive_mod.archive_artifact
 
+_EXPLAIN_ARTIFACT_NAMES = [
+    "planner_priority_breakdown.json",
+    "planner_scoring_metrics.json",
+]
+
 
 # ---------------------------------------------------------------------------
 # Command builder
@@ -114,7 +119,9 @@ def run_cycles(args, subprocess_run=None, sleep_fn=None):
         output_path = Path(args.output)
         archived_to = None
         if output_path.exists():
-            archive_result = _archive_artifact(str(output_path), args.archive_dir)
+            _sidecar_paths = _EXPLAIN_ARTIFACT_NAMES if args.explain else None
+            archive_result = _archive_artifact(str(output_path), args.archive_dir,
+                                               sidecar_paths=_sidecar_paths)
             archived_to = archive_result.get("archived_to")
 
         cycle_status = "ok" if result.returncode == 0 else f"FAILED (rc={result.returncode})"

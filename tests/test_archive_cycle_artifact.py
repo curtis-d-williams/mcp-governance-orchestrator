@@ -314,3 +314,59 @@ class TestCollisionSafety:
         (dst_dir / f"{_FIXED_TS}_cycle.json").write_text("x", encoding="utf-8")
         p = _resolve_archive_path(dst_dir, _FIXED_TS)
         assert p.name == f"{_FIXED_TS}_cycle_1.json"
+
+
+# ---------------------------------------------------------------------------
+# I. Sidecar archiving
+# ---------------------------------------------------------------------------
+
+class TestSidecarArchiving:
+    def test_sidecar_archived_when_present(self, tmp_path):
+        src = _make_input(tmp_path)
+        sidecar = tmp_path / "planner_priority_breakdown.json"
+        sidecar.write_text('{"breakdown": []}', encoding="utf-8")
+        archive_dir = tmp_path / "cycles"
+
+        result = archive_artifact(str(src), str(archive_dir),
+                                  timestamp=_FIXED_TS,
+                                  sidecar_paths=[str(sidecar)])
+
+        assert result["status"] == "ok"
+        expected_sidecar = archive_dir / f"{_FIXED_TS}_planner_priority_breakdown.json"
+        assert expected_sidecar.exists()
+        assert result["sidecars_archived"] == [str(expected_sidecar)]
+
+    def test_sidecar_content_matches_source(self, tmp_path):
+        src = _make_input(tmp_path)
+        sidecar = tmp_path / "planner_scoring_metrics.json"
+        sidecar_content = '{"metrics": []}'
+        sidecar.write_text(sidecar_content, encoding="utf-8")
+        archive_dir = tmp_path / "cycles"
+
+        archive_artifact(str(src), str(archive_dir),
+                         timestamp=_FIXED_TS,
+                         sidecar_paths=[str(sidecar)])
+
+        archived_sidecar = archive_dir / f"{_FIXED_TS}_planner_scoring_metrics.json"
+        assert archived_sidecar.read_text(encoding="utf-8") == sidecar_content
+
+    def test_absent_sidecar_does_not_fail(self, tmp_path):
+        src = _make_input(tmp_path)
+        archive_dir = tmp_path / "cycles"
+
+        result = archive_artifact(str(src), str(archive_dir),
+                                  timestamp=_FIXED_TS,
+                                  sidecar_paths=[str(tmp_path / "missing.json")])
+
+        assert result["status"] == "ok"
+        assert result["sidecars_archived"] == []
+
+    def test_no_sidecar_paths_backward_compatible(self, tmp_path):
+        src = _make_input(tmp_path)
+        archive_dir = tmp_path / "cycles"
+
+        result = archive_artifact(str(src), str(archive_dir), timestamp=_FIXED_TS)
+
+        assert result["status"] == "ok"
+        assert result["sidecars_archived"] == []
+        assert len(list(archive_dir.iterdir())) == 1

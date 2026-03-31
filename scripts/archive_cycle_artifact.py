@@ -74,17 +74,20 @@ def _resolve_archive_path(dst_dir, timestamp):
 # Core archiver
 # ---------------------------------------------------------------------------
 
-def archive_artifact(input_path, archive_dir, timestamp=None):
+def archive_artifact(input_path, archive_dir, timestamp=None, sidecar_paths=None):
     """Copy *input_path* into *archive_dir* with a timestamped filename.
 
     Args:
-        input_path:  Path-like pointing to the cycle artifact JSON.
-        archive_dir: Directory to write the archive into (created if needed).
-        timestamp:   Optional YYYY-MM-DDTHH-MM-SS override string.
-                     Defaults to the current UTC time via _now_timestamp().
+        input_path:    Path-like pointing to the cycle artifact JSON.
+        archive_dir:   Directory to write the archive into (created if needed).
+        timestamp:     Optional YYYY-MM-DDTHH-MM-SS override string.
+                       Defaults to the current UTC time via _now_timestamp().
+        sidecar_paths: Optional list of additional file paths to archive
+                       alongside the main artifact.  Missing sidecars are
+                       silently skipped; the main archive always proceeds.
 
     Returns:
-        dict with keys: status, input, archived_to, timestamp.
+        dict with keys: status, input, archived_to, sidecars_archived, timestamp.
         status is "ok" on success, "error" on any failure.
     """
     src = Path(input_path)
@@ -93,6 +96,7 @@ def archive_artifact(input_path, archive_dir, timestamp=None):
             "archived_to": None,
             "input": str(src),
             "reason": f"input file not found: {src}",
+            "sidecars_archived": [],
             "status": "error",
             "timestamp": timestamp,
         }
@@ -104,9 +108,18 @@ def archive_artifact(input_path, archive_dir, timestamp=None):
 
     shutil.copy2(str(src), str(dst))
 
+    sidecars_archived = []
+    for sp in (sidecar_paths or []):
+        sp_path = Path(sp)
+        if sp_path.exists():
+            sidecar_dst = dst_dir / f"{ts}_{sp_path.name}"
+            shutil.copy2(str(sp_path), str(sidecar_dst))
+            sidecars_archived.append(str(sidecar_dst))
+
     return {
         "archived_to": str(dst),
         "input": str(src),
+        "sidecars_archived": sidecars_archived,
         "status": "ok",
         "timestamp": ts,
     }
