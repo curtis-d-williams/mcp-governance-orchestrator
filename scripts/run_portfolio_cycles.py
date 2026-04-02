@@ -81,6 +81,8 @@ def _build_cycle_cmd(args):
         cmd.append("--force")
     if args.governance_policy is not None:
         cmd += ["--governance-policy", args.governance_policy]
+    if args.capability_ledger is not None:
+        cmd += ["--capability-ledger", args.capability_ledger]
     return cmd
 
 
@@ -147,6 +149,20 @@ def run_cycles(args, subprocess_run=None, sleep_fn=None):
             else:
                 cmd += ["--ledger", str(work_dir_ledger)]
 
+        # After each cycle, check whether governed_cycle wrote a work-dir capability ledger.
+        # If found, pin it into cmd so capability learning carries forward across cycles.
+        work_dir_cap_ledger = (
+            Path(args.output).parent
+            / f"{Path(args.output).stem}_artifacts"
+            / "capability_effectiveness_ledger.json"
+        )
+        if work_dir_cap_ledger.exists():
+            if "--capability-ledger" in cmd:
+                cap_idx = cmd.index("--capability-ledger")
+                cmd[cap_idx + 1] = str(work_dir_cap_ledger)
+            else:
+                cmd += ["--capability-ledger", str(work_dir_cap_ledger)]
+
         iteration += 1
         # Sleep between iterations, not after the last one.
         if limit is None or iteration < limit:
@@ -187,6 +203,9 @@ def main(argv=None):
     parser.add_argument("--governance-policy", default=None, metavar="FILE",
                         dest="governance_policy",
                         help="Path to governance_policy.json for Phase L (optional).")
+    parser.add_argument("--capability-ledger", default=None, metavar="FILE",
+                        dest="capability_ledger",
+                        help="Path to capability_effectiveness_ledger.json (optional).")
     parser.add_argument("--archive-dir", default="artifacts/cycles", metavar="DIR",
                         help="Directory to write cycle archives into (default: artifacts/cycles).")
     parser.add_argument("--interval", type=int, required=True, metavar="INT",

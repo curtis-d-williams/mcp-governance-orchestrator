@@ -57,6 +57,7 @@ def _make_args(tmp_path, **kwargs):
         explain=False,
         force=False,
         governance_policy=None,
+        capability_ledger=None,
         archive_dir=str(tmp_path / "archives"),
         interval=60,
         cycles=1,
@@ -479,7 +480,62 @@ class TestWorkDirLedgerThreading:
 
 
 # ---------------------------------------------------------------------------
-# H. Collision-safe archiving across multiple iterations
+# H. Capability ledger threading across multiple iterations
+# ---------------------------------------------------------------------------
+
+class TestCapabilityLedgerThreadingAcrossIterations:
+    def test_cap_ledger_replaced_when_work_dir_ledger_exists(self, tmp_path):
+        """When work_dir_cap_ledger is written by cycle N, cycle N+1 cmd uses it."""
+        args = _make_args(tmp_path, cycles=2, capability_ledger=None)
+        output_stem = Path(args.output).stem
+        cap_ledger_path = (
+            Path(args.output).parent
+            / f"{output_stem}_artifacts"
+            / "capability_effectiveness_ledger.json"
+        )
+        cap_ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        captured_cmds = []
+
+        def _writing_subprocess(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            cap_ledger_path.write_text('{"capabilities": {}}', encoding="utf-8")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        run_cycles(args, subprocess_run=_writing_subprocess, sleep_fn=_noop_sleep)
+
+        assert len(captured_cmds) == 2
+        assert "--capability-ledger" not in captured_cmds[0]
+        assert "--capability-ledger" in captured_cmds[1]
+        idx = captured_cmds[1].index("--capability-ledger")
+        assert captured_cmds[1][idx + 1] == str(cap_ledger_path)
+
+    def test_cap_ledger_path_stem_matches_output_stem(self, tmp_path):
+        """Injected capability ledger path is <output_stem>_artifacts/capability_effectiveness_ledger.json."""
+        args = _make_args(tmp_path, cycles=2, capability_ledger=None)
+        output_stem = Path(args.output).stem
+        cap_ledger_path = (
+            Path(args.output).parent
+            / f"{output_stem}_artifacts"
+            / "capability_effectiveness_ledger.json"
+        )
+        cap_ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        captured_cmds = []
+
+        def _writing_subprocess(cmd, **kwargs):
+            captured_cmds.append(list(cmd))
+            cap_ledger_path.write_text('{"capabilities": {}}', encoding="utf-8")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        run_cycles(args, subprocess_run=_writing_subprocess, sleep_fn=_noop_sleep)
+
+        idx = captured_cmds[1].index("--capability-ledger")
+        injected = captured_cmds[1][idx + 1]
+        assert injected.endswith("capability_effectiveness_ledger.json")
+        assert f"{output_stem}_artifacts" in injected
+
+
+# ---------------------------------------------------------------------------
+# I. Collision-safe archiving across multiple iterations
 # ---------------------------------------------------------------------------
 
 class TestCollisionSafeArchiving:
