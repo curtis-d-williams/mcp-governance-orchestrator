@@ -387,9 +387,9 @@ class TestCapabilityLedgerPersistenceInRunCycle:
                 run_cycle(args)
 
         mock_update.assert_called_once_with(
-            ledger_path=arts["capability_effectiveness_ledger"],
+            ledger_path=str(tmp_path / "cap.json"),
             cycle_artifact_path=arts["governed_result"],
-            output_path=str(tmp_path / "cap.json"),
+            output_path=arts["capability_effectiveness_ledger"],
         )
 
     def test_capability_ledger_not_written_when_no_ledger_arg(self, tmp_path):
@@ -450,9 +450,9 @@ class TestCapabilityLedgerPersistenceInRunCycle:
         ):
             run_cycle(args)
 
-        persistent_path = Path(str(tmp_path / "cap.json"))
-        assert persistent_path.exists(), "persistent capability_effectiveness_ledger was not written"
-        ledger = json.loads(persistent_path.read_text(encoding="utf-8"))
+        workdir_ledger_path = Path(arts["capability_effectiveness_ledger"])
+        assert workdir_ledger_path.exists(), "work-dir capability_effectiveness_ledger was not written"
+        ledger = json.loads(workdir_ledger_path.read_text(encoding="utf-8"))
         caps = ledger.get("capabilities", {})
         assert "_repair_cycle" in caps, "_repair_cycle capability not merged into ledger"
         assert caps["_repair_cycle"]["total_syntheses"] == 3
@@ -490,12 +490,13 @@ class TestCapabilityLedgerPersistenceInRunCycle:
                 run_cycle(args)
 
         call_kwargs = mock_update.call_args[1]
-        assert call_kwargs["output_path"] == persistent_ledger, (
-            f"output_path should be the persistent user-supplied path '{persistent_ledger}', "
-            f"got '{call_kwargs['output_path']}'"
+        assert call_kwargs["ledger_path"] == persistent_ledger, (
+            f"ledger_path should be the persistent user-supplied seed path '{persistent_ledger}', "
+            f"got '{call_kwargs['ledger_path']}'"
         )
-        assert call_kwargs["output_path"] != arts["capability_effectiveness_ledger"], (
-            "output_path must not be the work_dir copy"
+        assert call_kwargs["output_path"] == arts["capability_effectiveness_ledger"], (
+            f"output_path should be the work_dir copy '{arts['capability_effectiveness_ledger']}', "
+            f"got '{call_kwargs['output_path']}'"
         )
 
 

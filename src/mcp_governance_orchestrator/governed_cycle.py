@@ -585,9 +585,9 @@ def run_cycle(args):
     # Persist capability_effectiveness_ledger when a ledger path was provided
     if config.get("capability_ledger"):
         update_capability_effectiveness_ledger(
-            ledger_path=arts["capability_effectiveness_ledger"],
+            ledger_path=config["capability_ledger"],
             cycle_artifact_path=arts["governed_result"],
-            output_path=config["capability_ledger"],
+            output_path=arts["capability_effectiveness_ledger"],
         )
 
     # --- Phase D: governed execution ---
