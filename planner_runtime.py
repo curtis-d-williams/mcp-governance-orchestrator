@@ -813,9 +813,18 @@ def _extract_capability_history(action, capability_ledger):
 
     args = action.get("args", {})
     if not isinstance(args, dict):
-        return None
+        args = {}
 
     capability = args.get("capability")
+    if not isinstance(capability, str) or not capability:
+        # Fallback: portfolio_state action dicts nest capability under task_binding.args
+        tb_args = action.get("task_binding", {})
+        if isinstance(tb_args, dict):
+            tb_args = tb_args.get("args", {})
+        else:
+            tb_args = {}
+        capability = tb_args.get("capability") if isinstance(tb_args, dict) else None
+
     if not isinstance(capability, str) or not capability:
         return None
 
