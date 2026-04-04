@@ -1,0 +1,52 @@
+{
+  "capabilities": {
+    "_repair_cycle": {
+      "artifact_kind": "system",
+      "failed_syntheses": 0,
+      "last_synthesis_source": "repair",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": false,
+      "successful_evolved_syntheses": 0,
+      "successful_syntheses": 5,
+      "total_syntheses": 5
+    },
+    "filesystem": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 2,
+      "last_comparison_status": "pass",
+      "last_synthesis_source": "planner_request",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": true,
+      "similarity_delta": 0.16,
+      "similarity_score": 0.71,
+      "successful_evolved_syntheses": 2,
+      "successful_syntheses": 4,
+      "total_syntheses": 6
+    },
+    "github": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 1,
+      "last_comparison_status": "pass",
+      "last_synthesis_source": "planner_request",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": true,
+      "similarity_delta": 0.09,
+      "similarity_score": 0.91,
+      "successful_evolved_syntheses": 3,
+      "successful_syntheses": 7,
+      "total_syntheses": 8
+    },
+    "search": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 0,
+      "last_comparison_status": "pass",
+      "last_synthesis_source": "planner_request",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": false,
+      "similarity_score": 0.78,
+      "successful_evolved_syntheses": 0,
+      "successful_syntheses": 2,
+      "total_syntheses": 2
+    }
+  }
+}

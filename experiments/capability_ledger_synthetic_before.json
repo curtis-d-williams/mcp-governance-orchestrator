@@ -1,0 +1,40 @@
+{
+  "capabilities": {
+    "_repair_cycle": {
+      "artifact_kind": "system",
+      "failed_syntheses": 0,
+      "last_synthesis_source": "repair",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": false,
+      "successful_evolved_syntheses": 0,
+      "successful_syntheses": 3,
+      "total_syntheses": 3
+    },
+    "filesystem": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 2,
+      "last_comparison_status": "fail",
+      "last_synthesis_source": "planner_request",
+      "last_synthesis_status": "failed",
+      "last_synthesis_used_evolution": false,
+      "similarity_delta": -0.12,
+      "similarity_score": 0.55,
+      "successful_evolved_syntheses": 0,
+      "successful_syntheses": 1,
+      "total_syntheses": 3
+    },
+    "github": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 1,
+      "last_comparison_status": "pass",
+      "last_synthesis_source": "planner_request",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": false,
+      "similarity_delta": 0.08,
+      "similarity_score": 0.82,
+      "successful_evolved_syntheses": 1,
+      "successful_syntheses": 4,
+      "total_syntheses": 5
+    }
+  }
+}
