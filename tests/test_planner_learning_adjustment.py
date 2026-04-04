@@ -1750,6 +1750,137 @@ class TestMultiCycleLearningFeedback:
 
         assert adjustments[0] > adjustments[1] > adjustments[2] > adjustments[3]
 
+
+# ---------------------------------------------------------------------------
+# TestSyntheticLedgerFixtureRoundTrip
+# Living regression guard: committed synthetic fixtures → loader → scorer
+# ---------------------------------------------------------------------------
+
+_FIXTURE_BEFORE = _REPO_ROOT / "experiments" / "capability_ledger_synthetic_before.json"
+_FIXTURE_AFTER  = _REPO_ROOT / "experiments" / "capability_ledger_synthetic_after.json"
+
+
+class TestSyntheticLedgerFixtureRoundTrip:
+    """Verify that the committed synthetic fixtures load correctly and produce
+    the expected scoring behaviour across the before→after evolution story.
+
+    filesystem: failing in 'before' (1/3 ok, similarity_delta=-0.12)
+                → recovered in 'after'  (4/6 ok, similarity_delta=+0.16)
+    github:     healthy in both states, improving from 4/5 → 7/8
+    search:     absent from 'before', newly added in 'after' (2/2 ok)
+    """
+
+    @staticmethod
+    def _cap_action(capability):
+        return {
+            "action_type": "build_capability_artifact",
+            "priority": 0.5,
+            "action_id": f"aid-{capability}",
+            "repo_id": "repo-fixture",
+            "args": {"capability": capability},
+        }
+
+    def test_before_fixture_loads_with_three_capabilities(self):
+        loaded = load_capability_effectiveness_ledger(str(_FIXTURE_BEFORE))
+        caps = loaded.get("capabilities", {})
+        # github, filesystem, _repair_cycle
+        assert len(caps) == 3
+        assert "github" in caps
+        assert "filesystem" in caps
+
+    def test_after_fixture_loads_with_four_capabilities(self):
+        loaded = load_capability_effectiveness_ledger(str(_FIXTURE_AFTER))
+        caps = loaded.get("capabilities", {})
+        # github, filesystem, search, _repair_cycle
+        assert len(caps) == 4
+        assert "search" in caps
+
+    def test_filesystem_reliability_negative_before_positive_after(self):
+        # 'before': 1/3 ok + similarity_delta=-0.12 → net negative adjustment
+        # 'after':  4/6 ok + similarity_delta=+0.16 → net positive adjustment
+        action = self._cap_action("filesystem")
+        before = load_capability_effectiveness_ledger(str(_FIXTURE_BEFORE))
+        after  = load_capability_effectiveness_ledger(str(_FIXTURE_AFTER))
+
+        adj_before = _compute_capability_reliability_adjustment(action, before)
+        adj_after  = _compute_capability_reliability_adjustment(action, after)
+
+        assert adj_before < 0.0, f"filesystem 'before' adj should be negative, got {adj_before}"
+        assert adj_after  > 0.0, f"filesystem 'after' adj should be positive, got {adj_after}"
+        assert adj_after  > adj_before
+
+    def test_github_positive_in_both_states_and_improves(self):
+        # 'before': 4/5 ok → positive; 'after': 7/8 ok → more positive
+        action = self._cap_action("github")
+        before = load_capability_effectiveness_ledger(str(_FIXTURE_BEFORE))
+        after  = load_capability_effectiveness_ledger(str(_FIXTURE_AFTER))
+
+        adj_before = _compute_capability_reliability_adjustment(action, before)
+        adj_after  = _compute_capability_reliability_adjustment(action, after)
+
+        assert adj_before > 0.0, f"github 'before' adj should be positive, got {adj_before}"
+        assert adj_after  > 0.0, f"github 'after' adj should be positive, got {adj_after}"
+        assert adj_after  > adj_before
+
+    def test_search_absent_from_before_positive_in_after(self):
+        # 'before' has no 'search' row → _extract_capability_history returns None → 0.0
+        # 'after'  has 'search' 2/2 ok → positive adjustment
+        action = self._cap_action("search")
+        before = load_capability_effectiveness_ledger(str(_FIXTURE_BEFORE))
+        after  = load_capability_effectiveness_ledger(str(_FIXTURE_AFTER))
+
+        assert _extract_capability_history(action, before) is None
+        adj_before = _compute_capability_reliability_adjustment(action, before)
+        adj_after  = _compute_capability_reliability_adjustment(action, after)
+
+        assert adj_before == 0.0
+        assert adj_after  > 0.0
+
+    def test_after_fixture_ranking_filesystem_overtakes_its_before_penalty(self):
+        # In 'before', a filesystem action ranks below an equal-priority non-synthesis
+        # action (filesystem adj is negative). In 'after', filesystem adj is positive
+        # so the synthesis action overtakes the non-synthesis competitor.
+        before = load_capability_effectiveness_ledger(str(_FIXTURE_BEFORE))
+        after  = load_capability_effectiveness_ledger(str(_FIXTURE_AFTER))
+
+        filesystem_action = self._cap_action("filesystem")
+        competitor = {
+            "action_type": "refresh_repo_health",
+            "priority": 0.5,
+            "action_id": "aid-comp",
+            "repo_id": "repo-fixture",
+        }
+
+        ranked_before = _apply_learning_adjustments(
+            [filesystem_action, competitor], {}, capability_ledger=before
+        )
+        ranked_after = _apply_learning_adjustments(
+            [filesystem_action, competitor], {}, capability_ledger=after
+        )
+
+        # 'before': filesystem penalized → competitor ranks first
+        assert ranked_before[0]["action_type"] == "refresh_repo_health"
+        # 'after': filesystem recovered → synthesis action ranks first
+        assert ranked_after[0]["action_type"] == "build_capability_artifact"
+
+
+class TestMultiCycleLearningFeedbackContinued:
+    """Continuation of multi-cycle feedback tests (split to avoid class absorption)."""
+
+    @staticmethod
+    def _recompute(row):
+        s, f = row["success_count"], row["failure_count"]
+        row["effectiveness_score"] = round(s / max(1, s + f), 6)
+
+    @staticmethod
+    def _action(action_type, priority=1.0):
+        return {
+            "action_type": action_type,
+            "priority": priority,
+            "action_id": f"aid-{action_type}",
+            "repo_id": "repo-test",
+        }
+
     def test_action_effectiveness_reinforcement_is_monotonic_per_cycle(self):
         ledger = {
             "action_winner": {
