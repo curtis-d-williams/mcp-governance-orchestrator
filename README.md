@@ -105,7 +105,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2883 tests passing
+2974 tests passing
 
 ---
 
