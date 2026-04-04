@@ -146,3 +146,70 @@ Example generated infrastructure currently includes:
 
 - generated_mcp_server_github/
 - generated_agent_adapter_slack/
+
+---
+
+# Capability Score Gate
+
+The system enforces a governed capability score gate at Phase L of each cycle.
+The gate computes a smoothed success rate per capability from the
+capability effectiveness ledger and blocks the cycle if any named capability
+falls below its configured threshold.
+
+## Gate mechanism
+
+Defined in the governance policy under `capability_score_gate`:
+
+```json
+{
+  "capability_score_gate": { "github": 0.75 }
+}
+```
+
+Phase L reads the capability ledger, computes a per-capability smoothed success
+rate `(successful_syntheses + 1) / (total_syntheses + 2)`, and aborts the cycle
+if the rate falls below the threshold.
+
+## BEFORE state
+
+Capability ledger before additional syntheses:
+
+| Capability | Total | Successful | Similarity | Delta | Status |
+|---|---|---|---|---|---|
+| github | 5 | 4 | 0.82 | +0.08 | ok |
+| filesystem | 3 | 1 | 0.55 | -0.12 | failed |
+
+Phase L evaluation result: **abort**
+
+- github smoothed success rate: 0.714 (threshold: 0.75) → gate fires
+- filesystem: declining trajectory, last comparison failed
+
+## AFTER state
+
+Capability ledger after evolved syntheses:
+
+| Capability | Total | Successful | Similarity | Delta | Status |
+|---|---|---|---|---|---|
+| github | 8 | 7 | 0.91 | +0.09 | ok |
+| filesystem | 6 | 4 | 0.71 | +0.16 | ok |
+| search | 2 | 2 | 0.78 | — | ok (new) |
+
+Phase L evaluation result: **continue**
+
+- github smoothed success rate now clears the 0.75 threshold
+- filesystem recovered: similarity score 0.55 → 0.71, delta reversed from -0.12 to +0.16
+- search capability added: 2/2 successful syntheses at 0.78 similarity
+
+## Live cycle confirmation
+
+The governed multi-cycle run with the AFTER ledger (`governed_capability_after_demo.json`)
+confirmed gate clearance: 3 cycles completed, all status ok, governance decision: continue,
+no regression detected.
+
+## Demo fixtures
+
+experiments/capability_ledger_synthetic_before.json — BEFORE ledger  
+experiments/capability_ledger_synthetic_after.json — AFTER ledger  
+demo_capability_gate_policy.json — governance policy with gate threshold  
+demo_capability_gate_before.json — Phase L abort decision  
+demo_capability_gate_after.json — Phase L continue decision  
