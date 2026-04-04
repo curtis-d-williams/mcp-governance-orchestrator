@@ -746,3 +746,110 @@ class TestKLSignalConsistency:
     def test_phase_l_signals_match_phase_k(self, tmp_path):
         k_data, l_data = self._setup(tmp_path)
         assert l_data["signals"] == k_data["signals"]
+
+
+# ---------------------------------------------------------------------------
+# L. Capability score gate
+# ---------------------------------------------------------------------------
+
+def _write_cap_ledger(tmp_path, data, name="capability_effectiveness_ledger.json"):
+    p = tmp_path / name
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return p
+
+
+def _run_gated(tmp_path, cycles, policy, cap_ledger_data=None, summary=None):
+    """Run enforcer with an optional capability ledger. Returns (rc, data_or_None)."""
+    h = _write_history(tmp_path, cycles)
+    s = _write_summary(tmp_path, summary)
+    pol = _write_policy(tmp_path, policy)
+    cap_path = None
+    if cap_ledger_data is not None:
+        cap_path = str(_write_cap_ledger(tmp_path, cap_ledger_data))
+    out = tmp_path / "governance_decision.json"
+    rc = enforce_governance_policy(str(h), str(s), str(pol), str(out),
+                                   capability_ledger_path=cap_path)
+    data = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
+    return rc, data
+
+
+_POLICY_WITH_GATE = {
+    "on_regression": "warn",
+    "abort_on_signals": ["status_regressed"],
+    "allow_if_only": ["action_set_changed"],
+    "capability_score_gate": {"github": 0.70},
+}
+
+_CAP_LEDGER_PASSING = {
+    "capabilities": {
+        "github": {"total_syntheses": 5, "successful_syntheses": 4}
+    }
+}  # smoothed rate = 5/7 ≈ 0.714 — above threshold 0.70
+
+_CAP_LEDGER_FAILING = {
+    "capabilities": {
+        "github": {"total_syntheses": 5, "successful_syntheses": 1}
+    }
+}  # smoothed rate = 2/7 ≈ 0.286 — below threshold 0.70
+
+
+class TestCapabilityScoreGate:
+    def test_gate_absent_no_effect(self, tmp_path):
+        # No capability_score_gate key — existing regression logic unchanged
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B], _POLICY_STANDARD)
+        assert data["decision"] == "continue"
+
+    def test_gate_passes_decision_not_aborted(self, tmp_path):
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, _CAP_LEDGER_PASSING)
+        assert data["decision"] != "abort"
+
+    def test_gate_fails_decision_abort(self, tmp_path):
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, _CAP_LEDGER_FAILING)
+        assert data["decision"] == "abort"
+
+    def test_gate_fails_returns_zero(self, tmp_path):
+        rc, _ = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                           _POLICY_WITH_GATE, _CAP_LEDGER_FAILING)
+        assert rc == 0
+
+    def test_gate_fails_reason_includes_capability(self, tmp_path):
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, _CAP_LEDGER_FAILING)
+        assert "github" in data["reason"]
+
+    def test_gate_fails_failures_list_present(self, tmp_path):
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, _CAP_LEDGER_FAILING)
+        assert len(data["capability_score_gate_failures"]) == 1
+        assert data["capability_score_gate_failures"][0]["capability"] == "github"
+
+    def test_gate_no_ledger_skips(self, tmp_path):
+        # Gate in policy but no ledger provided — gate evaluation skipped
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, cap_ledger_data=None)
+        assert data["decision"] != "abort"
+
+    def test_gate_missing_capability_skips(self, tmp_path):
+        # Gated capability absent from ledger — no abort
+        ledger = {"capabilities": {"filesystem": {"total_syntheses": 5,
+                                                   "successful_syntheses": 1}}}
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, ledger)
+        assert data["decision"] != "abort"
+
+    def test_gate_overrides_no_regression(self, tmp_path):
+        # Gate fires even when cycles are healthy (no regression)
+        _, data = _run_gated(tmp_path, [_CYCLE_OK_A, _CYCLE_OK_B],
+                             _POLICY_WITH_GATE, _CAP_LEDGER_FAILING)
+        assert data["decision"] == "abort"
+        assert data["regression_detected"] is False
+
+    def test_load_policy_gate_not_dict_error(self, tmp_path):
+        bad_policy = {**_POLICY_STANDARD, "capability_score_gate": "not_a_dict"}
+        p = tmp_path / "policy.json"
+        p.write_text(json.dumps(bad_policy) + "\n", encoding="utf-8")
+        policy, err = _load_policy(str(p))
+        assert policy is None
+        assert err is not None

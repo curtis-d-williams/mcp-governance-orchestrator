@@ -111,7 +111,82 @@ def _load_policy(policy_path):
     if not isinstance(policy.get("allow_if_only", []), list):
         return None, "policy.allow_if_only must be a list"
 
+    if not isinstance(policy.get("capability_score_gate", {}), dict):
+        return None, "policy.capability_score_gate must be a dict"
+
     return policy, None
+
+
+# ---------------------------------------------------------------------------
+# Capability score gate
+# ---------------------------------------------------------------------------
+
+def _load_capability_ledger(path):
+    """Load a capability effectiveness ledger. Returns {} on None path or any error."""
+    if path is None:
+        return {}
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+        ledger = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(ledger, dict):
+        return {}
+    return ledger
+
+
+def _evaluate_capability_score_gate(capability_ledger, policy):
+    """Return an abort decision dict when any gated capability falls below threshold.
+
+    policy.capability_score_gate maps capability names to minimum smoothed
+    success-rate thresholds (Laplace: (ok+1)/(total+2)).  Returns None when:
+    - no capability_score_gate key in policy
+    - capability_ledger is absent or has no 'capabilities' dict
+    - all gated capabilities meet their thresholds
+    - a gated capability has no history in the ledger (skipped, not failed)
+    Returns an abort dict for the first failing capability (sorted deterministically).
+    """
+    gate = policy.get("capability_score_gate")
+    if not gate or not isinstance(gate, dict):
+        return None
+    if not capability_ledger:
+        return None
+    caps = capability_ledger.get("capabilities")
+    if not isinstance(caps, dict):
+        return None
+
+    failures = []
+    for capability in sorted(gate.keys()):
+        threshold = gate[capability]
+        try:
+            threshold = float(threshold)
+        except (TypeError, ValueError):
+            continue
+        row = caps.get(capability)
+        if not isinstance(row, dict):
+            continue  # no history — gate does not fire on unknown capabilities
+        total = row.get("total_syntheses", 0)
+        success = row.get("successful_syntheses", 0)
+        try:
+            total = float(total)
+            success = float(success)
+        except (TypeError, ValueError):
+            continue
+        success_rate = (success + 1.0) / (total + 2.0)
+        if success_rate < threshold:
+            failures.append({
+                "capability": capability,
+                "success_rate": round(success_rate, 6),
+                "threshold": threshold,
+            })
+
+    if not failures:
+        return None
+    return {
+        "decision": "abort",
+        "reason": f"capability_score_gate:{failures[0]['capability']}",
+        "capability_score_gate_failures": failures,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -170,14 +245,18 @@ def _evaluate_policy(regression_report, policy):
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def enforce_governance_policy(history_path, summary_path, policy_path, output_path):
+def enforce_governance_policy(history_path, summary_path, policy_path, output_path,
+                               capability_ledger_path=None):
     """Evaluate governance policy and write a decision record.
 
     Args:
-        history_path: Path to cycle_history.json (Phase I output).
-        summary_path: Path to cycle_history_summary.json (Phase J output).
-        policy_path:  Path to governance_policy.json.
-        output_path:  Destination for the governance decision JSON.
+        history_path:           Path to cycle_history.json (Phase I output).
+        summary_path:           Path to cycle_history_summary.json (Phase J output).
+        policy_path:            Path to governance_policy.json.
+        output_path:            Destination for the governance decision JSON.
+        capability_ledger_path: Optional path to capability_effectiveness_ledger.json.
+                                When provided and policy contains capability_score_gate,
+                                gates are evaluated before regression detection.
 
     Returns:
         0 on success, 1 on error.
@@ -187,6 +266,18 @@ def enforce_governance_policy(history_path, summary_path, policy_path, output_pa
     if err:
         sys.stderr.write(f"error: {err}\n")
         return 1
+
+    # --- Evaluate capability score gate (pre-regression check) ---
+    capability_ledger = _load_capability_ledger(capability_ledger_path)
+    gate_result = _evaluate_capability_score_gate(capability_ledger, policy)
+    if gate_result is not None:
+        _write_json(output_path, {
+            "policy_applied": policy,
+            "regression_detected": False,
+            "signals": [],
+            **gate_result,
+        })
+        return 0
 
     # --- Run Phase K detector into a temporary file ---
     detect = _load_detector()
@@ -231,10 +322,14 @@ def main(argv=None):
                         help="Path to governance_policy.json.")
     parser.add_argument("--output", required=True, metavar="FILE",
                         help="Output path for the governance decision JSON.")
+    parser.add_argument("--capability-ledger", default=None, metavar="FILE",
+                        dest="capability_ledger",
+                        help="Path to capability_effectiveness_ledger.json (optional).")
 
     args = parser.parse_args(argv)
     sys.exit(enforce_governance_policy(
-        args.history, args.summary, args.policy, args.output
+        args.history, args.summary, args.policy, args.output,
+        capability_ledger_path=args.capability_ledger,
     ))
 
 

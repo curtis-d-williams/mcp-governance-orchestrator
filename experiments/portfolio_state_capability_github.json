@@ -22,7 +22,7 @@
       "action_type": "analyze_repo_insights",
       "blocked_by": [],
       "eligible": true,
-      "priority": 0.545,
+      "priority": 0.555,
       "reason": "collect repo insights",
       "task_binding": {
         "args": {},
