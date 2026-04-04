@@ -412,17 +412,17 @@ def run_selected_actions(tasks, portfolio_state_output):
     run_tasks(tasks, portfolio_state_output)
 
 
-def write_explain_artifact(explain_actions, ledger, signals, policy):
+def write_explain_artifact(explain_actions, ledger, signals, policy, capability_ledger=None):
     """Write explain-mode planner scoring artifacts.
 
     Read-only with respect to ranking — does not affect planner behavior.
     """
-    breakdown = _build_priority_breakdown(explain_actions, ledger, signals, policy)
+    breakdown = _build_priority_breakdown(explain_actions, ledger, signals, policy, capability_ledger)
     Path("planner_priority_breakdown.json").write_text(
         json.dumps(breakdown, indent=2) + "\n", encoding="utf-8"
     )
 
-    scoring_metrics = _build_scoring_metrics(explain_actions, ledger, signals, policy)
+    scoring_metrics = _build_scoring_metrics(explain_actions, ledger, signals, policy, capability_ledger)
     Path("planner_scoring_metrics.json").write_text(
         json.dumps(scoring_metrics, indent=2) + "\n", encoding="utf-8"
     )
@@ -582,6 +582,7 @@ def main(argv=None):
     _explain_ledger = {}
     _explain_signals = {}
     _explain_policy = {}
+    _capability_ledger = None
 
     # v0.36: selection_detail — populated in action-driven mode, defaults for fallback.
     _action_window_types = []
@@ -629,7 +630,7 @@ def main(argv=None):
 
     # v0.31: write explain artifact before running tasks (read-only, no ranking effect)
     if args.explain:
-        write_explain_artifact(_explain_actions, _explain_ledger, _explain_signals, _explain_policy)
+        write_explain_artifact(_explain_actions, _explain_ledger, _explain_signals, _explain_policy, _capability_ledger)
 
     run_selected_actions(tasks_to_run, Path(args.portfolio_state_output))
 

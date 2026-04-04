@@ -447,6 +447,29 @@ class TestWriteExplainArtifact:
         }
         assert set(data[0].keys()) == expected_fields
 
+    def test_write_explain_artifact_forwards_capability_ledger(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        capability_ledger = {
+            "capabilities": {
+                "github": {
+                    "total_syntheses": 5,
+                    "successful_syntheses": 4,
+                }
+            }
+        }
+        actions = [
+            {
+                "action_type": "build_capability_artifact",
+                "priority": 0.9,
+                "task_binding": {"args": {"capability": "github"}},
+            }
+        ]
+        with unittest.mock.patch.object(_mod, "log"):
+            _mod.write_explain_artifact(actions, {}, {}, {}, capability_ledger)
+        data = json.loads((tmp_path / "planner_priority_breakdown.json").read_text())
+        assert len(data) == 1
+        assert data[0]["capability_reliability_component"] != 0.0
+
 
 # ---------------------------------------------------------------------------
 # 10. Backward-compat: existing re-exports still present
