@@ -29,6 +29,7 @@ from mcp_governance_orchestrator.governed_cycle import (
     build_runtime_config,
     resolve_planner_ledger,
     run_cycle,
+    run_enforce_governance_policy,
     run_governed_loop,
     try_parse_json,
     try_read_json,
@@ -282,6 +283,35 @@ class TestRunGovernedLoopCapabilityLedger:
 
 
 # ---------------------------------------------------------------------------
+# run_enforce_governance_policy — capability_ledger_path cmd threading
+# ---------------------------------------------------------------------------
+
+class TestRunEnforceGovernancePolicyCapabilityLedger:
+    def _arts(self, tmp_path):
+        return artifact_paths(tmp_path)
+
+    def test_capability_ledger_arg_included_when_provided(self, tmp_path):
+        arts = self._arts(tmp_path)
+        cap_path = "/persistent/capability_effectiveness_ledger.json"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            run_enforce_governance_policy(arts, policy_file="/some/policy.json",
+                                          capability_ledger_path=cap_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--capability-ledger" in cmd
+        assert cap_path in cmd
+
+    def test_capability_ledger_arg_omitted_when_none(self, tmp_path):
+        arts = self._arts(tmp_path)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            run_enforce_governance_policy(arts, policy_file="/some/policy.json",
+                                          capability_ledger_path=None)
+        cmd = mock_run.call_args[0][0]
+        assert "--capability-ledger" not in cmd
+
+
+# ---------------------------------------------------------------------------
 # run_cycle — capability_effectiveness_ledger persistence
 # ---------------------------------------------------------------------------
 
@@ -498,6 +528,42 @@ class TestCapabilityLedgerPersistenceInRunCycle:
             f"output_path should be the work_dir copy '{arts['capability_effectiveness_ledger']}', "
             f"got '{call_kwargs['output_path']}'"
         )
+
+    def test_phase_l_receives_capability_ledger_path(self, tmp_path):
+        """run_cycle passes arts['capability_effectiveness_ledger'] to Phase L when capability_ledger is set."""
+        args = _make_args(tmp_path, capability_ledger=str(tmp_path / "cap.json"))
+        wd = work_dir(args.output)
+        wd.mkdir(parents=True, exist_ok=True)
+        arts = artifact_paths(wd)
+
+        import json as _json
+        Path(arts["governed_result"]).write_text(
+            _json.dumps(_GOVERNED_RESULT_DATA), encoding="utf-8"
+        )
+
+        mock_phase_l = MagicMock(return_value=_ok_proc())
+
+        with patch.multiple(
+            "mcp_governance_orchestrator.governed_cycle",
+            run_portfolio_tasks=MagicMock(return_value=_ok_proc("{}")),
+            run_build_portfolio_state=MagicMock(return_value=_ok_proc()),
+            run_governed_loop=MagicMock(return_value=_ok_proc()),
+            run_execute_governed_actions=MagicMock(return_value=_ok_proc()),
+            run_update_execution_history=MagicMock(return_value=_ok_proc()),
+            run_update_action_effectiveness_from_history=MagicMock(return_value=_ok_proc()),
+            run_update_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_aggregate_cycle_history=MagicMock(return_value=_ok_proc()),
+            run_detect_cycle_history_regression=MagicMock(return_value=_ok_proc()),
+            run_enforce_governance_policy=mock_phase_l,
+        ):
+            run_cycle(args)
+
+        call_pos, call_kw = mock_phase_l.call_args
+        # capability_ledger_path is the third positional argument at the call site.
+        cap_ledger_received = call_kw.get("capability_ledger_path") or (
+            call_pos[2] if len(call_pos) > 2 else None
+        )
+        assert cap_ledger_received == arts["capability_effectiveness_ledger"]
 
 
 # ---------------------------------------------------------------------------
@@ -1280,7 +1346,8 @@ class TestEnforceGovernancePolicyRealHandoff:
 
         _egp_mod = _load_enforce_governance_policy()
 
-        def _real_run_enforce_governance_policy_shim(artifacts, policy_file=None):
+        def _real_run_enforce_governance_policy_shim(artifacts, policy_file=None,
+                                                      capability_ledger_path=None):
             """Thin shim: calls enforce_governance_policy() directly."""
             rc = _egp_mod.enforce_governance_policy(
                 artifacts["cycle_history"],
@@ -1375,7 +1442,8 @@ class TestEnforceGovernancePolicyRealHandoff:
 
         _egp_mod = _load_enforce_governance_policy()
 
-        def _real_run_enforce_governance_policy_shim(artifacts, policy_file=None):
+        def _real_run_enforce_governance_policy_shim(artifacts, policy_file=None,
+                                                      capability_ledger_path=None):
             """Thin shim: calls enforce_governance_policy() directly."""
             rc = _egp_mod.enforce_governance_policy(
                 artifacts["cycle_history"],
@@ -1532,7 +1600,7 @@ class TestGovernanceDecisionAbortCycleStatusOk:
 
         _egp_mod = _load_enforce_governance_policy()
 
-        def _shim(artifacts, policy_file=None):
+        def _shim(artifacts, policy_file=None, capability_ledger_path=None):
             rc = _egp_mod.enforce_governance_policy(
                 artifacts["cycle_history"],
                 artifacts["cycle_history_summary"],

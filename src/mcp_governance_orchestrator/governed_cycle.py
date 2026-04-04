@@ -419,11 +419,15 @@ def run_detect_cycle_history_regression(artifacts):
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
-def run_enforce_governance_policy(artifacts, policy_file=None):
+def run_enforce_governance_policy(artifacts, policy_file=None, capability_ledger_path=None):
     """Phase L: evaluate governance policy against cycle history regression.
 
     If *policy_file* is None, writes DEFAULT_GOVERNANCE_POLICY to
     <work_dir>/_default_governance_policy.json and uses that path.
+
+    capability_ledger_path: optional path to capability_effectiveness_ledger.json.
+        When provided, forwarded as --capability-ledger to enforce_governance_policy.py
+        so the capability_score_gate policy key is evaluated.
 
     Returns the subprocess.CompletedProcess result.
     Raises subprocess.CalledProcessError on non-zero exit.
@@ -440,6 +444,8 @@ def run_enforce_governance_policy(artifacts, policy_file=None):
         "--policy", policy_file,
         "--output", artifacts["governance_decision"],
     ]
+    if capability_ledger_path is not None:
+        cmd += ["--capability-ledger", capability_ledger_path]
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
@@ -708,8 +714,13 @@ def run_cycle(args):
     cycle_history_regression = try_read_json(arts["cycle_history_regression"])
 
     # --- Phase L: governance policy enforcement ---
+    _cap_ledger_path = (
+        arts["capability_effectiveness_ledger"]
+        if config.get("capability_ledger")
+        else None
+    )
     try:
-        run_enforce_governance_policy(arts, config["governance_policy"])
+        run_enforce_governance_policy(arts, config["governance_policy"], _cap_ledger_path)
     except subprocess.CalledProcessError:
         cycle = {
             **cycle,
