@@ -2,7 +2,9 @@
 
 import pytest
 pytest.importorskip("generated_mcp_server_github", reason="generated_mcp_server_github not present — run factory pipeline first")
-from generated_mcp_server_github.server import list_repositories, get_repository, create_issue
+from generated_mcp_server_github.tools.list_repositories import list_repositories
+from generated_mcp_server_github.tools.get_repository import get_repository
+from generated_mcp_server_github.tools.create_issue import create_issue
 
 def test_list_repositories():
     """Test zero-argument tool."""
