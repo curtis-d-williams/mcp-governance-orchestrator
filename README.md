@@ -141,34 +141,27 @@ from cycle 1 threads into cycle 2's synthesis event, producing a measurable
 
 ## Confirmed evolution values
 
-Running the two cycles above, then scoring with `--capability-ledger
-demo_live_capability_ledger.json`, confirms the component rising from actual
-synthesis events:
+The confirmed zero-start behavior — running from a blank ledger across five
+cycles — shows the component rising monotonically after an initial negative
+value at cycle 1:
 
 | State | total_syntheses | capability_reliability_component | final_priority |
 |---|---|---|---|
-| After cycle 1 | 1 | 0.006000 | 0.658000 |
-| After cycle 2 | 2 | 0.010667 | 0.661667 |
+| After cycle 1 | 1 | -0.000667 | 0.653333 |
+| After cycle 2 | 2 | 0.002000 | 0.655000 |
+| After cycle 3 | 3 | 0.006000 | 0.658000 |
+| After cycle 4 | 4 | 0.010667 | 0.661667 |
+| After cycle 5 | 5 | 0.015714 | 0.665714 |
 
-To reproduce the scoring after cycle 2:
+Confirmed from `demo_plateau_breakdown_{1..5}.json` — zero-start ledger, 5 consecutive
+synthesis cycles, no prior state.
 
-```bash
-PYTHONPATH=src:. python3 scripts/run_governed_planner_loop.py \
-    --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
-    --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
-    --capability-ledger demo_live_capability_ledger.json \
-    --explain \
-    --output demo_live_scoring_cycle2.json
-```
-
-`planner_priority_breakdown.json` in the working directory contains the per-action
-component breakdown confirming the live delta.
-
-The two-cycle trace above starts from a blank ledger and shows `capability_reliability_component`
-growing from actual synthesis events. The [Planner Scoring View](#planner-scoring-view) below
-demonstrates the same signal from a pre-populated synthetic ledger (5→8 prior syntheses), where
-the component rises from 0.017229→0.022329. Both are independent illustrations of the same
-adaptive feedback path.
+The five-cycle zero-start trace above shows `capability_reliability_component` rising
+from -0.000667 to 0.015714 across consecutive synthesis events from a blank ledger.
+The [Planner Scoring View](#planner-scoring-view) below demonstrates the same signal
+from a pre-populated synthetic ledger (5→8 prior syntheses), where the component rises
+from 0.017229→0.022329. Both are independent illustrations of the same adaptive
+feedback path.
 
 ---
 
