@@ -306,3 +306,34 @@ eligible capability build actions. Idle-repo cycles (empty action window) exit t
 governed loop before the planner runs; any archived sidecar from an idle cycle
 reflects the last non-idle run's output, not the current cycle's ledger state. Use
 `experiments/portfolio_state_capability_github.json` to exercise the live path.
+
+## Live scoring command
+
+To reproduce the BEFORE/AFTER scoring values above, run directly against the fixture
+portfolio state — no manifest or task execution required:
+
+**BEFORE** (`experiments/capability_ledger_synthetic_before.json`):
+
+```bash
+PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
+    --portfolio-state experiments/portfolio_state_capability_github.json \
+    --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
+    --capability-ledger experiments/capability_ledger_synthetic_before.json \
+    --explain \
+    --output governed_scoring_before.json
+```
+
+**AFTER** (`experiments/capability_ledger_synthetic_after.json`):
+
+```bash
+PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
+    --portfolio-state experiments/portfolio_state_capability_github.json \
+    --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
+    --capability-ledger experiments/capability_ledger_synthetic_after.json \
+    --explain \
+    --output governed_scoring_after.json
+```
+
+After each run, `planner_priority_breakdown.json` in the working directory contains
+the per-action component breakdown confirming the `capability_reliability_component`
+delta between ledger states.
