@@ -118,6 +118,31 @@ PYTHONPATH=. python3 scripts/run_autonomous_factory_cycle.py \
 from cycle 1 threads into cycle 2's synthesis event, producing a measurable
 `capability_reliability_component` shift in the planner's next action ranking.
 
+## Confirmed evolution values
+
+Running the two cycles above, then scoring with `--capability-ledger
+demo_live_capability_ledger.json`, confirms the component rising from actual
+synthesis events:
+
+| State | total_syntheses | capability_reliability_component | final_priority |
+|---|---|---|---|
+| After cycle 1 | 1 | 0.006000 | 0.658000 |
+| After cycle 2 | 2 | 0.010667 | 0.661667 |
+
+To reproduce the scoring after cycle 2:
+
+```bash
+PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
+    --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
+    --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
+    --capability-ledger demo_live_capability_ledger.json \
+    --explain \
+    --output demo_live_scoring_cycle2.json
+```
+
+`planner_priority_breakdown.json` in the working directory contains the per-action
+component breakdown confirming the live delta.
+
 ---
 
 # Running Tests
@@ -128,7 +153,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2978 tests passing
+2979 tests passing
 
 ---
 
@@ -330,9 +355,9 @@ Each planner run with `--explain` and `--capability-ledger` writes:
 
 **Note:** the scoring path is only exercised when the portfolio state contains
 eligible capability build actions. Idle-repo cycles (empty action window) exit the
-governed loop before the planner runs; any archived sidecar from an idle cycle
-reflects the last non-idle run's output, not the current cycle's ledger state. Use
-`experiments/portfolio_state_capability_github.json` to exercise the live path.
+governed loop before the planner runs; explain sidecar archival is suppressed for
+idle cycles. Use `experiments/portfolio_state_capability_github.json` to exercise
+the live path.
 
 ## Live scoring command
 
