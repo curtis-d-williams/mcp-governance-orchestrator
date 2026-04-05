@@ -237,6 +237,33 @@ demo_capability_gate_policy.json — governance policy with gate threshold
 demo_capability_gate_before.json — Phase L abort decision  
 demo_capability_gate_after.json — Phase L continue decision  
 
+## Live gate command
+
+To reproduce the BEFORE (gate fires) and AFTER (gate clears) decisions, run Phase L
+directly against the fixture ledgers — no full cycle execution required:
+
+**BEFORE** — gate fires, decision: abort:
+
+```bash
+PYTHONPATH=. python3 scripts/enforce_governance_policy.py \
+    --history demo_seed_history.json \
+    --summary demo_seed_summary.json \
+    --policy demo_capability_gate_policy.json \
+    --capability-ledger experiments/capability_ledger_synthetic_before.json \
+    --output demo_capability_gate_before.json
+```
+
+**AFTER** — gate clears, decision: continue:
+
+```bash
+PYTHONPATH=. python3 scripts/enforce_governance_policy.py \
+    --history demo_seed_history.json \
+    --summary demo_seed_summary.json \
+    --policy demo_capability_gate_policy.json \
+    --capability-ledger experiments/capability_ledger_synthetic_after.json \
+    --output demo_capability_gate_after.json
+```
+
 ---
 
 # Planner Scoring View

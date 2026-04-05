@@ -1,0 +1,14 @@
+{
+  "cycles": [
+    {
+      "timestamp": "2026-03-30T01:00:00",
+      "status": "ok",
+      "selected_tasks": ["build_portfolio_dashboard"]
+    },
+    {
+      "timestamp": "2026-03-30T02:00:00",
+      "status": "aborted",
+      "selected_tasks": ["build_portfolio_dashboard"]
+    }
+  ]
+}

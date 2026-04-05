@@ -1,0 +1,8 @@
+{
+  "on_regression": "warn",
+  "abort_on_signals": [],
+  "allow_if_only": [],
+  "capability_score_gate": {
+    "github": 0.75
+  }
+}
