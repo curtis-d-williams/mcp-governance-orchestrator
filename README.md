@@ -1,4 +1,4 @@
-# MCP Governance Orchestrator
+# Governed Autonomous Capability Factory
 
 Adaptive automation system evolving into a research-grade reference architecture for:
 
@@ -87,6 +87,27 @@ def build_mcp_server(...):
 
 ---
 
+# One-Command Governed Portfolio Cycle
+
+Run a full A→L governed portfolio cycle with example-safe defaults:
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_example_governed_cycles.py
+```
+
+Generates the example manifest then runs one governed cycle: `health_probe_example` task,
+top-k 2, ledger `experiments/action_effectiveness_ledger_synthetic_v2.json`.
+
+To run multiple cycles with ledger carry-forward:
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_example_governed_cycles.py --cycles 3
+```
+
+All CLI defaults are overridable. Run with `--help` to see available options.
+
+---
+
 # Capability Factory Demo
 
 Run the governed capability factory demo:
@@ -101,13 +122,13 @@ Run two sequential factory cycles to observe capability ledger accumulation:
 
 ```bash
 # Cycle 1 — synthesize artifact, write capability ledger from scratch
-PYTHONPATH=. python3 scripts/run_autonomous_factory_cycle.py \
+PYTHONPATH=src:. python3 scripts/run_autonomous_factory_cycle.py \
     --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
     --capability-ledger-output demo_live_capability_ledger.json \
     --output demo_live_cycle_1.json
 
 # Cycle 2 — second synthesis, ledger carries forward from cycle 1
-PYTHONPATH=. python3 scripts/run_autonomous_factory_cycle.py \
+PYTHONPATH=src:. python3 scripts/run_autonomous_factory_cycle.py \
     --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
     --capability-ledger demo_live_capability_ledger.json \
     --capability-ledger-output demo_live_capability_ledger.json \
@@ -132,7 +153,7 @@ synthesis events:
 To reproduce the scoring after cycle 2:
 
 ```bash
-PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
+PYTHONPATH=src:. python3 scripts/run_governed_planner_loop.py \
     --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
     --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
     --capability-ledger demo_live_capability_ledger.json \
@@ -142,6 +163,12 @@ PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
 
 `planner_priority_breakdown.json` in the working directory contains the per-action
 component breakdown confirming the live delta.
+
+The two-cycle trace above starts from a blank ledger and shows `capability_reliability_component`
+growing from actual synthesis events. The [Planner Scoring View](#planner-scoring-view) below
+demonstrates the same signal from a pre-populated synthetic ledger (5→8 prior syntheses), where
+the component rises from 0.017229→0.022329. Both are independent illustrations of the same
+adaptive feedback path.
 
 ---
 
@@ -270,7 +297,7 @@ directly against the fixture ledgers — no full cycle execution required:
 **BEFORE** — gate fires, decision: abort:
 
 ```bash
-PYTHONPATH=. python3 scripts/enforce_governance_policy.py \
+PYTHONPATH=src:. python3 scripts/enforce_governance_policy.py \
     --history demo_seed_history.json \
     --summary demo_seed_summary.json \
     --policy demo_capability_gate_policy.json \
@@ -281,7 +308,7 @@ PYTHONPATH=. python3 scripts/enforce_governance_policy.py \
 **AFTER** — gate clears, decision: continue:
 
 ```bash
-PYTHONPATH=. python3 scripts/enforce_governance_policy.py \
+PYTHONPATH=src:. python3 scripts/enforce_governance_policy.py \
     --history demo_seed_history.json \
     --summary demo_seed_summary.json \
     --policy demo_capability_gate_policy.json \
@@ -367,7 +394,7 @@ portfolio state — no manifest or task execution required:
 **BEFORE** (`experiments/capability_ledger_synthetic_before.json`):
 
 ```bash
-PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
+PYTHONPATH=src:. python3 scripts/run_governed_planner_loop.py \
     --portfolio-state experiments/portfolio_state_capability_github.json \
     --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
     --capability-ledger experiments/capability_ledger_synthetic_before.json \
@@ -378,7 +405,7 @@ PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
 **AFTER** (`experiments/capability_ledger_synthetic_after.json`):
 
 ```bash
-PYTHONPATH=. python3 scripts/run_governed_planner_loop.py \
+PYTHONPATH=src:. python3 scripts/run_governed_planner_loop.py \
     --portfolio-state experiments/portfolio_state_capability_github.json \
     --ledger experiments/action_effectiveness_ledger_synthetic_v2.json \
     --capability-ledger experiments/capability_ledger_synthetic_after.json \
