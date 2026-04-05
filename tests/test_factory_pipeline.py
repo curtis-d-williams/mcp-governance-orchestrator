@@ -736,11 +736,11 @@ def test_run_factory_cycle_records_capability_evolution_execution_for_mcp_build(
 
     assert artifact["cycle_result"]["capability_evolution_execution"] == {
         "builder_overrides": {
-            "tools": [
-                "list_repositories",
-                "create_issue",
-                "get_repository",
-            ],
+            "tools": {
+                "list_repositories": {},
+                "create_issue": {},
+                "get_repository": {},
+            },
             "features": [
                 "supports_dynamic_toolsets",
             ],
@@ -985,11 +985,11 @@ def test_run_factory_cycle_rebuilds_mcp_artifact_with_evolution_overrides(tmp_pa
         "artifact_kind": "mcp_server",
         "capability": "github_repository_management",
         "kwargs": {
-            "tools": [
-                "list_repositories",
-                "create_issue",
-                "get_repository",
-            ],
+            "tools": {
+                "list_repositories": {},
+                "create_issue": {},
+                "get_repository": {},
+            },
             "features": ["supports_dynamic_toolsets"],
             "test_expansion": True,
         },
@@ -1519,11 +1519,11 @@ def test_run_factory_cycle_reenables_evolved_rebuild_after_blocked_cycle_records
         "artifact_kind": "mcp_server",
         "capability": "github_repository_management",
         "kwargs": {
-            "tools": [
-                "list_repositories",
-                "create_issue",
-                "get_repository",
-            ],
+            "tools": {
+                "list_repositories": {},
+                "create_issue": {},
+                "get_repository": {},
+            },
             "features": ["supports_dynamic_toolsets"],
             "test_expansion": True,
         },

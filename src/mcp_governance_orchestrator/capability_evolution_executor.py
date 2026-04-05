@@ -24,11 +24,18 @@ def _unique_preserve_order(values: List[str]) -> List[str]:
     return ordered
 
 
+def _normalize_tools(tools_input) -> Dict[str, Any]:
+    """Normalize tools input to Dict[str, metadata], preserving params if already a dict."""
+    if isinstance(tools_input, dict):
+        return dict(tools_input)
+    return {t: {} for t in tools_input if isinstance(t, str)}
+
+
 def build_evolution_execution(
     evolution_plan: Dict[str, Any],
     *,
     artifact_kind: str,
-    current_tools: List[str] | None = None,
+    current_tools: Dict[str, Any] | List[str] | None = None,
 ) -> Dict[str, Any]:
     """
     Convert supported evolution actions into deterministic builder overrides.
@@ -38,13 +45,13 @@ def build_evolution_execution(
     - enable_feature -> features override for mcp_server artifacts
     - increase_test_coverage -> test_expansion override for mcp_server artifacts
     """
-    current_tools = list(current_tools or [])
+    current_tools = _normalize_tools(current_tools or {})
     actions = evolution_plan.get("evolution_actions", [])
 
     executable_actions: List[Dict[str, Any]] = []
     deferred_actions: List[Dict[str, Any]] = []
 
-    tools = list(current_tools)
+    tools: Dict[str, Any] = dict(current_tools)
     features: List[str] = []
     test_expansion = False
 
@@ -57,7 +64,7 @@ def build_evolution_execution(
         if action_type == "add_tool" and artifact_kind == "mcp_server":
             tool = action.get("tool")
             if isinstance(tool, str):
-                tools.append(tool)
+                tools.setdefault(tool, {})
                 executable_actions.append(action)
             continue
 
@@ -76,11 +83,10 @@ def build_evolution_execution(
         deferred_actions.append(action)
 
     overrides: Dict[str, Any] = {}
-    normalized_tools = _unique_preserve_order(tools)
     normalized_features = _unique_preserve_order(features)
 
-    if artifact_kind == "mcp_server" and normalized_tools != _unique_preserve_order(current_tools):
-        overrides["tools"] = normalized_tools
+    if artifact_kind == "mcp_server" and tools != current_tools:
+        overrides["tools"] = tools
 
     if artifact_kind == "mcp_server" and normalized_features:
         overrides["features"] = normalized_features

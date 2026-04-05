@@ -66,7 +66,10 @@ def test_run_capability_evolution_plan_rebuilds_compares_and_updates_ledger(
         assert artifact_kind == "mcp_server"
         assert capability == "github_repository_management"
         assert kwargs == {
-            "tools": ["list_repositories", "create_issue"],
+            "tools": {
+                "list_repositories": {},
+                "create_issue": {},
+            },
             "test_expansion": True,
         }
         return {
@@ -105,7 +108,10 @@ def test_run_capability_evolution_plan_rebuilds_compares_and_updates_ledger(
     )
 
     assert artifact["capability_evolution_execution"]["builder_overrides"] == {
-        "tools": ["list_repositories", "create_issue"],
+        "tools": {
+            "list_repositories": {},
+            "create_issue": {},
+        },
         "test_expansion": True,
     }
     assert artifact["synthesis_event"] == {

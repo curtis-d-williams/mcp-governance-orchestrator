@@ -23,11 +23,11 @@ def test_build_evolution_execution_builds_mcp_tool_overrides():
 
     assert execution == {
         "builder_overrides": {
-            "tools": [
-                "list_repositories",
-                "get_repository",
-                "create_issue",
-            ],
+            "tools": {
+                "list_repositories": {},
+                "get_repository": {},
+                "create_issue": {},
+            },
             "features": [
                 "supports_feature_flags",
             ],
