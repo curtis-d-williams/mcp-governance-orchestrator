@@ -105,7 +105,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2974 tests passing
+2975 tests passing
 
 ---
 
@@ -213,3 +213,52 @@ experiments/capability_ledger_synthetic_after.json — AFTER ledger
 demo_capability_gate_policy.json — governance policy with gate threshold  
 demo_capability_gate_before.json — Phase L abort decision  
 demo_capability_gate_after.json — Phase L continue decision  
+
+---
+
+# Planner Scoring View
+
+The capability ledger feeds the planner's per-action priority ranking.
+Each action receives a `capability_reliability_component` derived from the
+smoothed synthesis history of the capability it targets.
+
+## Scoring signal: AFTER ledger state
+
+With `experiments/capability_ledger_synthetic_after.json` and `--explain`, the
+governed pipeline archives a `planner_priority_breakdown.json` each cycle:
+
+| Action | base_priority | capability_reliability_component | final_priority |
+|---|---|---|---|
+| analyze_repo_insights | 0.555 | 0.000 | 0.605 |
+| build_capability_artifact | 0.535 | 0.017 | 0.602 |
+
+The `build_capability_artifact` action carries a non-zero reliability signal because
+the AFTER ledger records multiple successful github syntheses. The signal narrows the
+priority gap between the two actions — the planner now ranks capability builds higher
+relative to insight analysis, reflecting growing confidence in the capability's track
+record.
+
+## Confirmed extract
+
+`artifacts/cycles_explain_evolution/2026-04-04T23-35-12_planner_priority_breakdown.json`:
+
+```json
+{
+  "action_type": "build_capability_artifact",
+  "base_priority": 0.535,
+  "capability_reliability_component": 0.017229,
+  "exploration_component": 0.05,
+  "final_priority": 0.602229
+}
+```
+
+Value stable across all 3 archived cycles (idle repo; ledger carry-forward unchanged).
+
+## Explain sidecar archival
+
+Each governed cycle run with `--explain` and `--capability-ledger` archives per cycle:
+
+- `planner_priority_breakdown.json` — per-action component breakdown
+- `planner_scoring_metrics.json` — per-component raw value, scaled value, and confidence flag
+
+Archive location: `artifacts/cycles_explain_evolution/`
