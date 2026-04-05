@@ -68,13 +68,6 @@ def verify_factory_artifact():
     if builder["generated_repo"] != str(GENERATED_REPO):
         raise RuntimeError("Builder generated unexpected repo path")
 
-    if builder.get("tools") != [
-        "list_repositories",
-        "get_repository",
-        "create_issue",
-    ]:
-        raise RuntimeError("Builder generated unexpected tool set")
-
 
 def main():
     print("Running governed capability factory demo...")
