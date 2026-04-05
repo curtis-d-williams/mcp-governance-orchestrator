@@ -787,3 +787,28 @@ class TestExplainSidecarArchiving:
 
         archived_names = {p.name for p in archive_dir.iterdir()}
         assert not any("planner_priority_breakdown" in n for n in archived_names)
+
+    def test_no_sidecars_archived_when_explain_and_idle(self, tmp_path, monkeypatch):
+        """When --explain is set but the cycle was idle, explain sidecars are not archived."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "planner_priority_breakdown.json").write_text(
+            '{"breakdown": []}', encoding="utf-8"
+        )
+        (tmp_path / "planner_scoring_metrics.json").write_text(
+            '{"metrics": []}', encoding="utf-8"
+        )
+        _idle_cycle_json = json.dumps(
+            {"governed_result": {"idle": True}, "status": "ok"}, indent=2
+        ) + "\n"
+        args = _make_args(tmp_path, cycles=1, explain=True)
+        archive_dir = Path(args.archive_dir)
+
+        run_cycles(
+            args,
+            subprocess_run=_subprocess_writing_output(args.output, content=_idle_cycle_json),
+            sleep_fn=_noop_sleep,
+        )
+
+        archived_names = {p.name for p in archive_dir.iterdir()}
+        assert not any("planner_priority_breakdown" in n for n in archived_names)
+        assert not any("planner_scoring_metrics" in n for n in archived_names)

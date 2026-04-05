@@ -20,6 +20,7 @@ Exit codes:
 
 import argparse
 import importlib.util
+import json
 import subprocess
 import sys
 import time
@@ -121,7 +122,16 @@ def run_cycles(args, subprocess_run=None, sleep_fn=None):
         output_path = Path(args.output)
         archived_to = None
         if output_path.exists():
-            _sidecar_paths = _EXPLAIN_ARTIFACT_NAMES if args.explain else None
+            _sidecar_paths = None
+            if args.explain:
+                _cycle_idle = False
+                try:
+                    _cd = json.loads(output_path.read_text(encoding="utf-8"))
+                    _cycle_idle = (_cd.get("governed_result") or {}).get("idle") is True
+                except Exception:
+                    pass
+                if not _cycle_idle:
+                    _sidecar_paths = _EXPLAIN_ARTIFACT_NAMES
             archive_result = _archive_artifact(str(output_path), args.archive_dir,
                                                sidecar_paths=_sidecar_paths)
             archived_to = archive_result.get("archived_to")
