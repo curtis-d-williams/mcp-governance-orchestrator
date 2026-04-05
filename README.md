@@ -95,6 +95,29 @@ python3 scripts/run_factory_capability_demo.py
 
 This demonstrates a capability gap being converted into a governed build action and then into a generated artifact repository.
 
+## Multi-cycle factory demo with ledger carry-forward
+
+Run two sequential factory cycles to observe capability ledger accumulation:
+
+```bash
+# Cycle 1 — synthesize artifact, write capability ledger from scratch
+PYTHONPATH=. python3 scripts/run_autonomous_factory_cycle.py \
+    --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
+    --capability-ledger-output demo_live_capability_ledger.json \
+    --output demo_live_cycle_1.json
+
+# Cycle 2 — second synthesis, ledger carries forward from cycle 1
+PYTHONPATH=. python3 scripts/run_autonomous_factory_cycle.py \
+    --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
+    --capability-ledger demo_live_capability_ledger.json \
+    --capability-ledger-output demo_live_capability_ledger.json \
+    --output demo_live_cycle_2.json
+```
+
+`total_syntheses` increments 0→1→2 across cycles. The `previous_similarity_score`
+from cycle 1 threads into cycle 2's synthesis event, producing a measurable
+`capability_reliability_component` shift in the planner's next action ranking.
+
 ---
 
 # Running Tests
@@ -105,7 +128,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2975 tests passing
+2978 tests passing
 
 ---
 
