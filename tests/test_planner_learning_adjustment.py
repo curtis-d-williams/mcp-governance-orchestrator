@@ -1290,6 +1290,57 @@ class TestRepairCycleLedgerExclusion:
 
 
 # ---------------------------------------------------------------------------
+# Fixture-confirmed BEFORE/AFTER capability_reliability_component values
+# (regression guard for scoring path differentiation confirmed 2026-04-04)
+# ---------------------------------------------------------------------------
+
+class TestCapabilityReliabilityFixtureConfirmedValues:
+    """Pin the exact BEFORE/AFTER capability_reliability_component values
+    confirmed via direct scoring path execution in session 2026-04-04.
+
+    Uses real experiment fixture files and the task_binding.args.capability
+    fallback path in _extract_capability_history (portfolio_state action format).
+    """
+
+    _BEFORE_LEDGER = _REPO_ROOT / "experiments" / "capability_ledger_synthetic_before.json"
+    _AFTER_LEDGER  = _REPO_ROOT / "experiments" / "capability_ledger_synthetic_after.json"
+
+    def _action(self):
+        """Action shape matching portfolio_state_capability_github.json."""
+        return {
+            "action_type": "build_capability_artifact",
+            "priority": 0.535,
+            "action_id": "build_capability_artifact_demo-repo",
+            "repo_id": "demo-repo",
+            "task_binding": {
+                "args": {
+                    "artifact_kind": "mcp_server",
+                    "capability": "github",
+                },
+                "task_id": "factory_build_capability_artifact",
+            },
+        }
+
+    def test_before_ledger_confirmed_value(self):
+        ledger = load_capability_effectiveness_ledger(str(self._BEFORE_LEDGER))
+        adj = _compute_capability_reliability_adjustment(self._action(), ledger)
+        assert adj == pytest.approx(0.017229, abs=1e-6)
+
+    def test_after_ledger_confirmed_value(self):
+        ledger = load_capability_effectiveness_ledger(str(self._AFTER_LEDGER))
+        adj = _compute_capability_reliability_adjustment(self._action(), ledger)
+        assert adj == pytest.approx(0.022329, abs=1e-6)
+
+    def test_after_strictly_greater_than_before(self):
+        before = load_capability_effectiveness_ledger(str(self._BEFORE_LEDGER))
+        after  = load_capability_effectiveness_ledger(str(self._AFTER_LEDGER))
+        adj_before = _compute_capability_reliability_adjustment(self._action(), before)
+        adj_after  = _compute_capability_reliability_adjustment(self._action(), after)
+        assert adj_after > adj_before
+        assert adj_after - adj_before == pytest.approx(0.005100, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
 # _compute_exploration_adjustment_raw — combined path (action + capability)
 # ---------------------------------------------------------------------------
 
