@@ -222,25 +222,32 @@ The capability ledger feeds the planner's per-action priority ranking.
 Each action receives a `capability_reliability_component` derived from the
 smoothed synthesis history of the capability it targets.
 
-## Scoring signal: AFTER ledger state
+## Scoring signal: BEFORE vs AFTER ledger state
 
-With `experiments/capability_ledger_synthetic_after.json` and `--explain`, the
-governed pipeline archives a `planner_priority_breakdown.json` each cycle:
+With `experiments/portfolio_state_capability_github.json` as the portfolio state
+(non-idle; contains an eligible `build_capability_artifact` action for the `github`
+capability), the scoring path produces measurably different per-action priorities
+depending on ledger state:
 
-| Action | base_priority | capability_reliability_component | final_priority |
-|---|---|---|---|
-| analyze_repo_insights | 0.555 | 0.000 | 0.605 |
-| build_capability_artifact | 0.535 | 0.017 | 0.602 |
+| Action | Ledger | capability_reliability_component | final_priority | delta |
+|---|---|---|---|---|
+| analyze_repo_insights | BEFORE | 0.000 | 0.6578 | — |
+| analyze_repo_insights | AFTER | 0.000 | 0.6578 | 0.000 |
+| build_capability_artifact | BEFORE | 0.017229 | 0.602229 | — |
+| build_capability_artifact | AFTER | 0.022329 | 0.607329 | +0.005100 |
 
-The `build_capability_artifact` action carries a non-zero reliability signal because
-the AFTER ledger records multiple successful github syntheses. The signal narrows the
-priority gap between the two actions — the planner now ranks capability builds higher
-relative to insight analysis, reflecting growing confidence in the capability's track
-record.
+The `build_capability_artifact` action's `capability_reliability_component` rises
+from 0.017229 to 0.022329 (+0.005100) as the github synthesis history improves from
+4/5 to 7/8 successful syntheses, with similarity score advancing from 0.82 to 0.91.
+The `analyze_repo_insights` action carries no capability reliability signal (it
+targets no specific capability), so its priority is unchanged between ledger states.
 
-## Confirmed extract
+## Confirmed values
 
-`artifacts/cycles_explain_evolution/2026-04-04T23-35-12_planner_priority_breakdown.json`:
+Confirmed by direct scoring path execution using
+`experiments/portfolio_state_capability_github.json`:
+
+BEFORE (`experiments/capability_ledger_synthetic_before.json`):
 
 ```json
 {
@@ -252,13 +259,27 @@ record.
 }
 ```
 
-Value stable across all 3 archived cycles (idle repo; ledger carry-forward unchanged).
+AFTER (`experiments/capability_ledger_synthetic_after.json`):
+
+```json
+{
+  "action_type": "build_capability_artifact",
+  "base_priority": 0.535,
+  "capability_reliability_component": 0.022329,
+  "exploration_component": 0.05,
+  "final_priority": 0.607329
+}
+```
 
 ## Explain sidecar archival
 
-Each governed cycle run with `--explain` and `--capability-ledger` archives per cycle:
+Each planner run with `--explain` and `--capability-ledger` writes:
 
 - `planner_priority_breakdown.json` — per-action component breakdown
 - `planner_scoring_metrics.json` — per-component raw value, scaled value, and confidence flag
 
-Archive location: `artifacts/cycles_explain_evolution/`
+**Note:** the scoring path is only exercised when the portfolio state contains
+eligible capability build actions. Idle-repo cycles (empty action window) exit the
+governed loop before the planner runs; any archived sidecar from an idle cycle
+reflects the last non-idle run's output, not the current cycle's ledger state. Use
+`experiments/portfolio_state_capability_github.json` to exercise the live path.
