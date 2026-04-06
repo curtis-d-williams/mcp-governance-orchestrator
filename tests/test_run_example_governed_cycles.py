@@ -67,6 +67,7 @@ def _make_args(**kwargs):
         cycles=_DEFAULT_CYCLES,
         output=_DEFAULT_OUTPUT,
         archive_dir=_DEFAULT_ARCHIVE_DIR,
+        capability_ledger=None,
     )
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -190,6 +191,16 @@ class TestArgForwarding:
         """When cycles is None, --cycles is not passed (loop forever)."""
         cmd = self._capture_cycles_cmd(cycles=None)
         assert "--cycles" not in cmd
+
+    def test_capability_ledger_forwarded(self):
+        cmd = self._capture_cycles_cmd(capability_ledger="my_cap_ledger.json")
+        assert "--capability-ledger" in cmd
+        idx = cmd.index("--capability-ledger")
+        assert cmd[idx + 1] == "my_cap_ledger.json"
+
+    def test_capability_ledger_none_omits_flag(self):
+        cmd = self._capture_cycles_cmd(capability_ledger=None)
+        assert "--capability-ledger" not in cmd
 
 
 # ---------------------------------------------------------------------------

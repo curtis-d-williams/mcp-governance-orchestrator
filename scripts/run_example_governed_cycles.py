@@ -85,6 +85,8 @@ def run_example_cycles(args, subprocess_run=None):
     ]
     if args.cycles is not None:
         cmd += ["--cycles", str(args.cycles)]
+    if args.capability_ledger is not None:
+        cmd += ["--capability-ledger", args.capability_ledger]
 
     result = subprocess_run(cmd, capture_output=False, text=True)
     return result.returncode
@@ -133,6 +135,10 @@ def main(argv=None):
     parser.add_argument(
         "--ledger", default=_DEFAULT_LEDGER, metavar="FILE",
         help="Path to action effectiveness ledger (default: experiments/action_effectiveness_ledger_synthetic_v2.json).",
+    )
+    parser.add_argument(
+        "--capability-ledger", default=None, dest="capability_ledger", metavar="FILE",
+        help="Path to capability_effectiveness_ledger.json (optional).",
     )
 
     args = parser.parse_args(argv)
