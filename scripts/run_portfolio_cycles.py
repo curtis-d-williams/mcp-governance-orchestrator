@@ -84,6 +84,8 @@ def _build_cycle_cmd(args):
         cmd += ["--governance-policy", args.governance_policy]
     if args.capability_ledger is not None:
         cmd += ["--capability-ledger", args.capability_ledger]
+    if args.comparison_gap_artifact is not None:
+        cmd += ["--comparison-gap-artifact", args.comparison_gap_artifact]
     return cmd
 
 
@@ -216,6 +218,9 @@ def main(argv=None):
     parser.add_argument("--capability-ledger", default=None, metavar="FILE",
                         dest="capability_ledger",
                         help="Path to capability_effectiveness_ledger.json (optional).")
+    parser.add_argument("--comparison-gap-artifact", default=None, metavar="FILE",
+                        dest="comparison_gap_artifact",
+                        help="Optional comparison-gap artifact JSON to seed capability_gaps (optional).")
     parser.add_argument("--archive-dir", default="artifacts/cycles", metavar="DIR",
                         help="Directory to write cycle archives into (default: artifacts/cycles).")
     parser.add_argument("--interval", type=int, required=True, metavar="INT",

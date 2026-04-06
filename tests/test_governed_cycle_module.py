@@ -28,6 +28,7 @@ from mcp_governance_orchestrator.governed_cycle import (
     artifact_paths,
     build_runtime_config,
     resolve_planner_ledger,
+    run_build_portfolio_state,
     run_cycle,
     run_enforce_governance_policy,
     run_governed_loop,
@@ -219,11 +220,38 @@ class TestResolvePlannerLedger:
 
 
 # ---------------------------------------------------------------------------
+# run_build_portfolio_state — comparison_gap_artifact cmd threading
+# ---------------------------------------------------------------------------
+
+class TestRunBuildPortfolioState:
+    def _arts(self, tmp_path):
+        return artifact_paths(tmp_path)
+
+    def test_comparison_gap_artifact_included_when_provided(self, tmp_path):
+        arts = self._arts(tmp_path)
+        gap_path = "/some/comparison_gap.json"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            run_build_portfolio_state(arts, comparison_gap_artifact=gap_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--comparison-gap-artifact" in cmd
+        assert gap_path in cmd
+
+    def test_comparison_gap_artifact_omitted_when_none(self, tmp_path):
+        arts = self._arts(tmp_path)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            run_build_portfolio_state(arts, comparison_gap_artifact=None)
+        cmd = mock_run.call_args[0][0]
+        assert "--comparison-gap-artifact" not in cmd
+
+
+# ---------------------------------------------------------------------------
 # build_runtime_config
 # ---------------------------------------------------------------------------
 
 class TestBuildRuntimeConfig:
-    def _args(self, capability_ledger=None):
+    def _args(self, capability_ledger=None, comparison_gap_artifact=None):
         return SimpleNamespace(
             top_k=3,
             exploration_offset=0,
@@ -234,6 +262,7 @@ class TestBuildRuntimeConfig:
             governance_policy=None,
             repo_ids=None,
             capability_ledger=capability_ledger,
+            comparison_gap_artifact=comparison_gap_artifact,
         )
 
     def test_capability_ledger_none_by_default(self):
@@ -253,6 +282,17 @@ class TestBuildRuntimeConfig:
         )
         config = build_runtime_config(args, ledger_path=None)
         assert config["capability_ledger"] is None
+
+    def test_comparison_gap_artifact_none_by_default(self):
+        config = build_runtime_config(self._args(), ledger_path=None)
+        assert "comparison_gap_artifact" in config
+        assert config["comparison_gap_artifact"] is None
+
+    def test_comparison_gap_artifact_threaded(self):
+        config = build_runtime_config(
+            self._args(comparison_gap_artifact="/some/gap.json"), ledger_path=None
+        )
+        assert config["comparison_gap_artifact"] == "/some/gap.json"
 
 
 # ---------------------------------------------------------------------------

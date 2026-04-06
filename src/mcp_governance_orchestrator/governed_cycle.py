@@ -206,6 +206,7 @@ def build_runtime_config(args, ledger_path):
         "governance_policy": getattr(args, "governance_policy", None),
         "repo_ids": getattr(args, "repo_ids", None),
         "capability_ledger": getattr(args, "capability_ledger", None),
+        "comparison_gap_artifact": getattr(args, "comparison_gap_artifact", None),
     }
 
 
@@ -241,7 +242,7 @@ def run_portfolio_tasks(tasks, manifest, work_dir_path):
     )
 
 
-def run_build_portfolio_state(artifacts):
+def run_build_portfolio_state(artifacts, comparison_gap_artifact=None):
     """Phase B: build portfolio_state.json from task artifacts.
 
     Returns the subprocess.CompletedProcess result.
@@ -254,6 +255,8 @@ def run_build_portfolio_state(artifacts):
         "--aggregate", artifacts["aggregate"],
         "--output", artifacts["portfolio_state"],
     ]
+    if comparison_gap_artifact is not None:
+        cmd += ["--comparison-gap-artifact", comparison_gap_artifact]
     return subprocess.run(cmd, capture_output=True, text=True, check=True)
 
 
@@ -534,9 +537,17 @@ def run_cycle(args):
 
     portfolio_task_summary = try_parse_json(proc_a.stdout)
 
+    # Resolve which ledger the planner will consume (before Phase C writes its own).
+    ledger_source, ledger_path = resolve_planner_ledger(args.ledger, arts)
+    config = build_runtime_config(args, ledger_path)
+    base_artifact["planner_inputs"] = {
+        "ledger_path": ledger_path,
+        "ledger_source": ledger_source,
+    }
+
     # --- Phase B: build portfolio state ---
     try:
-        run_build_portfolio_state(arts)
+        run_build_portfolio_state(arts, comparison_gap_artifact=config.get("comparison_gap_artifact"))
     except subprocess.CalledProcessError as exc:
         cycle = {
             **base_artifact,
@@ -550,14 +561,6 @@ def run_cycle(args):
         return 1
 
     portfolio_state = try_read_json(arts["portfolio_state"])
-
-    # Resolve which ledger the planner will consume (before Phase C writes its own).
-    ledger_source, ledger_path = resolve_planner_ledger(args.ledger, arts)
-    config = build_runtime_config(args, ledger_path)
-    base_artifact["planner_inputs"] = {
-        "ledger_path": ledger_path,
-        "ledger_source": ledger_source,
-    }
 
     # --- Phase C: governed planner loop ---
     governed_result = None

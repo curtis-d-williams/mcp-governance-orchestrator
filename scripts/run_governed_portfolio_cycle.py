@@ -109,6 +109,8 @@ def main(argv=None):
                         help="Path to governance_policy.json for Phase L (optional).")
     parser.add_argument("--capability-ledger", default=None, dest="capability_ledger", metavar="FILE",
                         help="Path to capability_effectiveness_ledger.json (optional).")
+    parser.add_argument("--comparison-gap-artifact", default=None, dest="comparison_gap_artifact", metavar="FILE",
+                        help="Optional comparison-gap artifact JSON to seed capability_gaps into portfolio state (optional).")
 
     args = parser.parse_args(argv)
     rc = run_cycle(args)

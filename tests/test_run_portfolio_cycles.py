@@ -58,6 +58,7 @@ def _make_args(tmp_path, **kwargs):
         force=False,
         governance_policy=None,
         capability_ledger=None,
+        comparison_gap_artifact=None,
         archive_dir=str(tmp_path / "archives"),
         interval=60,
         cycles=1,
@@ -422,6 +423,18 @@ class TestBuildCycleCmd:
         args = _make_args(tmp_path, governance_policy=None)
         cmd = _build_cycle_cmd(args)
         assert "--governance-policy" not in cmd
+
+    def test_comparison_gap_artifact_included_when_set(self, tmp_path):
+        args = _make_args(tmp_path, comparison_gap_artifact="/some/gap.json")
+        cmd = _build_cycle_cmd(args)
+        assert "--comparison-gap-artifact" in cmd
+        idx = cmd.index("--comparison-gap-artifact")
+        assert cmd[idx + 1] == "/some/gap.json"
+
+    def test_comparison_gap_artifact_absent_when_none(self, tmp_path):
+        args = _make_args(tmp_path, comparison_gap_artifact=None)
+        cmd = _build_cycle_cmd(args)
+        assert "--comparison-gap-artifact" not in cmd
 
 
 # ---------------------------------------------------------------------------

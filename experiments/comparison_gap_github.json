@@ -1,0 +1,7 @@
+{
+  "capability_gaps": [
+    {
+      "capability": "github_repository_management"
+    }
+  ]
+}
