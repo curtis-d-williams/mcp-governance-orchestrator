@@ -1,4 +1,4 @@
-# Governed Autonomous Capability Factory
+# Governed Autonomous Capability Factories
 
 Adaptive automation system evolving into a research-grade reference architecture for:
 
