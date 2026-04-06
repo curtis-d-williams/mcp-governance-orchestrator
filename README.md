@@ -163,6 +163,44 @@ from a pre-populated synthetic ledger (5→8 prior syntheses), where the compone
 from 0.017229→0.022329. Both are independent illustrations of the same adaptive
 feedback path.
 
+## Live Learning Loop: BEFORE/AFTER Synthesis Delta
+
+Confirmed this session from a zero-entry capability ledger against
+`experiments/factory_demo/portfolio_state_missing_github.json`.
+
+**BEFORE** — capability ledger contains no `github_repository_management` entry.
+
+**AFTER** — single factory cycle via `run_autonomous_factory_cycle.py`:
+
+| Field | Value |
+|---|---|
+| last_synthesis_source | portfolio_gap |
+| last_synthesis_status | ok |
+| last_synthesis_used_evolution | true |
+| successful_syntheses | 1 |
+| total_syntheses | 1 |
+| failed_syntheses | 0 |
+| similarity_score | 1.0 |
+| last_comparison_status | ok |
+
+The evolution executor ran one evolution step: base build scored overall_score 0.24
+(tool surface 0.0, capability surface 0.14); after evolution, all four dimensions
+reached 1.0. The `last_synthesis_used_evolution: true` flag confirms the executor
+param-preservation path is load-bearing on live synthesis runs.
+
+**Command:**
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_autonomous_factory_cycle.py \
+    --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
+    --capability-ledger-output demo_live_learning_cap_ledger_after.json \
+    --output demo_live_learning_cycle.json
+```
+
+Multi-cycle carry-forward via `run_portfolio_cycles.py` with `--capability-ledger`
+confirmed across 3 cycles (governance: continue, all ok). The work-dir capability
+ledger is automatically pinned into each subsequent cycle command.
+
 ---
 
 # Running Tests
@@ -173,7 +211,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2979 tests passing
+2981 tests passing
 
 ---
 
