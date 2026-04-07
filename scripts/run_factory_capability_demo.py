@@ -6,8 +6,10 @@ Demonstrates the governed capability factory generating an artifact
 when a capability gap is detected.
 """
 
+import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +20,7 @@ OUTPUT = ROOT / "experiments" / "factory_demo" / "factory_cycle_result.json"
 GENERATED_REPO = ROOT / "generated_mcp_server_github"
 
 
-def run_factory_cycle():
+def run_factory_cycle(capability_ledger=None):
     cmd = [
         "python3",
         "scripts/run_autonomous_factory_cycle.py",
@@ -31,6 +33,8 @@ def run_factory_cycle():
         "--output",
         str(OUTPUT),
     ]
+    if capability_ledger is not None:
+        cmd += ["--capability-ledger", str(capability_ledger)]
 
     subprocess.run(cmd, check=True)
 
@@ -75,10 +79,21 @@ def verify_factory_artifact():
         )
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Run the governed capability factory demo.",
+        add_help=True,
+    )
+    parser.add_argument(
+        "--capability-ledger", default=None, dest="capability_ledger", metavar="FILE",
+        help="Path to capability_effectiveness_ledger.json (optional). "
+             "When provided, the planner applies learning adjustments from prior cycles.",
+    )
+    args = parser.parse_args(argv)
+
     print("Running governed capability factory demo...")
 
-    run_factory_cycle()
+    run_factory_cycle(capability_ledger=args.capability_ledger)
 
     verify_generated_repo()
     verify_factory_artifact()

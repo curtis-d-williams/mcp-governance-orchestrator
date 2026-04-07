@@ -24,8 +24,8 @@ def test_demo_script_loads_without_import_error():
 
 def test_demo_main_completes_with_mocked_subprocess_and_verify(monkeypatch):
     """main() must complete without raising when subprocess and verify calls are mocked."""
-    monkeypatch.setattr(_mod, "run_factory_cycle", lambda: None)
+    monkeypatch.setattr(_mod, "run_factory_cycle", lambda capability_ledger=None: None)
     monkeypatch.setattr(_mod, "verify_generated_repo", lambda: None)
     monkeypatch.setattr(_mod, "verify_factory_artifact", lambda: None)
 
-    _mod.main()  # must not raise
+    _mod.main(argv=[])  # must not raise
