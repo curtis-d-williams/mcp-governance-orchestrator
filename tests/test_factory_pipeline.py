@@ -1339,11 +1339,11 @@ def test_run_factory_cycle_skips_evolved_rebuild_when_prior_similarity_delta_is_
         "kwargs": {},
     }
 
-    assert artifact["cycle_result"]["capability_evolution_plan"]["action_count"] == 4
-    assert artifact["cycle_result"]["capability_evolution_execution"]["executed_action_count"] == 4
+    assert artifact["cycle_result"]["capability_evolution_plan"]["action_count"] == 1
+    assert artifact["cycle_result"]["capability_evolution_execution"]["executed_action_count"] == 1
     assert artifact["cycle_result"]["evolution_execution_metadata"] == {
         "builder_overrides_present": True,
-        "builder_override_keys": ["features", "test_expansion", "tools"],
+        "builder_override_keys": ["test_expansion"],
         "builder_overrides_applied": False,
     }
     assert "evolved_builder" not in artifact["cycle_result"]
@@ -2151,7 +2151,7 @@ def test_evolution_loop_build_evolution_execution_raises_mid_loop(tmp_path, monk
     })
     monkeypatch.setattr(_mod, "get_reference_artifact_path", lambda capability: "/tmp/ref_repo", raising=False)
     monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
-    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison: {"plan": "evolve"}, raising=False)
+    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison, **kwargs: {"plan": "evolve"}, raising=False)
     monkeypatch.setattr(_mod, "build_evolution_execution", fake_build_evolution_execution, raising=False)
 
     output = tmp_path / "factory_cycle.json"
@@ -2229,7 +2229,7 @@ def test_evolution_loop_exhausts_all_three_iterations(tmp_path, monkeypatch):
     })
     monkeypatch.setattr(_mod, "get_reference_artifact_path", lambda capability: "/tmp/ref_repo", raising=False)
     monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
-    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison: {"plan": "evolve"}, raising=False)
+    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison, **kwargs: {"plan": "evolve"}, raising=False)
     monkeypatch.setattr(_mod, "build_evolution_execution", lambda evolution_plan, *, artifact_kind, current_tools: {"builder_overrides": {"key": "val"}}, raising=False)
 
     output = tmp_path / "factory_cycle.json"
@@ -2294,7 +2294,7 @@ def test_evolution_loop_no_score_does_not_commit_evolution(tmp_path, monkeypatch
     })
     monkeypatch.setattr(_mod, "get_reference_artifact_path", lambda capability: "/tmp/ref_repo", raising=False)
     monkeypatch.setattr(_mod, "compare_mcp_servers", fake_compare_mcp_servers, raising=False)
-    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison: {"plan": "evolve"}, raising=False)
+    monkeypatch.setattr(_mod, "plan_capability_evolution", lambda comparison, **kwargs: {"plan": "evolve"}, raising=False)
     monkeypatch.setattr(
         _mod,
         "build_evolution_execution",

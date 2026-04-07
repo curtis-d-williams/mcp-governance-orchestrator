@@ -6,9 +6,13 @@ Transforms reference MCP comparison results into deterministic
 capability evolution actions.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-def plan_capability_evolution(comparison: Dict[str, Any]) -> Dict[str, Any]:
+def plan_capability_evolution(
+    comparison: Dict[str, Any],
+    capability_ledger: Optional[Dict[str, Any]] = None,
+    capability: Optional[str] = None,
+) -> Dict[str, Any]:
     actions: List[Dict[str, Any]] = []
 
     tool_surface = comparison.get("tool_surface", {})
@@ -45,7 +49,16 @@ def plan_capability_evolution(comparison: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
+    ledger_suppressed = False
+    if capability_ledger is not None and capability is not None:
+        ledger_row = capability_ledger.get("capabilities", {}).get(capability, {})
+        similarity_delta = ledger_row.get("similarity_delta")
+        if similarity_delta is not None and float(similarity_delta) < 0:
+            actions = [a for a in actions if a.get("type") not in ("add_tool", "enable_feature")]
+            ledger_suppressed = True
+
     return {
         "evolution_actions": actions,
         "action_count": len(actions),
+        "ledger_suppressed": ledger_suppressed,
     }

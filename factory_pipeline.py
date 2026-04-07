@@ -340,7 +340,11 @@ def run_factory_cycle(
                     if isinstance(result, dict):
                         result["reference_mcp_comparison"] = comparison
                         result["reference_mcp_comparison_gaps"] = gap_artifact
-                    evolution_plan = plan_capability_evolution(comparison)
+                    evolution_plan = plan_capability_evolution(
+                        comparison,
+                        capability_ledger=prior_capability_effectiveness_ledger,
+                        capability=capability,
+                    )
 
                     if isinstance(result, dict):
                         result["capability_evolution_plan"] = evolution_plan
@@ -423,7 +427,11 @@ def run_factory_cycle(
                                 break
 
                             previous_iteration_score = iteration_score
-                            evolution_plan = plan_capability_evolution(comparison)
+                            evolution_plan = plan_capability_evolution(
+                                comparison,
+                                capability_ledger=prior_capability_effectiveness_ledger,
+                                capability=capability,
+                            )
                             try:
                                 evolution_execution = build_evolution_execution(
                                     evolution_plan,

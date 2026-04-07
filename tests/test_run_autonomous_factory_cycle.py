@@ -3615,7 +3615,7 @@ def test_negative_similarity_delta_blocks_evolution(tmp_path, monkeypatch):
     )
 
     # ----------------------------------------------------------- mock layer 5b
-    def _fake_plan_evolution(comparison):
+    def _fake_plan_evolution(comparison, **kwargs):
         return {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]}
 
     monkeypatch.setattr(_pipeline, "plan_capability_evolution", _fake_plan_evolution)
@@ -3703,7 +3703,7 @@ def test_zero_and_none_similarity_delta_do_not_block_evolution(tmp_path, monkeyp
     def _fake_derive_gaps(comparison):
         return {"capability_gaps": []}
 
-    def _fake_plan_evolution(comparison):
+    def _fake_plan_evolution(comparison, **kwargs):
         return {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]}
 
     def _fake_build_evolution_execution(evolution_plan, *, artifact_kind, current_tools):
@@ -3834,7 +3834,7 @@ def test_net_adjustment_increases_despite_growing_evolution_penalty(tmp_path, mo
     monkeypatch.setattr(
         _pipeline,
         "plan_capability_evolution",
-        lambda comparison: {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]},
+        lambda comparison, **kwargs: {"evolution_actions": [{"action": "add_tool", "tool": "get_me"}]},
     )
 
     def _fake_build_evolution_execution(evolution_plan, *, artifact_kind, current_tools):
