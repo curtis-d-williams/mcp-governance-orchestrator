@@ -1,0 +1,18 @@
+{
+  "capabilities": {
+    "github_repository_management": {
+      "artifact_kind": "mcp_server",
+      "failed_syntheses": 1,
+      "last_comparison_status": "ok",
+      "last_synthesis_source": "portfolio_gap",
+      "last_synthesis_status": "ok",
+      "last_synthesis_used_evolution": false,
+      "previous_similarity_score": 0.7,
+      "similarity_delta": -0.46,
+      "similarity_score": 0.24,
+      "successful_evolved_syntheses": 0,
+      "successful_syntheses": 3,
+      "total_syntheses": 4
+    }
+  }
+}
