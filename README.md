@@ -361,7 +361,7 @@ PYTHONPATH=src:. python3 scripts/enforce_governance_policy.py \
 
 # Planner Scoring View
 
-The capability ledger feeds the planner's per-action priority ranking.
+The capability ledger feeds the runtime planner (`planner_runtime.py`) per-action priority ranking.
 Each action receives a `capability_reliability_component` derived from the
 smoothed synthesis history of the capability it targets.
 
