@@ -494,3 +494,34 @@ The returned dict always contains `evolution_actions` and `action_count`. When s
 ## Source
 
 `capability_evolution_planner.py`, function `plan_capability_evolution()` — this suppression logic is distinct from the scoring path implemented in `planner_runtime.py`. The planner runtime handles priority scoring and action ordering; ledger-aware suppression is a gate applied earlier in `plan_capability_evolution()` before the scored plan is assembled.
+
+## Live Suppression Demonstration
+
+The following shows the observed output of a live cycle run using the fixture at `experiments/capability_ledger_suppression_demo.json`, which seeds `github_repository_management` with `similarity_delta: -0.15` to trigger suppression deterministically.
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_autonomous_factory_cycle.py \
+    --portfolio-state experiments/factory_demo/portfolio_state_missing_github.json \
+    --capability-ledger experiments/capability_ledger_suppression_demo.json \
+    --output autonomous_factory_cycle.json
+```
+
+The five confirmed signals from the cycle result establish that suppression fired:
+
+```json
+{
+  "evolution_regression_signal": { "prior_similarity_delta": -0.15 },
+  "capability_evolution_plan": {
+    "ledger_suppressed": true,
+    "action_count": 1
+  },
+  "evolution_blocked_by_similarity_regression": true,
+  "capability_evolution_execution": {
+    "executed_action_count": 1
+  }
+}
+```
+
+`prior_similarity_delta: -0.15` is the value detected at execution time and is what triggered suppression. `action_count: 1` reflects selective filtering: `add_tool` and `enable_feature` actions were suppressed, but `increase_test_coverage` survived because it is not an additive action type covered by the suppression gate. The surviving action carried `coverage_ratio: 0.14` in the reference comparison output.
+
+After the cycle completed, the ledger write-back deepened `similarity_delta` for `github_repository_management` from `-0.15` to `-0.46`. A subsequent cycle run against the same fixture will encounter the deeper value, suppression will continue to fire, and the delta will deepen further — confirming longitudinal carry-forward of the suppression signal across cycles.
