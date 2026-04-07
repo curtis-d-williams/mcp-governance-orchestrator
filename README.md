@@ -201,6 +201,16 @@ Multi-cycle carry-forward via `run_portfolio_cycles.py` with `--capability-ledge
 confirmed across 3 cycles (governance: continue, all ok). The work-dir capability
 ledger is automatically pinned into each subsequent cycle command.
 
+**Command:**
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_example_governed_cycles.py \
+    --cycles 3 \
+    --capability-ledger capability_effectiveness_ledger.json
+```
+
+`run_example_governed_cycles.py` generates the example manifest and wraps `run_portfolio_cycles.py`; `--capability-ledger` seeds cycle 1 and is auto-pinned for cycles 2 and 3.
+
 ---
 
 # Running Tests
