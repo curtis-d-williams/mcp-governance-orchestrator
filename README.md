@@ -221,7 +221,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2989 tests passing
+2991 tests passing
 
 ---
 
@@ -457,3 +457,40 @@ PYTHONPATH=src:. python3 scripts/run_governed_planner_loop.py \
 After each run, `planner_priority_breakdown.json` in the working directory contains
 the per-action component breakdown confirming the `capability_reliability_component`
 delta between ledger states.
+
+---
+
+# Ledger-Aware Action Suppression
+
+When `plan_capability_evolution()` in `capability_evolution_planner.py` receives both a `capability_ledger` and a `capability` argument, it inspects the ledger row for the named capability before building the evolution plan. If the ledger signals a declining similarity trajectory, additive actions are suppressed and a flag is set in the returned dict so callers can detect and log the suppression.
+
+## Trigger condition
+
+Suppression fires when the ledger row for the named capability carries a `similarity_delta` value that is strictly less than zero (`similarity_delta < 0`). A negative delta means the capability's embedding similarity to its target has worsened since the previous cycle, indicating the current evolution strategy is not improving the capability.
+
+## Suppressed action types
+
+The following action types are filtered from the evolution plan when the trigger condition is met:
+
+- `add_tool`
+- `enable_feature`
+
+Suppressing these additive actions prevents compounding a failing approach: when a declining similarity trajectory is present, adding more tools or enabling more features has not been demonstrated to help and may deepen the divergence.
+
+## Return signal
+
+The returned dict always contains `evolution_actions` and `action_count`. When suppression fires, it additionally contains:
+
+```json
+{
+  "evolution_actions": [],
+  "action_count": 0,
+  "ledger_suppressed": true
+}
+```
+
+`ledger_suppressed: True` is the canonical signal that one or more actions were dropped due to a negative ledger delta for the named capability. Callers should treat its absence as equivalent to `false` (no suppression occurred).
+
+## Source
+
+`capability_evolution_planner.py`, function `plan_capability_evolution()` — this suppression logic is distinct from the scoring path implemented in `planner_runtime.py`. The planner runtime handles priority scoring and action ordering; ledger-aware suppression is a gate applied earlier in `plan_capability_evolution()` before the scored plan is assembled.
