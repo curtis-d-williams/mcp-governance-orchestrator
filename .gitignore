@@ -57,6 +57,9 @@ planner_scoring_metrics.json
 
 # Demo run artifacts (root-level accumulation)
 demo_*.json
+!demo_capability_gate_policy.json
+!demo_seed_history.json
+!demo_seed_summary.json
 demo_live_archives/
 demo_live_learning_run_artifacts/
 governed_*.json
