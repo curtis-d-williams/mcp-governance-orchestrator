@@ -54,3 +54,16 @@ planner_scoring_metrics.json
 
 # Session working state (ephemeral; template is tracked at .claude/session_log.template.md)
 .claude/session_log.md
+
+# Demo run artifacts (root-level accumulation)
+demo_*.json
+demo_live_archives/
+demo_live_learning_run_artifacts/
+governed_*.json
+governed_*_artifacts/
+capability_ledger_evolution_diff.json
+capability_effectiveness_dashboard_*.html
+action_effectiveness_dashboard.html
+generated_mcp_server_github/
+memory/
+.claude/backups/
