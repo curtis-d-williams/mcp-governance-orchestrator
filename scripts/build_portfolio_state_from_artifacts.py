@@ -405,6 +405,32 @@ def main(argv: List[str] | None = None) -> int:
         )
         state["capability_gaps"] = merged
 
+    # Backfill portfolio_recommendations from capability_gaps.
+    # Any gap capability not already covered by an existing recommendation entry
+    # gets a new action dict appended.
+    existing_recs = state.get("portfolio_recommendations", [])
+    covered_caps = {
+        rec.get("task_binding", {}).get("args", {}).get("capability")
+        for rec in existing_recs
+    }
+    for cap in state.get("capability_gaps", []):
+        if cap in covered_caps:
+            continue
+        existing_recs.append({
+            "action_id": f"build_capability_artifact_{cap}",
+            "action_type": "build_capability_artifact",
+            "priority": 0.60,
+            "reason": f"capability gap: {cap} not present in portfolio",
+            "eligible": True,
+            "blocked_by": [],
+            "task_binding": {
+                "task_id": "factory_build_capability_artifact",
+                "args": {"capability": cap},
+            },
+        })
+        covered_caps.add(cap)
+    state["portfolio_recommendations"] = existing_recs
+
     if capability_artifacts:
         state["capability_artifacts"] = capability_artifacts
 

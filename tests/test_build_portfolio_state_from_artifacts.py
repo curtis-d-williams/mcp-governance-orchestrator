@@ -153,6 +153,37 @@ class TestSchemaVersion:
         for key in ("schema_version", "portfolio_id", "generated_at", "summary", "repos", "portfolio_recommendations"):
             assert key in state, f"missing top-level key: {key}"
 
+    def test_portfolio_recommendations_backfilled_from_capability_gaps(self, tmp_path):
+        """Capability gaps from a comparison-gap artifact appear in portfolio_recommendations."""
+        report, agg = _make_fixtures(tmp_path)
+        gap_artifact = tmp_path / "gap.json"
+        gap_artifact.write_text(
+            json.dumps({
+                "capability_gaps": [
+                    {"capability": "github_repository_management"},
+                ]
+            }),
+            encoding="utf-8",
+        )
+        rc, output = _run_bridge(
+            tmp_path, report, agg,
+            extra=["--comparison-gap-artifact", str(gap_artifact)],
+        )
+        assert rc == 0, "bridge should succeed with comparison-gap artifact"
+        state = json.loads(output.read_text(encoding="utf-8"))
+        recs = state["portfolio_recommendations"]
+        assert len(recs) > 0, "portfolio_recommendations must be non-empty after gap backfill"
+        for rec in recs:
+            assert "action_type" in rec, f"action_type missing from rec: {rec}"
+            assert "task_binding" in rec, f"task_binding missing from rec: {rec}"
+        cap_names = {
+            rec["task_binding"].get("args", {}).get("capability")
+            for rec in recs
+        }
+        assert "github_repository_management" in cap_names, (
+            "backfilled gap capability must appear in portfolio_recommendations task_binding args"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test 3: healthy repo maps correctly
