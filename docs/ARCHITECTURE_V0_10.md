@@ -1,4 +1,4 @@
-# MCP Automation Factory
+# Governed Autonomous Capability Factory
 ## Architecture — v0.10.0-alpha
 
 ### System Overview
@@ -178,6 +178,33 @@ Tier-3 execution
 
 ---
 
+# Capability Effectiveness Ledger and Suppression Gate
+
+The capability effectiveness ledger records per-capability synthesis history across factory cycles. Each row captures the governed signal set used by the suppression gate and the adaptive planner.
+
+Per-capability fields recorded each cycle:
+
+total_syntheses  
+successful_syntheses  
+similarity_score  
+previous_similarity_score  
+similarity_delta  
+last_synthesis_used_evolution  
+
+`similarity_score` is computed each cycle by comparing the generated MCP server against a reference artifact via `compare_mcp_servers`. The result is a normalized floating-point value between 0 and 1.
+
+`similarity_delta` is the difference `similarity_score − previous_similarity_score`, rounded to two decimal places. It is absent in cycle 1 because there is no prior score to compare against. From cycle 2 onward it carries a signed value reflecting whether the synthesis improved or regressed relative to the prior cycle.
+
+The carry-forward mechanism writes `similarity_score` from cycle N into `previous_similarity_score` in cycle N+1. This creates a governed multi-cycle signal that either enables or suppresses evolution in the following cycle.
+
+At the start of each cycle's evolution phase, `plan_capability_evolution` reads `similarity_delta` from the prior ledger row. If `similarity_delta < 0` — meaning similarity regressed — evolution is suppressed entirely for that cycle and the baseline artifact is used unchanged.
+
+When evolution is not suppressed, the pipeline attempts up to three evolution iterations. The evolved result is committed only when `iteration_delta ≥ 0.01`, ensuring that only measurably improving evolution advances to the synthesis output.
+
+Comparison failure is non-fatal. The cycle continues to completion, but because no `similarity_delta` is written, the suppression gate cannot fire in the following cycle. The pipeline treats a missing delta as a neutral signal rather than a regression.
+
+---
+
 # Determinism Guarantees
 
 The system enforces:
@@ -189,7 +216,7 @@ The system enforces:
 
 Current regression coverage:
 
-335 tests passing
+2997 tests passing
 
 ---
 
