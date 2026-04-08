@@ -4036,3 +4036,106 @@ def test_ranked_action_window_shifts_in_cycle_output_artifacts(tmp_path, monkeyp
         "cycle 1 and cycle 3 ranked_action_window_detail must differ, "
         "confirming observable rank shift in artifact JSON"
     )
+
+
+def test_two_cycle_ledger_write_back_and_read_forward(tmp_path, monkeypatch):
+    """Two sequential calls to run_autonomous_factory_cycle with live file I/O.
+
+    Confirms that total_syntheses, successful_syntheses, similarity_score,
+    previous_similarity_score, and similarity_delta accumulate correctly in
+    the ledger file across both cycles.
+    """
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management"
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    def _fake_builder(*, artifact_kind, capability, **kwargs):
+        return {
+            "status": "ok",
+            "artifact_kind": artifact_kind,
+            "capability": capability,
+            "generated_repo": "/tmp/fake_github",
+        }
+
+    monkeypatch.setattr(_pipeline, "build_capability_artifact", _fake_builder)
+
+    similarity_values = [0.60, 0.80]
+
+    def _fake_compare(generated_path, reference_path, output_path=None):
+        return {
+            "similarity": {"overall_score": similarity_values.pop(0)},
+            "structure": {"generated_capability": "github_repository_management"},
+            "tool_surface": {"coverage_ratio": 0.5, "missing_tools": []},
+            "capability_surface": {"coverage_ratio": 0.5},
+            "testability": {"coverage_ratio": 1.0},
+        }
+
+    monkeypatch.setattr(_pipeline, "compare_mcp_servers", _fake_compare, raising=False)
+
+    capability_ledger = tmp_path / "ledger.json"
+
+    # -------- cycle 1 --------
+
+    artifact1 = _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle1.json"),
+    )
+
+    persisted1 = json.loads(capability_ledger.read_text())
+    row1 = persisted1["capabilities"]["github_repository_management"]
+
+    assert row1["total_syntheses"] == 1
+    assert row1["successful_syntheses"] == 1
+    assert row1["similarity_score"] == 0.60
+    assert row1.get("previous_similarity_score") is None or "previous_similarity_score" not in row1
+    assert row1.get("similarity_delta") is None or "similarity_delta" not in row1
+
+    # -------- cycle 2 --------
+
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state="portfolio_state.json",
+        capability_ledger=str(capability_ledger),
+        capability_ledger_output=str(capability_ledger),
+        policy="planner_policy.json",
+        top_k=3,
+        output=str(tmp_path / "cycle2.json"),
+    )
+
+    persisted2 = json.loads(capability_ledger.read_text())
+    row2 = persisted2["capabilities"]["github_repository_management"]
+
+    assert row2["total_syntheses"] == 2
+    assert row2["successful_syntheses"] == 2
+    assert row2["similarity_score"] == 0.80
+    assert row2["previous_similarity_score"] == 0.60
+    assert round(row2["similarity_delta"], 2) == 0.20
