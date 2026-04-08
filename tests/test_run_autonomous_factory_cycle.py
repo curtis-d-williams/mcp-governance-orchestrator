@@ -4298,3 +4298,188 @@ def test_live_two_cycle_builder_with_ledger_carry_forward(tmp_path, monkeypatch)
     finally:
         if generated_dir.exists():
             shutil.rmtree(generated_dir)
+
+
+def test_live_two_capability_ledger_isolation(tmp_path, monkeypatch):
+    """Two sequential run_autonomous_factory_cycle calls, each synthesizing a DIFFERENT capability.
+    Cycle A: github_repository_management (mcp_server, live builder + comparison).
+    Cycle B: slack_workspace_access (agent_adapter, live builder, no comparison stage).
+    Confirms that capability B's ledger row is written independently and capability A's row is
+    unchanged after capability B's synthesis.
+    """
+    import shutil
+
+    # ------------------------------------------------------------------
+    # Build a minimal reference fixture for cycle A (mcp_server comparison)
+    # ------------------------------------------------------------------
+    ref_root = tmp_path / "reference_mcp_github_repository_management"
+
+    (ref_root).mkdir(parents=True)
+    (ref_root / "server.json").write_text(
+        json.dumps(
+            {
+                "name": "github_repository_management",
+                "version": "1.0.0",
+                "transport": "stdio",
+                "tools": [
+                    {
+                        "name": "create_repository",
+                        "description": "Create a new GitHub repository",
+                        "parameters": [
+                            {"name": "name", "type": "string"},
+                            {"name": "private", "type": "boolean"},
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pkg_dir = ref_root / "pkg" / "github"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "tools.go").write_text(
+        'package github\n\nfunc RegisterTools() {}\n',
+        encoding="utf-8",
+    )
+    (pkg_dir / "server.go").write_text(
+        'package github\n\nfunc NewServer() {}\n',
+        encoding="utf-8",
+    )
+
+    internal_dir = ref_root / "internal" / "ghmcp"
+    internal_dir.mkdir(parents=True)
+    (internal_dir / "server.go").write_text(
+        'package ghmcp\n\nfunc Start() {}\n',
+        encoding="utf-8",
+    )
+
+    # ------------------------------------------------------------------
+    # Stubs
+    # ------------------------------------------------------------------
+    monkeypatch.setattr(
+        _pipeline,
+        "get_reference_artifact_path",
+        lambda capability: str(ref_root),
+    )
+    monkeypatch.setattr(
+        _mod,
+        "evaluate_planner_config",
+        lambda **kwargs: {"risk_level": "moderate_risk", "reasons": []},
+    )
+
+    governed_result_a = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    governed_result_b = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "agent_adapter",
+                                            "capability": "slack_workspace_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    _call = [0]
+
+    def _loop(args):
+        payload = governed_result_a if _call[0] == 0 else governed_result_b
+        _call[0] += 1
+        return payload
+
+    monkeypatch.setattr(_mod, "run_governed_loop", _loop)
+
+    capability_ledger = tmp_path / "ledger_isolation.json"
+    generated_dir_a = _REPO_ROOT / "generated_mcp_server_github"
+    generated_dir_b = _REPO_ROOT / "generated_agent_adapter_slack"
+
+    try:
+        # -------- cycle A: github_repository_management (mcp_server) --------
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "isolation_cycleA.json"),
+        )
+
+        persisted_a = json.loads(capability_ledger.read_text(encoding="utf-8"))
+        row_a = persisted_a["capabilities"]["github_repository_management"]
+
+        assert row_a["total_syntheses"] == 1
+        assert row_a["successful_syntheses"] == 1
+        score_a = row_a["similarity_score"]
+        assert isinstance(score_a, float)
+        assert 0.0 <= score_a <= 1.0
+
+        # -------- cycle B: slack_workspace_access (agent_adapter) --------
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "isolation_cycleB.json"),
+        )
+
+        persisted_b = json.loads(capability_ledger.read_text(encoding="utf-8"))
+
+        # Capability B row written independently
+        assert "slack_workspace_access" in persisted_b["capabilities"]
+        row_b = persisted_b["capabilities"]["slack_workspace_access"]
+        assert row_b["total_syntheses"] == 1
+        assert row_b["successful_syntheses"] == 1
+        # agent_adapter skips Stage 5 comparison — no similarity fields
+        assert row_b.get("similarity_score") is None
+
+        # Capability A row unchanged after capability B synthesis (isolation invariant)
+        row_a_after = persisted_b["capabilities"]["github_repository_management"]
+        assert row_a_after["total_syntheses"] == 1
+        assert row_a_after["similarity_score"] == score_a
+
+    finally:
+        if generated_dir_a.exists():
+            shutil.rmtree(generated_dir_a)
+        if generated_dir_b.exists():
+            shutil.rmtree(generated_dir_b)
