@@ -221,7 +221,7 @@ PYTHONPATH=. pytest -q
 
 Current coverage:
 
-2991 tests passing
+2997 tests passing
 
 ---
 
@@ -525,5 +525,10 @@ The five confirmed signals from the cycle result establish that suppression fire
 `prior_similarity_delta: -0.15` is the value detected at execution time and is what triggered suppression. `action_count: 1` reflects selective filtering: `add_tool` and `enable_feature` actions were suppressed, but `increase_test_coverage` survived because it is not an additive action type covered by the suppression gate. The surviving action carried `coverage_ratio: 0.14` in the reference comparison output.
 
 After the cycle completed, the ledger write-back deepened `similarity_delta` for `github_repository_management` from `-0.15` to `-0.46`. A second cycle run against the same fixture confirmed longitudinal carry-forward: `prior_similarity_delta` was read as `-0.46` (the deepened value), `ledger_suppressed` fired again as `true`, and `learning_update.applied` was `false` (reason: `no_ledger_path`). Suppression and carry-forward are demonstrated across two consecutive cycles.
+
+| Cycle | `prior_similarity_delta` read | `ledger_suppressed` | Ledger write-back `similarity_delta` | `learning_update.applied` |
+|-------|-------------------------------|---------------------|--------------------------------------|---------------------------|
+| 1     | -0.15 (seeded)                | true                | -0.46 (deepened)                     | false (`no_ledger_path`)  |
+| 2     | -0.46 (carry-forward)         | true                | —                                    | false (`no_ledger_path`)  |
 
 **Operational note — `no_ledger_path`:** When `--capability-ledger-output` is omitted from the cycle run command, the planner has no path to write learning updates back to the ledger. The cycle completes normally, but `learning_update.applied` is `false` with `reason: no_ledger_path`. This is a silent non-error: suppression and plan assembly still execute correctly, but the ledger is not updated. Longitudinal carry-forward requires `--capability-ledger-output` to be set so each cycle can persist its `similarity_delta` for the next cycle to read.
