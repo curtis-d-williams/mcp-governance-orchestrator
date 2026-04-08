@@ -4483,3 +4483,166 @@ def test_live_two_capability_ledger_isolation(tmp_path, monkeypatch):
             shutil.rmtree(generated_dir_a)
         if generated_dir_b.exists():
             shutil.rmtree(generated_dir_b)
+
+
+def test_live_suppression_gate_blocks_evolution(tmp_path, monkeypatch):
+    """
+    Live single-cycle test confirming the suppression gate fires when the
+    capability ledger contains a negative similarity_delta from a prior cycle.
+
+    The input ledger is seeded directly with similarity_delta=-0.10 for
+    github_repository_management. The live run_factory_cycle reads this,
+    sets evolution_blocked_by_similarity_regression=True, and never enters
+    the evolution loop.
+
+    Gate under test (factory_pipeline.py ~line 376-381):
+        evolution_blocked_by_similarity_regression = (
+            prior_similarity_delta is not None and float(prior_similarity_delta) < 0
+        )
+        if builder_overrides and not evolution_blocked_by_similarity_regression:
+            # evolution loop — NOT entered
+
+    Expected:
+    - cycle_result["evolution_blocked_by_similarity_regression"] is True
+    - cycle_result["synthesis_event"]["used_evolution"] is False
+    - cycle_result.get("evolution_iterations", []) == []
+    - cycle_result["evolution_regression_signal"]["prior_similarity_delta"] < 0
+    """
+    import shutil
+
+    # ------------------------------------------------------------------
+    # Build minimal reference fixture (same structure as live two-cycle test)
+    # ------------------------------------------------------------------
+    ref_root = tmp_path / "reference_mcp_github_repository_management"
+    ref_root.mkdir(parents=True)
+
+    (ref_root / "server.json").write_text(
+        json.dumps({
+            "$schema": "https://example.com/schema",
+            "name": "github-mcp-server",
+            "title": "GitHub MCP Server",
+            "description": "Reference GitHub MCP server.",
+            "repository": {"url": "https://github.com/example/mcp-github", "source": "github"},
+            "version": "0.1.0",
+            "packages": [],
+            "remotes": [],
+        }),
+        encoding="utf-8",
+    )
+
+    tools_go_dir = ref_root / "pkg" / "github"
+    tools_go_dir.mkdir(parents=True)
+    (tools_go_dir / "tools.go").write_text(
+        "package github\n\n"
+        "func AllTools(t interface{}) []interface{} { return []interface{}{} }\n"
+        "func RemoteOnlyToolsets() []interface{} { return []interface{}{} }\n",
+        encoding="utf-8",
+    )
+    (tools_go_dir / "server.go").write_text(
+        "package github\n\n// DynamicToolsets enabled\n",
+        encoding="utf-8",
+    )
+
+    ghmcp_dir = ref_root / "internal" / "ghmcp"
+    ghmcp_dir.mkdir(parents=True)
+    (ghmcp_dir / "server.go").write_text(
+        "package ghmcp\n\n// ReadOnly mode supported\n",
+        encoding="utf-8",
+    )
+
+    # ------------------------------------------------------------------
+    # Monkeypatches
+    # ------------------------------------------------------------------
+    monkeypatch.setattr(
+        _pipeline,
+        "get_reference_artifact_path",
+        lambda capability: str(ref_root),
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management"
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    # ------------------------------------------------------------------
+    # Seed ledger: contains a negative similarity_delta so the suppression
+    # gate fires on the very first (and only) live cycle.
+    # ------------------------------------------------------------------
+    seed_ledger_file = tmp_path / "seed_ledger.json"
+    seed_ledger_file.write_text(
+        json.dumps({
+            "capabilities": {
+                "github_repository_management": {
+                    "artifact_kind": "mcp_server",
+                    "similarity_score": 0.60,
+                    "similarity_delta": -0.10,
+                    "total_syntheses": 3,
+                    "successful_syntheses": 2,
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    generated_dir = _REPO_ROOT / "generated_mcp_server_github"
+
+    try:
+        artifact = _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(seed_ledger_file),
+            capability_ledger_output=str(tmp_path / "ledger_suppression_out.json"),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "suppression_cycle.json"),
+        )
+
+        cycle_result = artifact["cycle_result"]
+
+        assert cycle_result.get("evolution_blocked_by_similarity_regression") is True, (
+            f"Expected evolution_blocked_by_similarity_regression=True, got: "
+            f"{cycle_result.get('evolution_blocked_by_similarity_regression')}"
+        )
+        assert cycle_result["synthesis_event"]["used_evolution"] is False, (
+            f"Expected used_evolution=False, got: "
+            f"{cycle_result['synthesis_event'].get('used_evolution')}"
+        )
+        assert cycle_result.get("evolution_iterations", []) == [], (
+            f"Expected evolution_iterations empty, got: {cycle_result.get('evolution_iterations')}"
+        )
+        regression_signal = cycle_result.get("evolution_regression_signal", {})
+        assert regression_signal.get("prior_similarity_delta") is not None, (
+            "Expected evolution_regression_signal.prior_similarity_delta to be set"
+        )
+        assert float(regression_signal["prior_similarity_delta"]) < 0, (
+            f"Expected prior_similarity_delta < 0, got: {regression_signal['prior_similarity_delta']}"
+        )
+
+    finally:
+        if generated_dir.exists():
+            shutil.rmtree(generated_dir)
