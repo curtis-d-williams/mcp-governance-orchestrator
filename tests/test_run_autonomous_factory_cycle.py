@@ -4139,3 +4139,162 @@ def test_two_cycle_ledger_write_back_and_read_forward(tmp_path, monkeypatch):
     assert row2["similarity_score"] == 0.80
     assert row2["previous_similarity_score"] == 0.60
     assert round(row2["similarity_delta"], 2) == 0.20
+
+
+def test_live_two_cycle_builder_with_ledger_carry_forward(tmp_path, monkeypatch):
+    """Two sequential run_autonomous_factory_cycle calls with live build_capability_artifact
+    and live compare_mcp_servers.  Only planner stubs and get_reference_artifact_path
+    are monkeypatched; everything else runs against real builder/comparison code.
+
+    Confirms that total_syntheses, successful_syntheses, similarity_score,
+    previous_similarity_score, and similarity_delta are populated from real
+    builder output across both cycles.
+    """
+    import shutil
+
+    # ------------------------------------------------------------------
+    # Build a minimal reference fixture that inspect_reference_mcp requires
+    # ------------------------------------------------------------------
+    ref_root = tmp_path / "reference_mcp_github_repository_management"
+
+    # server.json — minimal valid structure for _load_server_descriptor
+    (ref_root).mkdir(parents=True)
+    (ref_root / "server.json").write_text(
+        json.dumps({
+            "$schema": "https://example.com/schema",
+            "name": "github-mcp-server",
+            "title": "GitHub MCP Server",
+            "description": "Reference GitHub MCP server.",
+            "repository": {"url": "https://github.com/example/mcp-github", "source": "github"},
+            "version": "0.1.0",
+            "packages": [],
+            "remotes": [],
+        }),
+        encoding="utf-8",
+    )
+
+    # pkg/github/tools.go — minimal valid Go file for _collect_tooling
+    tools_go_dir = ref_root / "pkg" / "github"
+    tools_go_dir.mkdir(parents=True)
+    (tools_go_dir / "tools.go").write_text(
+        "package github\n\n"
+        "func AllTools(t interface{}) []interface{} { return []interface{}{} }\n"
+        "func RemoteOnlyToolsets() []interface{} { return []interface{}{} }\n",
+        encoding="utf-8",
+    )
+
+    # pkg/github/server.go — minimal valid Go file for _collect_capabilities
+    (tools_go_dir / "server.go").write_text(
+        "package github\n\n// DynamicToolsets enabled\n",
+        encoding="utf-8",
+    )
+
+    # internal/ghmcp/server.go — required by _collect_capabilities
+    ghmcp_dir = ref_root / "internal" / "ghmcp"
+    ghmcp_dir.mkdir(parents=True)
+    (ghmcp_dir / "server.go").write_text(
+        "package ghmcp\n\n// ReadOnly mode supported\n",
+        encoding="utf-8",
+    )
+
+    # ------------------------------------------------------------------
+    # Monkeypatch 1: get_reference_artifact_path -> tmp_path fixture
+    # ------------------------------------------------------------------
+    monkeypatch.setattr(
+        _pipeline,
+        "get_reference_artifact_path",
+        lambda capability: str(ref_root),
+    )
+
+    # ------------------------------------------------------------------
+    # Monkeypatch 2: planner stubs (evaluate_planner_config, run_governed_loop)
+    # ------------------------------------------------------------------
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management"
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    # ------------------------------------------------------------------
+    # build_capability_artifact and compare_mcp_servers are NOT patched —
+    # they run live against real templates and real comparison logic.
+    # ------------------------------------------------------------------
+
+    capability_ledger = tmp_path / "ledger_live.json"
+
+    generated_dir = _REPO_ROOT / "generated_mcp_server_github"
+
+    try:
+        # -------- cycle 1 --------
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "live_cycle1.json"),
+        )
+
+        persisted1 = json.loads(capability_ledger.read_text(encoding="utf-8"))
+        row1 = persisted1["capabilities"]["github_repository_management"]
+
+        assert row1["total_syntheses"] == 1
+        assert row1["successful_syntheses"] == 1
+        score_cycle1 = row1["similarity_score"]
+        assert isinstance(score_cycle1, float)
+        assert 0.0 <= score_cycle1 <= 1.0
+        assert row1.get("previous_similarity_score") is None or "previous_similarity_score" not in row1
+        assert row1.get("similarity_delta") is None or "similarity_delta" not in row1
+
+        # -------- cycle 2 --------
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(capability_ledger),
+            capability_ledger_output=str(capability_ledger),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "live_cycle2.json"),
+        )
+
+        persisted2 = json.loads(capability_ledger.read_text(encoding="utf-8"))
+        row2 = persisted2["capabilities"]["github_repository_management"]
+
+        assert row2["total_syntheses"] == 2
+        assert row2["successful_syntheses"] == 2
+        score_cycle2 = row2["similarity_score"]
+        assert isinstance(score_cycle2, float)
+        assert 0.0 <= score_cycle2 <= 1.0
+        prev_score = row2["previous_similarity_score"]
+        assert isinstance(prev_score, float)
+        assert prev_score == score_cycle1
+        delta = row2["similarity_delta"]
+        assert isinstance(delta, float)
+        assert abs(delta - (score_cycle2 - score_cycle1)) < 1e-9
+
+    finally:
+        if generated_dir.exists():
+            shutil.rmtree(generated_dir)
