@@ -4646,3 +4646,153 @@ def test_live_suppression_gate_blocks_evolution(tmp_path, monkeypatch):
     finally:
         if generated_dir.exists():
             shutil.rmtree(generated_dir)
+
+
+def test_live_evolution_loop_commits_positive_delta(tmp_path, monkeypatch):
+    """
+    Live single-cycle test confirming the evolution loop fires, commits an
+    evolved build, and records a positive similarity_delta in at least one
+    evolution iteration.
+
+    The reference fixture includes get_me in README.md (absent from the default
+    live build of github_repository_management).  That gap drives missing_tools
+    on the base comparison, which triggers the evolution loop.  After the loop
+    the second comparison covers get_me, raising similarity score and producing
+    iteration_delta > 0.
+
+    Expected:
+    - len(cycle_result["evolution_iterations"]) >= 1
+    - cycle_result["synthesis_event"]["used_evolution"] is True
+    - at least one iteration entry has similarity_delta > 0
+    - cycle_result.get("evolution_blocked_by_similarity_regression") is not True
+    """
+    import shutil
+
+    # ------------------------------------------------------------------
+    # Build minimal reference fixture
+    # README.md includes get_me (absent from default build) to drive missing_tools
+    # ------------------------------------------------------------------
+    ref_root = tmp_path / "reference_mcp_github_repository_management"
+    ref_root.mkdir(parents=True)
+
+    (ref_root / "server.json").write_text(
+        json.dumps({
+            "$schema": "https://example.com/schema",
+            "name": "github-mcp-server",
+            "title": "GitHub MCP Server",
+            "description": "Reference GitHub MCP server.",
+            "repository": {"url": "https://github.com/example/mcp-github", "source": "github"},
+            "version": "0.1.0",
+            "packages": [],
+            "remotes": [],
+        }),
+        encoding="utf-8",
+    )
+
+    (ref_root / "README.md").write_text(
+        "# GitHub MCP Server\n\n"
+        "## Tools\n\n"
+        "- **list_repositories** - List repositories\n"
+        "- **get_me** - Get the authenticated user\n",
+        encoding="utf-8",
+    )
+
+    tools_go_dir = ref_root / "pkg" / "github"
+    tools_go_dir.mkdir(parents=True)
+    (tools_go_dir / "tools.go").write_text(
+        "package github\n\n"
+        "func AllTools(t interface{}) []interface{} { return []interface{}{} }\n"
+        "func RemoteOnlyToolsets() []interface{} { return []interface{}{} }\n",
+        encoding="utf-8",
+    )
+    (tools_go_dir / "server.go").write_text(
+        "package github\n\n// DynamicToolsets enabled\n",
+        encoding="utf-8",
+    )
+
+    ghmcp_dir = ref_root / "internal" / "ghmcp"
+    ghmcp_dir.mkdir(parents=True)
+    (ghmcp_dir / "server.go").write_text(
+        "package ghmcp\n\n// ReadOnly mode supported\n",
+        encoding="utf-8",
+    )
+
+    # ------------------------------------------------------------------
+    # Monkeypatches
+    # ------------------------------------------------------------------
+    monkeypatch.setattr(
+        _pipeline,
+        "get_reference_artifact_path",
+        lambda capability: str(ref_root),
+    )
+
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management"
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    # ------------------------------------------------------------------
+    # No prior ledger — suppression gate will not fire
+    # ------------------------------------------------------------------
+    generated_dir = _REPO_ROOT / "generated_mcp_server_github"
+
+    try:
+        artifact = _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "evo_loop_cycle.json"),
+            capability_ledger_output=str(tmp_path / "evo_loop_ledger.json"),
+        )
+
+        cycle_result = artifact["cycle_result"]
+
+        evolution_iterations = cycle_result.get("evolution_iterations", [])
+        assert len(evolution_iterations) >= 1, (
+            f"Expected at least one evolution iteration, got: {evolution_iterations}"
+        )
+
+        assert cycle_result["synthesis_event"]["used_evolution"] is True, (
+            f"Expected used_evolution=True, got: "
+            f"{cycle_result['synthesis_event'].get('used_evolution')}"
+        )
+
+        assert any(
+            entry.get("similarity_delta") is not None
+            and float(entry["similarity_delta"]) > 0
+            for entry in evolution_iterations
+        ), f"Expected at least one iteration with similarity_delta > 0, got: {evolution_iterations}"
+
+        assert cycle_result.get("evolution_blocked_by_similarity_regression") is not True, (
+            "Expected evolution not blocked by regression"
+        )
+
+    finally:
+        if generated_dir.exists():
+            shutil.rmtree(generated_dir)
