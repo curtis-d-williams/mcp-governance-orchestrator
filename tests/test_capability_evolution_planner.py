@@ -163,3 +163,65 @@ def test_plan_capability_evolution_capability_not_in_ledger_unchanged():
     action_types = [a["type"] for a in plan["evolution_actions"]]
     assert "add_tool" in action_types
     assert plan["ledger_suppressed"] is False
+
+
+def test_plan_capability_evolution_multi_cycle_carry_forward_suppresses_cycle2():
+    comparison = {
+        "tool_surface": {"missing_tools": ["create_repo"]},
+        "capability_surface": {"missing_enabled": ["branch_protection"]},
+        "testability": {"coverage_ratio": 0.5},
+    }
+    plan_cycle1 = plan_capability_evolution(comparison, capability_ledger=None)
+    assert plan_cycle1["ledger_suppressed"] is False
+    action_types_cycle1 = [a["type"] for a in plan_cycle1["evolution_actions"]]
+    assert "add_tool" in action_types_cycle1
+    assert "enable_feature" in action_types_cycle1
+
+    ledger = {
+        "capabilities": {
+            "github_repository_management": {
+                "similarity_delta": -0.15,
+            }
+        }
+    }
+    plan_cycle2 = plan_capability_evolution(
+        comparison, capability_ledger=ledger, capability="github_repository_management"
+    )
+    assert plan_cycle2["ledger_suppressed"] is True
+    action_types_cycle2 = [a["type"] for a in plan_cycle2["evolution_actions"]]
+    assert "add_tool" not in action_types_cycle2
+    assert "enable_feature" not in action_types_cycle2
+
+
+def test_plan_capability_evolution_multi_cycle_compounding_negative_delta_suppresses():
+    comparison = {
+        "tool_surface": {"missing_tools": ["create_repo"]},
+        "capability_surface": {"missing_enabled": ["branch_protection"]},
+        "testability": {"coverage_ratio": 0.5},
+    }
+    ledger_cycle1 = {
+        "capabilities": {
+            "github_repository_management": {
+                "similarity_delta": -0.15,
+            }
+        }
+    }
+    plan_cycle1 = plan_capability_evolution(
+        comparison, capability_ledger=ledger_cycle1, capability="github_repository_management"
+    )
+    assert plan_cycle1["ledger_suppressed"] is True
+
+    ledger_cycle2 = {
+        "capabilities": {
+            "github_repository_management": {
+                "similarity_delta": -0.46,
+            }
+        }
+    }
+    plan_cycle2 = plan_capability_evolution(
+        comparison, capability_ledger=ledger_cycle2, capability="github_repository_management"
+    )
+    assert plan_cycle2["ledger_suppressed"] is True
+    action_types_cycle2 = [a["type"] for a in plan_cycle2["evolution_actions"]]
+    assert "add_tool" not in action_types_cycle2
+    assert "enable_feature" not in action_types_cycle2
