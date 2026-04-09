@@ -4929,3 +4929,139 @@ def test_live_data_connector_ledger_accumulation(tmp_path, monkeypatch):
     finally:
         if generated_dir.exists():
             shutil.rmtree(generated_dir)
+
+
+def test_live_data_connector_two_cycle_ledger_carry_forward(tmp_path, monkeypatch):
+    """
+    Two sequential run_autonomous_factory_cycle calls for a data_connector
+    capability, confirming that the capability_effectiveness_ledger is written
+    after cycle 1 and correctly merged (carry-forward) in cycle 2.
+
+    No reference fixture is needed — data_connector skips compare_mcp_servers
+    (factory_pipeline.py guards on artifact_kind == "mcp_server").
+    Only two monkeypatches: evaluate_planner_config and run_governed_loop.
+    build_capability_artifact runs live against real templates.
+
+    Expected after cycle 1:
+    - ledger written to ledger_path
+    - total_syntheses == 1, successful_syntheses == 1
+    - artifact_kind == "data_connector"
+    - similarity_score, similarity_delta, previous_similarity_score absent
+
+    Expected after cycle 2:
+    - total_syntheses == 2, successful_syntheses == 2
+    - artifact_kind == "data_connector"
+    - similarity_score, similarity_delta, previous_similarity_score absent
+    """
+    import shutil
+
+    # ------------------------------------------------------------------
+    # Monkeypatches — two only; get_reference_artifact_path not needed
+    # ------------------------------------------------------------------
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    ledger_path = tmp_path / "data_connector_carry_forward_ledger.json"
+    generated_dir = _REPO_ROOT / "generated_data_connector_snowflake"
+
+    try:
+        # -------- cycle 1 --------
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger_output=str(ledger_path),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "data_connector_cycle1.json"),
+        )
+
+        assert ledger_path.exists(), "Ledger file must exist after cycle 1"
+        persisted1 = json.loads(ledger_path.read_text(encoding="utf-8"))
+        row1 = persisted1["capabilities"]["snowflake_data_access"]
+
+        assert row1["total_syntheses"] == 1, (
+            f"Cycle 1: expected total_syntheses=1, got: {row1.get('total_syntheses')}"
+        )
+        assert row1["successful_syntheses"] == 1, (
+            f"Cycle 1: expected successful_syntheses=1, got: {row1.get('successful_syntheses')}"
+        )
+        assert row1["artifact_kind"] == "data_connector", (
+            f"Cycle 1: expected artifact_kind='data_connector', got: {row1.get('artifact_kind')}"
+        )
+
+        # similarity fields must be absent — no comparison stage for data_connector
+        assert row1.get("similarity_score") is None, (
+            f"Cycle 1: expected similarity_score absent, got: {row1.get('similarity_score')}"
+        )
+        assert row1.get("similarity_delta") is None, (
+            f"Cycle 1: expected similarity_delta absent, got: {row1.get('similarity_delta')}"
+        )
+        assert row1.get("previous_similarity_score") is None, (
+            f"Cycle 1: expected previous_similarity_score absent, got: {row1.get('previous_similarity_score')}"
+        )
+
+        # -------- cycle 2 --------
+        _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            capability_ledger=str(ledger_path),
+            capability_ledger_output=str(ledger_path),
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "data_connector_cycle2.json"),
+        )
+
+        persisted2 = json.loads(ledger_path.read_text(encoding="utf-8"))
+        row2 = persisted2["capabilities"]["snowflake_data_access"]
+
+        assert row2["total_syntheses"] == 2, (
+            f"Cycle 2: expected total_syntheses=2, got: {row2.get('total_syntheses')}"
+        )
+        assert row2["successful_syntheses"] == 2, (
+            f"Cycle 2: expected successful_syntheses=2, got: {row2.get('successful_syntheses')}"
+        )
+        assert row2["artifact_kind"] == "data_connector", (
+            f"Cycle 2: expected artifact_kind='data_connector', got: {row2.get('artifact_kind')}"
+        )
+
+        # similarity fields must remain absent after carry-forward
+        assert row2.get("similarity_score") is None, (
+            f"Cycle 2: expected similarity_score absent, got: {row2.get('similarity_score')}"
+        )
+        assert row2.get("similarity_delta") is None, (
+            f"Cycle 2: expected similarity_delta absent, got: {row2.get('similarity_delta')}"
+        )
+        assert row2.get("previous_similarity_score") is None, (
+            f"Cycle 2: expected previous_similarity_score absent, got: {row2.get('previous_similarity_score')}"
+        )
+
+    finally:
+        if generated_dir.exists():
+            shutil.rmtree(generated_dir)
