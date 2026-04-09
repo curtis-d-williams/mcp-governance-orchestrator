@@ -4796,3 +4796,136 @@ def test_live_evolution_loop_commits_positive_delta(tmp_path, monkeypatch):
     finally:
         if generated_dir.exists():
             shutil.rmtree(generated_dir)
+
+
+def test_live_data_connector_ledger_accumulation(tmp_path, monkeypatch):
+    """
+    Live single-cycle test confirming that a data_connector synthesis writes
+    the correct ledger row and that similarity fields are absent.
+
+    No reference fixture is needed — data_connector skips compare_mcp_servers
+    entirely (factory_pipeline.py:319 guards on artifact_kind == "mcp_server").
+    Only two monkeypatches: evaluate_planner_config and run_governed_loop.
+    build_capability_artifact runs live against real templates.
+
+    Confirms three-way ledger independence: mcp_server and agent_adapter are
+    already covered by test_live_two_capability_ledger_isolation; this test
+    exercises the third artifact kind.
+
+    Expected:
+    - ledger row for snowflake_data_access has total_syntheses=1,
+      successful_syntheses=1, artifact_kind="data_connector", status="ok"
+    - similarity_score, similarity_delta, previous_similarity_score absent
+    - synthesis_event fields match capability and artifact_kind
+    - used_evolution is False
+    """
+    import shutil
+
+    # ------------------------------------------------------------------
+    # Monkeypatches — two only; get_reference_artifact_path not needed
+    # ------------------------------------------------------------------
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_capability_artifact"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_capability_artifact"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_capability_artifact",
+                                    "task_binding": {
+                                        "args": {
+                                            "artifact_kind": "data_connector",
+                                            "capability": "snowflake_data_access",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_mod, "run_governed_loop", lambda args: governed_result)
+
+    generated_dir = _REPO_ROOT / "generated_data_connector_snowflake"
+
+    try:
+        artifact = _mod.run_autonomous_factory_cycle(
+            portfolio_state="portfolio_state.json",
+            policy="planner_policy.json",
+            top_k=3,
+            output=str(tmp_path / "data_connector_cycle.json"),
+            capability_ledger_output=str(tmp_path / "data_connector_ledger.json"),
+        )
+
+        # ------------------------------------------------------------------
+        # Ledger row assertions
+        # ------------------------------------------------------------------
+        ledger_data = json.loads(
+            (tmp_path / "data_connector_ledger.json").read_text(encoding="utf-8")
+        )
+        row = ledger_data["capabilities"]["snowflake_data_access"]
+
+        assert row["total_syntheses"] == 1, (
+            f"Expected total_syntheses=1, got: {row.get('total_syntheses')}"
+        )
+        assert row["successful_syntheses"] == 1, (
+            f"Expected successful_syntheses=1, got: {row.get('successful_syntheses')}"
+        )
+        assert row["failed_syntheses"] == 0, (
+            f"Expected failed_syntheses=0, got: {row.get('failed_syntheses')}"
+        )
+        assert row["artifact_kind"] == "data_connector", (
+            f"Expected artifact_kind='data_connector', got: {row.get('artifact_kind')}"
+        )
+        assert row["last_synthesis_status"] == "ok", (
+            f"Expected last_synthesis_status='ok', got: {row.get('last_synthesis_status')}"
+        )
+        assert row["last_synthesis_used_evolution"] is False, (
+            f"Expected last_synthesis_used_evolution=False, got: {row.get('last_synthesis_used_evolution')}"
+        )
+
+        # similarity fields must be absent — no comparison stage for data_connector
+        assert row.get("similarity_score") is None, (
+            f"Expected similarity_score absent, got: {row.get('similarity_score')}"
+        )
+        assert row.get("similarity_delta") is None, (
+            f"Expected similarity_delta absent, got: {row.get('similarity_delta')}"
+        )
+        assert row.get("previous_similarity_score") is None, (
+            f"Expected previous_similarity_score absent, got: {row.get('previous_similarity_score')}"
+        )
+
+        # ------------------------------------------------------------------
+        # Cycle-level assertions
+        # ------------------------------------------------------------------
+        cycle_result = artifact["cycle_result"]
+
+        assert cycle_result["synthesis_event"]["capability"] == "snowflake_data_access", (
+            f"Expected capability='snowflake_data_access', got: "
+            f"{cycle_result['synthesis_event'].get('capability')}"
+        )
+        assert cycle_result["synthesis_event"]["artifact_kind"] == "data_connector", (
+            f"Expected artifact_kind='data_connector', got: "
+            f"{cycle_result['synthesis_event'].get('artifact_kind')}"
+        )
+        assert cycle_result["synthesis_event"]["status"] == "ok", (
+            f"Expected status='ok', got: {cycle_result['synthesis_event'].get('status')}"
+        )
+        assert cycle_result["synthesis_event"]["used_evolution"] is False, (
+            f"Expected used_evolution=False, got: "
+            f"{cycle_result['synthesis_event'].get('used_evolution')}"
+        )
+
+    finally:
+        if generated_dir.exists():
+            shutil.rmtree(generated_dir)
