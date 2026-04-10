@@ -142,3 +142,34 @@ def test_g_evolution_and_regression_simultaneous(tmp_path, monkeypatch, capsys):
     # neither empty-state sentinel should appear
     assert "No capabilities used evolution" not in out
     assert "No regression flags." not in out
+
+
+def test_h_no_evolution_sentinel(tmp_path, monkeypatch, capsys):
+    ledger = {
+        "capabilities": {
+            "epsilon_cap": {
+                "artifact_kind": "mcp_server",
+                "total_syntheses": 3,
+                "successful_syntheses": 3,
+                "successful_evolved_syntheses": 0,
+                "last_synthesis_source": "planner_request",
+                "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": False,
+                "similarity_score": 0.45,
+                "previous_similarity_score": 0.55,
+                "similarity_delta": -0.10,
+            }
+        }
+    }
+    ledger_path = tmp_path / "ledger.json"
+    ledger_path.write_text(json.dumps(ledger))
+
+    monkeypatch.setattr(sys, "argv", ["portfolio_report.py", str(ledger_path)])
+    _mod.main()
+    out = capsys.readouterr().out
+
+    # No capability used evolution — sentinel must appear
+    assert "No capabilities used evolution on last synthesis." in out
+
+    # epsilon_cap has negative delta — regression sentinel must NOT appear
+    assert "No regression flags." not in out

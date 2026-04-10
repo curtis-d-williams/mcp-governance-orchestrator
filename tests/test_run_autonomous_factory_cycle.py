@@ -5065,3 +5065,74 @@ def test_live_data_connector_two_cycle_ledger_carry_forward(tmp_path, monkeypatc
     finally:
         if generated_dir.exists():
             shutil.rmtree(generated_dir)
+
+
+def test_h_select_actions_capability_ledger_ranking_shift():
+    """select_actions routes _apply_learning_adjustments via capability_ledger.
+
+    Verifies that the call site at claude_dynamic_planner_loop.py:397 correctly
+    passes the capability_ledger dict through to _apply_learning_adjustments,
+    producing a ranking shift observable in sorted_actions when cap_a has
+    accumulated failures and cap_b has a clean history.
+    """
+    import importlib.util
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    _repo_root = Path(__file__).resolve().parents[1]
+    _spec = importlib.util.spec_from_file_location(
+        "claude_dynamic_planner_loop",
+        _repo_root / "scripts" / "claude_dynamic_planner_loop.py",
+    )
+    _planner_mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_planner_mod)
+
+    select_actions = _planner_mod.select_actions
+
+    raw_actions = [
+        {
+            "action_type": "build_capability_artifact",
+            "priority": 10.0,
+            "action_id": "aid-a",
+            "args": {"capability": "cap_a"},
+        },
+        {
+            "action_type": "build_capability_artifact",
+            "priority": 10.0,
+            "action_id": "aid-b",
+            "args": {"capability": "cap_b"},
+        },
+    ]
+
+    # cap_a has 4 failures out of 5 syntheses — low reliability signal
+    # cap_b has 5 successes out of 5 — clean history
+    capability_ledger = {
+        "capabilities": {
+            "cap_a": {"total_syntheses": 5, "successful_syntheses": 1},
+            "cap_b": {"total_syntheses": 5, "successful_syntheses": 5},
+        }
+    }
+
+    args = SimpleNamespace(top_k=2, exploration_offset=0)
+
+    _, _, sorted_actions = select_actions(
+        args,
+        raw_actions,
+        ledger={},
+        signals={},
+        policy={},
+        capability_ledger=capability_ledger,
+    )
+
+    assert len(sorted_actions) == 2, (
+        f"Expected 2 ranked actions, got {len(sorted_actions)}"
+    )
+
+    ranked_caps = [a["args"]["capability"] for a in sorted_actions]
+
+    assert ranked_caps[0] == "cap_b", (
+        f"Expected cap_b (clean history) ranked first; got order: {ranked_caps}"
+    )
+    assert ranked_caps[1] == "cap_a", (
+        f"Expected cap_a (failure history) ranked last; got order: {ranked_caps}"
+    )
