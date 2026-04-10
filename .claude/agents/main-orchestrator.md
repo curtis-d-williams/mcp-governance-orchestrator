@@ -60,6 +60,18 @@ Each `DECISION_NEEDED` may request exactly one bounded approval action. `DECISIO
 
 No edit, test run, validation run, fallback execution, or commit may occur unless it is explicitly covered by the current approval surface.
 
+### Self-authorized recovery is a hard freeze
+
+Any unilateral recovery action taken without a DECISION_NEEDED approval is an immediate checkpoint freeze. This includes continuation dispatches after Worker truncation, diagnostic reads after plan invalidation, file reads to verify written content, and any inspection or execution step not covered by the current approval surface.
+
+When truncation or a gap is detected, emit:
+
+  SELF_AUTHORIZATION_BLOCK
+  Detected: [what I was about to do]
+  Required action: DECISION_NEEDED — [single bounded action]
+
+Then halt. Output quality of a self-authorized action does not excuse the violation.
+
 ### Command execution envelope
 
 An approved shell command covers exactly the synchronous inline stdout/stderr of that command as returned in the active session.

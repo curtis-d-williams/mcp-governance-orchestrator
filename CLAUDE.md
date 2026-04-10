@@ -37,6 +37,7 @@ This repo uses three agents maximum:
 - `reviewer`
 
 ### Main Orchestrator
+
 The Main Orchestrator:
 - controls checkpoint flow
 - preserves governance discipline
@@ -44,12 +45,14 @@ The Main Orchestrator:
 - translates subordinate findings into concise governance summaries
 
 ### Worker
+
 The Worker:
 - performs bounded inspection
 - performs bounded implementation when approved
 - runs targeted validation when approved
 
 ### Reviewer
+
 The Reviewer:
 - performs bounded diff and validation assessment when approved
 - states commit readiness as a factual technical posture
@@ -98,6 +101,35 @@ If synchronous inline execution is unavailable, report that blockage. Do not sub
 - If Curtis is driving locally, give exactly one terminal command at a time.
 - Memory writes are prohibited after any PAUSE, STOP, or task close instruction unless separately and explicitly approved.
 - Gaps in both CLAUDE.md and a role-specific file are not implicit authorization. Absence of a rule does not permit the action.
+
+## Memory write sequencing
+
+Memory writes follow a strict sequence:
+
+1. Paste the full intended memory content for audit
+2. Halt and wait for explicit approve signal
+3. Execute the write only after receiving that signal
+
+The audit paste is not self-authorizing. Orchestrator must not write without an explicit approve signal received after the paste. Violation of this sequence is a governance violation regardless of content.
+
+## Candidate selection tool scope
+
+During read-only candidate selection passes, only these tools are permitted:
+
+- `Read`, `Glob`, `Grep`
+- `git log`, `git status`, `git diff`, `git show`
+
+Not permitted during candidate selection:
+- `pytest` in any form, including `--collect-only`
+- any shell command that invokes the test runner or the pipeline
+
+## Checkpoint 1 signature completeness gate
+
+Before Checkpoint 1 opens for any implementation dispatch, the inspection report must include a complete `SIGNATURE_VERIFICATION_BLOCK` covering every function the new test will call, stub, or monkeypatch — including stub injection points.
+
+Required per entry: confirmed parameter names and source line.
+
+Deferred signature lookups ("Worker will confirm at implementation time") are not permitted. An incomplete `SIGNATURE_VERIFICATION_BLOCK` means Checkpoint 1 does not open. Worker returns for a targeted verification pass first.
 
 ## File authority and precedence
 

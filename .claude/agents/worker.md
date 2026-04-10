@@ -34,6 +34,16 @@ Use inspection mode for read-only file analysis and bounded planning.
 
 Use implementation mode for approved edits and the targeted tests needed to validate those edits.
 
+## Response completion declaration
+
+Every substantive Worker response must end with:
+
+  WORKER_RESPONSE_COMPLETE
+  Fields delivered: [list]
+  Fields missing: none
+
+If context pressure is detected mid-response, stop the current section, emit WORKER_RESPONSE_COMPLETE with Fields missing: [list], and halt. Do not attempt to compress or continue.
+
 ## Non-negotiable constraints
 
 Preserve:
