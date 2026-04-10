@@ -3,8 +3,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = _REPO_ROOT / "scripts" / "portfolio_report.py"
 _spec = importlib.util.spec_from_file_location("portfolio_report", _SCRIPT)
@@ -104,4 +102,43 @@ def test_f_multi_capability_fixture(tmp_path, monkeypatch, capsys):
     adaptation_tail = out.split("ADAPTATION SIGNAL SUMMARY")[1]
     assert "gamma_cap" not in adaptation_tail
 
+    assert "No regression flags." not in out
+
+
+def test_g_evolution_and_regression_simultaneous(tmp_path, monkeypatch, capsys):
+    ledger = {
+        "capabilities": {
+            "delta_cap": {
+                "artifact_kind": "mcp_server",
+                "total_syntheses": 2,
+                "successful_syntheses": 2,
+                "successful_evolved_syntheses": 1,
+                "last_synthesis_source": "planner_request",
+                "last_synthesis_status": "ok",
+                "last_synthesis_used_evolution": True,
+                "similarity_score": 0.60,
+                "previous_similarity_score": 0.70,
+                "similarity_delta": -0.10,
+            }
+        }
+    }
+    ledger_path = tmp_path / "ledger.json"
+    ledger_path.write_text(json.dumps(ledger))
+
+    monkeypatch.setattr(sys, "argv", ["portfolio_report.py", str(ledger_path)])
+    _mod.main()
+    out = capsys.readouterr().out
+
+    adaptation_section = out.split("ADAPTATION SIGNAL SUMMARY")[1]
+    evo_subsection = adaptation_section.split("Regression flags")[0]
+    regression_subsection = adaptation_section.split("Regression flags")[1]
+
+    # delta_cap used evolution → must appear in the evolution subsection
+    assert "delta_cap" in evo_subsection
+
+    # delta_cap has negative similarity_delta → must appear in the regression subsection
+    assert "delta_cap" in regression_subsection
+
+    # neither empty-state sentinel should appear
+    assert "No capabilities used evolution" not in out
     assert "No regression flags." not in out
