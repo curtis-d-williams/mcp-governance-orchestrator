@@ -173,3 +173,196 @@ def test_h_no_evolution_sentinel(tmp_path, monkeypatch, capsys):
 
     # epsilon_cap has negative delta — regression sentinel must NOT appear
     assert "No regression flags." not in out
+
+
+def test_live_portfolio_report_multi_cycle_learning_sequence(tmp_path, monkeypatch, capsys):
+    """Two sequential live factory cycles feed capability_effectiveness_ledger data,
+    then portfolio_report.main() is called to confirm the report renders correctly
+    against real builder output across both cycles.
+
+    Only planner stubs and get_reference_artifact_path are monkeypatched;
+    build_capability_artifact and compare_mcp_servers run live.
+    """
+    import importlib.util as _ilu
+    import shutil
+    import json as _json
+
+    # ------------------------------------------------------------------
+    # Load run_autonomous_factory_cycle locally as _rac_mod
+    # ------------------------------------------------------------------
+    _rac_script = _REPO_ROOT / "scripts" / "run_autonomous_factory_cycle.py"
+    _rac_spec = _ilu.spec_from_file_location("run_autonomous_factory_cycle", _rac_script)
+    _rac_mod = _ilu.module_from_spec(_rac_spec)
+    _rac_spec.loader.exec_module(_rac_mod)
+
+    # ------------------------------------------------------------------
+    # Load factory_pipeline locally as _pipeline for monkeypatching
+    # ------------------------------------------------------------------
+    _fp_spec = _ilu.spec_from_file_location("factory_pipeline", _REPO_ROOT / "factory_pipeline.py")
+    _pipeline = _ilu.module_from_spec(_fp_spec)
+    _fp_spec.loader.exec_module(_pipeline)
+
+    # ------------------------------------------------------------------
+    # Build minimal reference fixture
+    # ------------------------------------------------------------------
+    ref_root = tmp_path / "reference_mcp_github_repository_management"
+    ref_root.mkdir(parents=True)
+
+    # server.json
+    (ref_root / "server.json").write_text(
+        _json.dumps({
+            "$schema": "https://example.com/schema",
+            "name": "github-mcp-server",
+            "title": "GitHub MCP Server",
+            "description": "Reference GitHub MCP server.",
+            "repository": {"url": "https://github.com/example/mcp-github", "source": "github"},
+            "version": "0.1.0",
+            "packages": [],
+            "remotes": [],
+        }),
+        encoding="utf-8",
+    )
+
+    # README.md
+    (ref_root / "README.md").write_text(
+        "# GitHub MCP Server\n\n"
+        "## Tools\n\n"
+        "- `list_repositories` — list repositories\n"
+        "- `get_me` — get current user\n",
+        encoding="utf-8",
+    )
+
+    # pkg/github/tools.go
+    tools_go_dir = ref_root / "pkg" / "github"
+    tools_go_dir.mkdir(parents=True)
+    (tools_go_dir / "tools.go").write_text(
+        "package github\n\n"
+        "func AllTools(t interface{}) []interface{} { return []interface{}{} }\n"
+        "func RemoteOnlyToolsets() []interface{} { return []interface{}{} }\n",
+        encoding="utf-8",
+    )
+
+    # pkg/github/server.go
+    (tools_go_dir / "server.go").write_text(
+        "package github\n\n// DynamicToolsets enabled\n",
+        encoding="utf-8",
+    )
+
+    # internal/ghmcp/server.go
+    ghmcp_dir = ref_root / "internal" / "ghmcp"
+    ghmcp_dir.mkdir(parents=True)
+    (ghmcp_dir / "server.go").write_text(
+        "package ghmcp\n\n// ReadOnly mode supported\n",
+        encoding="utf-8",
+    )
+
+    # ------------------------------------------------------------------
+    # Portfolio state file
+    # ------------------------------------------------------------------
+    ps_path = tmp_path / "portfolio_state.json"
+    ps_path.write_text(_json.dumps({"capability_gaps": ["github_repository_management"]}))
+
+    # ------------------------------------------------------------------
+    # Monkeypatch 1: get_reference_artifact_path -> tmp_path fixture
+    # (patch against the factory_pipeline module _rac_mod actually imported)
+    # ------------------------------------------------------------------
+    import factory_pipeline as _fp_canonical
+    monkeypatch.setattr(
+        _fp_canonical,
+        "get_reference_artifact_path",
+        lambda capability, registry_root=None: str(ref_root),
+    )
+
+    # ------------------------------------------------------------------
+    # Monkeypatch 2: planner stubs
+    # ------------------------------------------------------------------
+    evaluation = {"risk_level": "moderate_risk", "reasons": []}
+
+    governed_result = {
+        "selected_offset": 0,
+        "result": {
+            "evaluation_summary": {
+                "runs": [
+                    {
+                        "selected_actions": ["build_mcp_server"],
+                        "selection_detail": {
+                            "ranked_action_window": ["build_mcp_server"],
+                            "ranked_action_window_detail": [
+                                {
+                                    "action_type": "build_mcp_server",
+                                    "task_binding": {
+                                        "args": {
+                                            "capability": "github_repository_management",
+                                        }
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+    monkeypatch.setattr(_rac_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+    monkeypatch.setattr(_rac_mod, "run_governed_loop", lambda args: governed_result)
+
+    ledger_path = tmp_path / "ledger_live.json"
+    generated_dir = _REPO_ROOT / "generated_mcp_server_github"
+
+    try:
+        # -------- cycle 1 --------
+        artifact1 = _rac_mod.run_autonomous_factory_cycle(
+            portfolio_state=str(ps_path),
+            capability_ledger_output=str(ledger_path),
+            top_k=3,
+            output=str(tmp_path / "cycle1.json"),
+        )
+
+        # -------- cycle 2 (carries forward ledger) --------
+        artifact2 = _rac_mod.run_autonomous_factory_cycle(
+            portfolio_state=str(ps_path),
+            capability_ledger=str(ledger_path),
+            capability_ledger_output=str(ledger_path),
+            top_k=3,
+            output=str(tmp_path / "cycle2.json"),
+        )
+
+        # -------- portfolio report --------
+        monkeypatch.setattr(sys, "argv", ["portfolio_report.py", str(ledger_path)])
+        _mod.main()
+        out = capsys.readouterr().out
+
+        # Section headers always present
+        assert "CAPABILITY EFFECTIVENESS LEDGER REPORT" in out
+        assert "PER-CAPABILITY DETAIL" in out
+        assert "SIMILARITY PROGRESSION SUMMARY" in out
+        assert "ADAPTATION SIGNAL SUMMARY" in out
+        assert "END OF REPORT" in out
+
+        # Per-capability fields always present
+        assert "total_syntheses" in out
+        assert "success_rate" in out
+        assert "evolution_rate" in out
+
+        # Capability appears in similarity progression (live builder produces real similarity_score)
+        sim_section = out.split("SIMILARITY PROGRESSION SUMMARY")[1].split("ADAPTATION SIGNAL SUMMARY")[0]
+        assert "github_repository_management" in sim_section
+
+        # Ledger accumulated two cycles
+        ledger_data = _json.loads(ledger_path.read_text())
+        cap = ledger_data["capabilities"]["github_repository_management"]
+        assert cap["total_syntheses"] == 2
+        assert cap["successful_syntheses"] == 2
+
+        # Adaptation signal summary has at least one sentinel (not entirely absent)
+        adapt_section = out.split("ADAPTATION SIGNAL SUMMARY")[1]
+        has_evo_text = (
+            "No capabilities used evolution" in adapt_section
+            or "Capabilities using evolution" in adapt_section
+        )
+        assert has_evo_text, "ADAPTATION SIGNAL SUMMARY evolution subsection missing"
+
+    finally:
+        if generated_dir.exists():
+            shutil.rmtree(generated_dir)
