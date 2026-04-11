@@ -5136,3 +5136,90 @@ def test_h_select_actions_capability_ledger_ranking_shift():
     assert ranked_caps[1] == "cap_a", (
         f"Expected cap_a (failure history) ranked last; got order: {ranked_caps}"
     )
+
+
+def test_rank_plateau_band_holds_after_maturity():
+    """Reliability adjustment for a mature, clean capability stays flat after maturity.
+
+    A capability at or above CAPABILITY_CONFIDENCE_THRESHOLD (total=5, success=5)
+    should produce a near-constant reliability adjustment across subsequent successful
+    cycles — the drift must be smaller than the plateau band of 0.015.
+    Exploration bonus must be 0.0 at and beyond maturity.
+    """
+    from planner_runtime import (
+        _apply_learning_adjustments,
+        _compute_capability_reliability_adjustment,
+        _compute_capability_exploration_adjustment,
+        CAPABILITY_CONFIDENCE_THRESHOLD,
+        CAPABILITY_RELIABILITY_WEIGHT,
+    )
+
+    action_mature = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-mature",
+        "args": {"capability": "cap_mature"},
+    }
+    action_new = {
+        "action_type": "build_capability_artifact",
+        "priority": 10.0,
+        "action_id": "aid-new",
+        "args": {"capability": "cap_new"},
+    }
+
+    capability_ledger = {
+        "capabilities": {
+            "cap_mature": {
+                "total_syntheses": 5,
+                "successful_syntheses": 5,
+                "failed_syntheses": 0,
+                "last_synthesis_status": "ok",
+            },
+            "cap_new": {
+                "total_syntheses": 0,
+                "successful_syntheses": 0,
+                "failed_syntheses": 0,
+            },
+        }
+    }
+
+    adjs = []
+    exploration_vals = []
+
+    for _ in range(4):
+        exploration = _compute_capability_exploration_adjustment(
+            action_mature, capability_ledger
+        )
+        assert exploration == 0.0, (
+            f"Expected 0.0 exploration at maturity; got {exploration}"
+        )
+        exploration_vals.append(exploration)
+
+        adj = _compute_capability_reliability_adjustment(action_mature, capability_ledger)
+        adjs.append(adj)
+
+        ranked = _apply_learning_adjustments(
+            [action_mature, action_new], {}, capability_ledger=capability_ledger
+        )
+        ranked_caps = [a["args"]["capability"] for a in ranked]
+        assert ranked_caps[0] == "cap_mature", (
+            f"Expected cap_mature ranked first; got order: {ranked_caps}"
+        )
+
+        caps = capability_ledger["capabilities"]["cap_mature"]
+        caps["total_syntheses"] += 1
+        caps["successful_syntheses"] += 1
+
+    drift = max(adjs) - min(adjs)
+    assert drift < 0.015, (
+        f"Post-maturity rank adjustment drift {drift:.6f} exceeds plateau band 0.015; "
+        f"adjustments across cycles: {adjs}"
+    )
+
+    assert all(adj <= CAPABILITY_RELIABILITY_WEIGHT for adj in adjs), (
+        f"Reliability adjustment exceeded weight ceiling {CAPABILITY_RELIABILITY_WEIGHT}: {adjs}"
+    )
+
+    assert all(e == 0.0 for e in exploration_vals), (
+        f"Exploration bonus non-zero at maturity: {exploration_vals}"
+    )
