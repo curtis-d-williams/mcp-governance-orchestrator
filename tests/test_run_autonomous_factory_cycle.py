@@ -5223,3 +5223,63 @@ def test_rank_plateau_band_holds_after_maturity():
     assert all(e == 0.0 for e in exploration_vals), (
         f"Exploration bonus non-zero at maturity: {exploration_vals}"
     )
+
+
+def test_live_run_governed_loop_dispatches_to_run_experiment(monkeypatch, tmp_path):
+    """Exercise the real run_governed_loop -> _runtime_run_governed_loop -> run_experiment chain.
+
+    All other tests stub run_governed_loop entirely. This test does NOT stub
+    run_governed_loop. Instead it lets the real implementation execute and
+    stubs only run_experiment at the inner injection point, asserting that
+    the dispatch chain reaches it.
+    """
+    # Monkeypatch 1: evaluate_planner_config returns a low_risk evaluation so
+    # decide_action routes to "governed_run" and run_governed_loop is invoked.
+    evaluation = {
+        "risk_level": "low_risk",
+        "reasons": [],
+    }
+    monkeypatch.setattr(_mod, "evaluate_planner_config", lambda **kwargs: evaluation)
+
+    # Monkeypatch 3: suppress real portfolio-state preflight file evaluation.
+    # None return causes _runtime_run_governed_loop line 165 to default
+    # risk_level to "low_risk", allowing run_experiment to be reached.
+    monkeypatch.setattr(
+        _mod._governed_mod, "_run_preflight_check", lambda args: None
+    )
+
+    # Monkeypatch 2 (core assertion target): stub run_experiment at the inner
+    # injection point. Records the call and returns the minimal safe shape.
+    experiment_called = {"called": False}
+
+    def fake_run_experiment(args, planner_main=None, risk_check_fn=None):
+        experiment_called["called"] = True
+        return {
+            "run_count": 1,
+            "envelope_paths": [],
+            "evaluation_summary": {"runs": []},
+        }
+
+    monkeypatch.setattr(
+        _mod._governed_mod, "run_experiment", fake_run_experiment
+    )
+
+    # Monkeypatch 4: suppress apply_optional_learning file write.
+    # learn_ledger_output is always set by run_factory_cycle so this guard
+    # cannot be bypassed via args.
+    monkeypatch.setattr(
+        _mod._governed_mod,
+        "update_action_effectiveness_ledger",
+        lambda *a, **kw: {},
+    )
+
+    output = tmp_path / "live_dispatch_test_cycle.json"
+    _mod.run_autonomous_factory_cycle(
+        portfolio_state=None,
+        output=str(output),
+    )
+
+    assert experiment_called["called"], (
+        "run_experiment was never called — the run_governed_loop -> "
+        "_runtime_run_governed_loop -> run_experiment dispatch chain is broken"
+    )
